@@ -1,0 +1,28 @@
+[tool.black]
+line-length = 119
+
+[tool.poetry]
+name = "agentcache"
+version = "0.0.1"
+description = ""
+authors = ["Oleksandr Tereshchenko <toporok@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = ">=3.8.0,<4.0"
+pydantic = ">=2.0.0,<3.0.0"
+
+[tool.poetry.dev-dependencies]
+black = "*"
+ipython = "*"
+pre-commit = "*"
+pylint = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.2"
+pytest-asyncio = "^0.21.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
