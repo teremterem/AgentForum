@@ -1,4 +1,3 @@
-"""TODO oleksandr"""
 import hashlib
 
 from pydantic import BaseModel

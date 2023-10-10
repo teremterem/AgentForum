@@ -60,3 +60,11 @@ def test_cacheable_hash_key_calculated_once() -> None:
 
         assert sample.hash_key == "4d7028d03126b82a63ade7a54fa69f4fc04da5eb3fa24e4869d140dcd4cf5126"
         mock_sha256.assert_called_once()  # check that it wasn't calculated again
+
+
+def test_nested_object_not_copied() -> None:
+    """Test that nested objects are not copied when the outer pydantic model is created."""
+    sub_cacheable = SampleCacheable(some_req_field="test")
+    sample = SampleCacheable(some_req_field="test", sub_cacheable=sub_cacheable)
+
+    assert sample.sub_cacheable is sub_cacheable
