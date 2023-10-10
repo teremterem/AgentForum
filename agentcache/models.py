@@ -1,10 +1,14 @@
+"""Data models."""
 import hashlib
 
 from pydantic import BaseModel
 
 
 class Cacheable(BaseModel):
-    """A base class for objects that can be cached."""
+    """
+    A base class for objects that can be cached. It is frozen and has a git-style hash key that is calculated from the
+    JSON representation of the object.
+    """
 
     class Config:
         """Pydantic config."""
