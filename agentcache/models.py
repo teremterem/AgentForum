@@ -13,7 +13,7 @@ class Cacheable(BaseModel):
         frozen = True
 
     @property
-    def hash_key(self) -> str:  # TODO oleksandr: is `key` a good name for this property ?
+    def hash_key(self) -> str:
         """Get the cache key for this object. The cache key is a hash of the JSON representation of the object."""
         if not hasattr(self, "_hash_key"):
             # pylint: disable=attribute-defined-outside-init
