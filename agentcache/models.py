@@ -4,9 +4,9 @@ import hashlib
 from pydantic import BaseModel
 
 
-class Cacheable(BaseModel):
+class Immutable(BaseModel):
     """
-    A base class for objects that can be cached. It is frozen and has a git-style hash key that is calculated from the
+    A base class for immutable pydantic objects. It is frozen and has a git-style hash key that is calculated from the
     JSON representation of the object.
     """
 
@@ -17,7 +17,7 @@ class Cacheable(BaseModel):
 
     @property
     def hash_key(self) -> str:
-        """Get the cache key for this object. The cache key is a hash of the JSON representation of the object."""
+        """Get the hash key for this object. It is a hash of the JSON representation of the object."""
         if not hasattr(self, "_hash_key"):
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit
