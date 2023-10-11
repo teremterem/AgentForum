@@ -23,3 +23,10 @@ class Immutable(BaseModel):
             # noinspection PyAttributeOutsideInit
             self._hash_key = hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
         return self._hash_key
+
+
+class Message(Immutable):
+    """A message."""
+
+    content: str
+    role: str

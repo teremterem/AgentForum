@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from agentcache.models import Message
 from agentcache.ext.llms.openai import achatgpt
 
 
@@ -15,14 +16,16 @@ async def main():
     while True:
         print()
         messages.append(
-            {
-                "role": "user",
-                "content": input("YOU: "),
-            }
+            Message(
+                role="user",
+                content=input("YOU: "),
+            )
         )
+        response = await achatgpt(messages=messages, model="gpt-3.5-turbo-0613", stream=True)
+        # print()
+        # pprint(response)
         print()
         print("GPT: ", end="", flush=True)
-        response = achatgpt(messages=messages, model="gpt-3.5-turbo-0613")
         response_msg = []
         async for token in response:
             token_str = token["choices"][0]["delta"].get("content", "")
@@ -32,10 +35,10 @@ async def main():
             response_msg.append(token_str)
         print()
         messages.append(
-            {
-                "role": "assistant",
-                "content": "".join(response_msg),
-            }
+            Message(
+                role="assistant",
+                content="".join(response_msg),
+            )
         )
 
 

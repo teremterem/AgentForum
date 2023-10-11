@@ -1,9 +1,16 @@
 """TODO Oleksandr"""
+from typing import List
+
+from agentcache.models import Message
 
 
-async def achatgpt(**kwargs):
+async def achatgpt(messages: List[Message], stream=False, **kwargs):
     """TODO Oleksandr"""
     import openai  # pylint: disable=import-outside-toplevel
 
-    async for token in await openai.ChatCompletion.acreate(**kwargs, stream=True):
-        yield token
+    message_dicts = [{"role": message.role, "content": message.content} for message in messages]
+
+    response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
+    if stream:
+        return (token async for token in response)
+    return response
