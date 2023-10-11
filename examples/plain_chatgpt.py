@@ -27,12 +27,7 @@ async def main():
         async for token in response:
             print(token.text, end="", flush=True)
         print()
-        messages.append(
-            Message(
-                role="assistant",
-                content=response.get_full_message().content,
-            )
-        )
+        messages.append(response.get_full_message())
 
 
 if __name__ == "__main__":
