@@ -24,20 +24,13 @@ async def main():
         print()
         print("GPT: ", end="", flush=True)
         response = await achatgpt(messages=messages, model="gpt-3.5-turbo-0613", stream=True)
-        # print()
-        # pprint(response)
-        response_msg = []
         async for token in response:
-            token_str = token["choices"][0]["delta"].get("content", "")
-            print(token_str, end="", flush=True)
-            # print()
-            # pprint(token)
-            response_msg.append(token_str)
+            print(token.text, end="", flush=True)
         print()
         messages.append(
             Message(
                 role="assistant",
-                content="".join(response_msg),
+                content=response.get_full_message().content,
             )
         )
 
