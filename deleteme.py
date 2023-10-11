@@ -21,11 +21,11 @@ async def main():
                 content=input("YOU: "),
             )
         )
+        print()
+        print("GPT: ", end="", flush=True)
         response = await achatgpt(messages=messages, model="gpt-3.5-turbo-0613", stream=True)
         # print()
         # pprint(response)
-        print()
-        print("GPT: ", end="", flush=True)
         response_msg = []
         async for token in response:
             token_str = token["choices"][0]["delta"].get("content", "")
