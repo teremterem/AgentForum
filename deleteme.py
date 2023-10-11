@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from agentcache.llms.openai import achatgpt
+from agentcache.ext.llms.openai import achatgpt
 
 
 async def main():
