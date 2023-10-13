@@ -20,6 +20,7 @@ async def achatgpt(messages: List[Message], stream: bool = False, **kwargs) -> M
     return Message(
         # TODO Oleksandr: support all "choices", not only the first one
         content=response["choices"][0]["message"]["content"],
+        # TODO Oleksandr: return all the metadata, not only the role
         role=response["choices"][0]["message"]["role"],
     )
 
@@ -45,6 +46,7 @@ class _StreamedMessageAsync(StreamedMessage):
         if not self._full_message:
             self._full_message = Message(
                 content="".join([self._token_raw_to_text(token_raw) for token_raw in self._tokens_raw]),
+                # TODO Oleksandr: return all the metadata, not only the role
                 role=self._role,
             )
         return self._full_message
@@ -69,6 +71,7 @@ class _StreamedMessageAsync(StreamedMessage):
                 # TODO Oleksandr: support all "choices", not only the first one
                 role = token_raw["choices"][0]["delta"].get("role")
                 if role:
+                    # TODO Oleksandr: collect all the metadata, not only the role
                     self._role = role
                 token_text = self._token_raw_to_text(token_raw)
         except StopAsyncIteration:
