@@ -10,15 +10,23 @@ from agentcache.models import Message
 from agentcache.ext.llms.openai import achatgpt
 
 
-async def main():
+async def main(print_user_input_again: bool = False) -> None:
     """The chat loop."""
     messages = []
     while True:
         print()
+        prompt_text = "YOU: "
+        user_input = input(prompt_text)
+        if user_input == "exit":
+            break
+        if print_user_input_again:
+            # helps to visualise it in a jupyter notebook, because in a notebook the input happens in a popup
+            print()
+            print(prompt_text + user_input)
         messages.append(
             Message(
                 role="user",
-                content=input("YOU: "),
+                content=user_input,
             )
         )
         print()

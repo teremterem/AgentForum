@@ -1667,6 +1667,29 @@ files = [
 setuptools = "*"
 
 [[package]]
+name = "notebook"
+version = "7.0.5"
+description = "Jupyter Notebook - A web-based notebook environment for interactive computing"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "notebook-7.0.5-py3-none-any.whl", hash = "sha256:f26bd66accd54fcd96cc6696fb6c2911f15843b1c524318fd7cbdb32a763e6a6"},
+    {file = "notebook-7.0.5.tar.gz", hash = "sha256:9e7c7a91de138bc8b5ee50486a20e70fa4d82d407b5622ec8beac9e13e773181"},
+]
+
+[package.dependencies]
+jupyter-server = ">=2.4.0,<3"
+jupyterlab = ">=4.0.2,<5"
+jupyterlab-server = ">=2.22.1,<3"
+notebook-shim = ">=0.2,<0.3"
+tornado = ">=6.2.0"
+
+[package.extras]
+dev = ["hatch", "pre-commit"]
+docs = ["myst-parser", "nbsphinx", "pydata-sphinx-theme", "sphinx (>=1.3.6)", "sphinxcontrib-github-alt", "sphinxcontrib-spelling"]
+test = ["importlib-resources (>=5.0)", "ipykernel", "jupyter-server[test] (>=2.4.0,<3)", "jupyterlab-server[test] (>=2.22.1,<3)", "nbval", "pytest (>=7.0)", "pytest-console-scripts", "pytest-timeout", "pytest-tornasync", "requests"]
+
+[[package]]
 name = "notebook-shim"
 version = "0.2.3"
 description = "A shim layer for notebook traits and config"
@@ -3000,4 +3023,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "a37e2c887ad64fcb7f2fa0ec6c8d4337ccd1d6a26772322e1a4d5c5b0ef82b6a"
+content-hash = "dbcc0818c1786a4495e1483ddb9223c5773dfebb422a1b7bff5274e39d7d5432"
