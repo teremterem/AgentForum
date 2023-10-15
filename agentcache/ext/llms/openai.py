@@ -5,12 +5,19 @@ from agentcache.models import Message, StreamedMessage, Token
 from agentcache.typing import MessageType
 
 
-async def achatgpt(messages: List[Message], stream: bool = False, **kwargs) -> MessageType:
+async def achatgpt(messages: List[MessageType], stream: bool = False, **kwargs) -> MessageType:
     """Chat with OpenAI models (async version). Returns a message or a stream of tokens."""
     import openai  # pylint: disable=import-outside-toplevel
 
-    message_dicts = [{"role": message.role, "content": message.content} for message in messages]
-
+    message_dicts = [
+        {
+            "role": message.role or "user",
+            "content": message.content,
+        }
+        for message in (
+            msg_type.get_full_message() if isinstance(msg_type, StreamedMessage) else msg_type for msg_type in messages
+        )
+    ]
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
@@ -34,6 +41,8 @@ class _StreamedMessageAsync(StreamedMessage):
         self._role: str = ""
         self._done = False
         self._full_message = None
+        # TODO Oleksandr: use asyncio.Queue and _Iterator approach just like you did in MessageBundle ?
+        #  (in order to ensure that the producer of the tokens is not blocked by the consumer)
 
     def get_full_message(self) -> Message:
         if not self._done:

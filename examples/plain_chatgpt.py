@@ -6,26 +6,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from agentcache.models import Message
-from agentcache.ext.llms.openai import achatgpt
+from agentcache.agents import AgentFirstDraft
 
 
 async def main(echo_input: bool = False) -> None:
     """The chat loop."""
+    agent = AgentFirstDraft()
     try:
-        messages = []
         while True:
             print()
-            messages.append(Message(role="user", content=custom_input("YOU: ", echo_input=echo_input)))
+            user_input = custom_input("YOU: ", echo_input=echo_input)
             print()
             print("GPT: ", end="", flush=True)
-            response = await achatgpt(messages=messages, model="gpt-3.5-turbo-0613", stream=True)
+            response = await agent.arun(user_input, model="gpt-3.5-turbo-0613", stream=True)
             async for token in response:
                 print(token.text, end="", flush=True)
-            messages.append(response.get_full_message())
             print()
     except KeyboardInterrupt:
         pass
+    print()
 
 
 def custom_input(prompt_text: str, echo_input: bool = False) -> str:
