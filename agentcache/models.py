@@ -63,11 +63,11 @@ class StreamedMessage(ABC):
 
     @abstractmethod
     def __next__(self) -> Token:
-        """Get the next token of a message that are being streamed."""
+        """Get the next token of a message that is being streamed."""
 
     @abstractmethod
     async def __anext__(self) -> Token:
-        """Get the next token of a message that are being streamed (async version)."""
+        """Get the next token of a message that is being streamed (async version)."""
 
     def __aiter__(self) -> AsyncIterator[Token]:
         return self
