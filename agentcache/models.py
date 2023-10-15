@@ -37,6 +37,8 @@ class Metadata(Immutable):
 
         extra = "allow"
 
+    # TODO Oleksandr: add a validation that ensures that field values are not mutable objects (e.g. lists, dicts, etc.)
+
 
 class Message(Immutable):
     """A message."""
