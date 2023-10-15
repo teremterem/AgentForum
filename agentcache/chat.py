@@ -9,15 +9,16 @@ from agentcache.utils import END_OF_QUEUE
 
 class MessageBundle:
     """
-    A bundle of messages that can be iterated over asynchronously. The main idea is that the speed at which messages
-    can be sent to this bundle is independent of the speed at which consumers iterate over them.
+    A bundle of messages that can be iterated over asynchronously. The speed at which messages can be sent to this
+    bundle is independent of the speed at which consumers iterate over them.
     """
 
     def __init__(self) -> None:
+        self.closed = False
         self.messages_so_far: List[MessageType] = []
+
         self._message_queue = asyncio.Queue()
         self._lock = asyncio.Lock()
-        self._closed = False
 
     def __aiter__(self) -> AsyncIterator[MessageType]:
         # noinspection PyTypeChecker
@@ -31,12 +32,12 @@ class MessageBundle:
 
     async def asend_message(self, message: MessageType, close_bundle: bool) -> None:
         """Send a message to the bundle."""
-        if self._closed:
+        if self.closed:
             raise MessageBundleClosedError("Cannot send messages to a closed bundle.")
         self._message_queue.put_nowait(message)
         if close_bundle:
             self._message_queue.put_nowait(END_OF_QUEUE)
-            self._closed = True
+            self.closed = True
 
     async def asend_interim_message(self, message: MessageType) -> None:
         """Send an interim message to the bundle."""
