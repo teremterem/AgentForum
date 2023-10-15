@@ -35,6 +35,9 @@ class Message(Immutable):
     role: str
 
 
+# TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
+
+
 class Token(Immutable):
     """
     A token. This class is used by StreamedMessage (when the message is streamed token by token instead of being
