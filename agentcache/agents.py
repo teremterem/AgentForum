@@ -11,7 +11,7 @@ class AgentFirstDraft:
         self._message_history: List[MessageType] = []
 
     async def arun(self, user_input: str, **kwargs) -> MessageType:
-        self._message_history.append(Message(role="user", content=user_input))
+        self._message_history.append(Message(content=user_input))
         response = await achatgpt(messages=self._message_history, **kwargs)
         self._message_history.append(response)
         return response

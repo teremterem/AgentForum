@@ -1,4 +1,4 @@
-"""Tests for the models module."""
+"""Tests for the Immutable base class."""
 import hashlib
 from unittest.mock import patch
 
@@ -41,7 +41,7 @@ def test_immutable_hash_key() -> None:
         '{"some_req_field":"test","some_opt_field":2,"sub_immutable":'
         '{"some_req_field":"юнікод","some_opt_field":3,"sub_immutable":null}}'.encode("utf-8")
     ).hexdigest()
-    assert sample.hash_key == expected_hash_key == "4f794d8fe8fb218e9ecb71b532d25ccb72e77f5751914e6aeea403a2c5ad7a06"
+    assert sample.hash_key == expected_hash_key
 
 
 def test_immutable_hash_key_calculated_once() -> None:

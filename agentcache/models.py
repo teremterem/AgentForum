@@ -16,6 +16,7 @@ class Immutable(BaseModel):
         """Pydantic config."""
 
         frozen = True
+        extra = "forbid"  # TODO Oleksandr: are you sure about going against Pydantic's default (which is "ignore") ?
 
     @property
     def hash_key(self) -> str:
@@ -28,11 +29,20 @@ class Immutable(BaseModel):
         return self._hash_key
 
 
+class Metadata(Immutable):
+    """Metadata for a message. Supports arbitrary fields."""
+
+    class Config:
+        """Pydantic config."""
+
+        extra = "allow"
+
+
 class Message(Immutable):
     """A message."""
 
     content: str
-    role: str
+    metadata: Metadata = Metadata()  # empty metadata by default
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
