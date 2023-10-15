@@ -1,6 +1,6 @@
-# AgentCache
+# 🕵️ AgentCache
 
-## Implementation details
+## 🔧 Implementation details
 
 This framework is async-first, and uses the [asyncio](https://docs.python.org/3/library/asyncio.html) library to
 achieve concurrency. The classes also have synchronous versions of the methods here and there, but the full potential
