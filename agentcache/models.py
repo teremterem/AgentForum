@@ -16,7 +16,7 @@ class Immutable(BaseModel):
         """Pydantic config."""
 
         frozen = True
-        extra = "forbid"  # TODO Oleksandr: are you sure about going against Pydantic's default (which is "ignore") ?
+        extra = "forbid"
 
     @property
     def hash_key(self) -> str:
