@@ -7,8 +7,11 @@ possibility for an Agent to have memory that is not implemented as plain chat hi
 ## 💡 Philosophy
 
 - Inversion of Control for agents.
+- Agents are as stateless as possible.
+- Agents can receive multiple messages before responding, as well as respond with multiple messages.
 - Caching of responses. _(Should it be at the level of agents, though, or the level of the LLM calls is also fine?)_
 - LLM token streaming is supported no matter how many nested levels of agents there are.
+- Messages are represented as immutable objects.
 
 ## 🔧 Implementation details
 

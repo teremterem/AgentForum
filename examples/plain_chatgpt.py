@@ -4,6 +4,8 @@ import asyncio
 
 from dotenv import load_dotenv
 
+from agentcache.models import MessageBundle, Metadata, Message
+
 load_dotenv()
 
 from agentcache.agents import AgentFirstDraft
@@ -18,12 +20,21 @@ async def main() -> None:
             if user_input == "exit":
                 raise KeyboardInterrupt
 
-            response = await agent.arun(user_input, model="gpt-3.5-turbo-0613", stream=True)
+            request_bundle = MessageBundle(  # TODO Oleksandr: move this to the framework level
+                bundle_metadata=Metadata(
+                    model="gpt-3.5-turbo-0613",
+                    stream=True,
+                ),
+                messages_so_far=[Message(content=user_input)],
+                complete=True,
+            )
+            response = await agent.arun(request_bundle)
 
-            print("\nGPT: ", end="", flush=True)
-            async for token in response:
-                print(token.text, end="", flush=True)
-            print()
+            async for message in response:
+                print("\nGPT: ", end="", flush=True)
+                async for token in message:
+                    print(token.text, end="", flush=True)
+                print()
     except KeyboardInterrupt:
         print()
 

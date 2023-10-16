@@ -13,8 +13,6 @@ class AgentFirstDraft:
     async def arun(self, incoming: MessageBundle) -> MessageBundle:
         async for message in incoming:
             self._message_history.append(message)
-        response = await aopenai_chat_completion(
-            messages=self._message_history, **incoming.bundle_metadata.model_dump()
-        )
+        response = await aopenai_chat_completion(messages=self._message_history, kwargs=incoming.bundle_metadata)
         self._message_history.append(response)
-        return MessageBundle(messages_so_far=[response], closed=True)
+        return MessageBundle(messages_so_far=[response], complete=True)

@@ -1,14 +1,18 @@
 """OpenAI API extension for AgentCache."""
-from typing import List, AsyncIterator, Dict, Any, Set
+from typing import List, AsyncIterator, Dict, Any, Set, Optional
 
 from agentcache.errors import AgentCacheError, TokenStreamNotFinishedError
 from agentcache.models import Message, StreamedMessage, Token, Metadata
 from agentcache.typing import MessageType
 
 
-async def aopenai_chat_completion(messages: List[MessageType], stream: bool = False, n=1, **kwargs) -> MessageType:
+async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[Metadata] = None) -> MessageType:
     """Chat with OpenAI models (async version). Returns a message or a stream of tokens."""
     import openai  # pylint: disable=import-outside-toplevel
+
+    kwargs = kwargs.model_dump(exclude={"ac_model_"}) if kwargs else {}
+    stream = kwargs.pop("stream", False)
+    n = kwargs.pop("n", 1)
 
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
