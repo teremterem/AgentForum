@@ -1,9 +1,11 @@
 """Data models."""
 import hashlib
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Iterator, Dict, Any, Literal
+from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple
 
 from pydantic import BaseModel, model_validator
+
+_PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
 
 class Immutable(BaseModel):
@@ -18,7 +20,7 @@ class Immutable(BaseModel):
         frozen = True
         extra = "forbid"
 
-    model_: str
+    ac_model_: str  # AgentCache model name
 
     @property
     def hash_key(self) -> str:
@@ -45,14 +47,18 @@ class Immutable(BaseModel):
         if isinstance(value, tuple):
             for sub_value in value:
                 cls._validate_value(key, sub_value)
-        elif not isinstance(value, _ALLOWED_TYPES_IN_IMMUTABLE):
+        elif not isinstance(value, cls._allowed_value_types()):
             raise ValueError(
-                f"only {{{', '.join([t.__name__ for t in _ALLOWED_TYPES_IN_IMMUTABLE])}}} "
-                f"are allowed as field values in Immutable, got {type(value).__name__} in `{key}`"
+                f"only {{{', '.join([t.__name__ for t in cls._allowed_value_types()])}}} "
+                f"are allowed as field values in {cls.__name__}, got {type(value).__name__} in `{key}`"
             )
 
+    @classmethod
+    def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
+        return _TYPES_ALLOWED_IN_IMMUTABLE
 
-_ALLOWED_TYPES_IN_IMMUTABLE = (str, int, float, bool, type(None), Immutable)
+
+_TYPES_ALLOWED_IN_IMMUTABLE = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Immutable
 
 
 class Metadata(Immutable):
@@ -63,13 +69,20 @@ class Metadata(Immutable):
 
         extra = "allow"
 
-    model_: Literal["metadata"] = "metadata"
+    ac_model_: Literal["metadata"] = "metadata"
+
+    @classmethod
+    def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
+        return _TYPES_ALLOWED_IN_METADATA
+
+
+_TYPES_ALLOWED_IN_METADATA = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Metadata
 
 
 class Message(Immutable):
     """A message."""
 
-    model_: Literal["message"] = "message"
+    ac_model_: Literal["message"] = "message"
     content: str
     metadata: Metadata = Metadata()  # empty metadata by default
 
@@ -83,7 +96,7 @@ class Token(Immutable):
     returned all at once).
     """
 
-    model_: Literal["token"] = "token"
+    ac_model_: Literal["token"] = "token"
     text: str
 
 
