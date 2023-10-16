@@ -1,5 +1,6 @@
 """Tests for the Immutable base class."""
 import hashlib
+from typing import Literal, Optional
 from unittest.mock import patch
 
 import pytest
@@ -13,7 +14,8 @@ class SampleImmutable(Immutable):
 
     some_req_field: str
     some_opt_field: int = 2
-    sub_immutable: "SampleImmutable" = None
+    sub_immutable: Optional["SampleImmutable"] = None
+    model_: Literal["sample_immutable"] = "sample_immutable"
 
 
 def test_immutable_frozen() -> None:
@@ -38,9 +40,8 @@ def test_immutable_hash_key() -> None:
 
     # print(sample.model_dump_json())
     expected_hash_key = hashlib.sha256(
-        '{"model_":"tests.models.test_immutable.SampleImmutable","some_req_field":"test","some_opt_field":2,'
-        '"sub_immutable":{"model_":"tests.models.test_immutable.SampleImmutable","some_req_field":"юнікод",'
-        '"some_opt_field":3,"sub_immutable":null}}'.encode("utf-8")
+        '{"model_":"sample_immutable","some_req_field":"test","some_opt_field":2,"sub_immutable":{"model_":'
+        '"sample_immutable","some_req_field":"юнікод","some_opt_field":3,"sub_immutable":null}}'.encode("utf-8")
     ).hexdigest()
     assert sample.hash_key == expected_hash_key
 
@@ -56,10 +57,10 @@ def test_immutable_hash_key_calculated_once() -> None:
         sample = SampleImmutable(some_req_field="test")
         mock_sha256.assert_not_called()  # not calculated yet
 
-        assert sample.hash_key == "b7c86b292585e045aba60d4aed50f3b69e5600d7f8eae6feb9c012f5b6ed3da4"
+        assert sample.hash_key == "706053349944a1e62c55576f6ba89542b6021896a4a4b8b349131da65d9f86b8"
         mock_sha256.assert_called_once()  # calculated once
 
-        assert sample.hash_key == "b7c86b292585e045aba60d4aed50f3b69e5600d7f8eae6feb9c012f5b6ed3da4"
+        assert sample.hash_key == "706053349944a1e62c55576f6ba89542b6021896a4a4b8b349131da65d9f86b8"
         mock_sha256.assert_called_once()  # check that it wasn't calculated again
 
 

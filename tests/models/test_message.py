@@ -32,16 +32,14 @@ def test_message_hash_key() -> None:
     message = Message(content="test", metadata=Metadata(role="user"))
     # print(message.model_dump_json())
     expected_hash_key = hashlib.sha256(
-        '{"model_":"agentcache.models.Message","content":"test","metadata":'
-        '{"model_":"agentcache.models.Metadata","role":"user"}}'.encode("utf-8")
+        '{"model_":"message","content":"test","metadata":{"model_":"metadata","role":"user"}}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
     message = Message(content="test")
     # print(message.model_dump_json())
     expected_hash_key = hashlib.sha256(
-        '{"model_":"agentcache.models.Message","content":"test","metadata":'
-        '{"model_":"agentcache.models.Metadata"}}'.encode("utf-8")
+        '{"model_":"message","content":"test","metadata":{"model_":"metadata"}}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 

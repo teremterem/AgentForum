@@ -1,7 +1,7 @@
 """Data models."""
 import hashlib
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Iterator, Dict, Any
+from typing import AsyncIterator, Iterator, Dict, Any, Literal
 
 from pydantic import BaseModel, model_validator
 
@@ -35,8 +35,6 @@ class Immutable(BaseModel):
     @classmethod
     def _validate_immutable_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Recursively make sure that the field values of the object are immutable."""
-        if "model_" not in values:
-            values["model_"] = cls.__module__ + "." + cls.__name__
         for key, value in values.items():
             cls._validate_value(key, value)
         return values
@@ -65,12 +63,15 @@ class Metadata(Immutable):
 
         extra = "allow"
 
+    model_: Literal["metadata"] = "metadata"
+
 
 class Message(Immutable):
     """A message."""
 
     content: str
     metadata: Metadata = Metadata()  # empty metadata by default
+    model_: Literal["message"] = "message"
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
@@ -83,6 +84,7 @@ class Token(Immutable):
     """
 
     text: str
+    model_: Literal["token"] = "token"
 
 
 class StreamedMessage(ABC):
