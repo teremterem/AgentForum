@@ -69,9 +69,9 @@ class Metadata(Immutable):
 class Message(Immutable):
     """A message."""
 
+    model_: Literal["message"] = "message"
     content: str
     metadata: Metadata = Metadata()  # empty metadata by default
-    model_: Literal["message"] = "message"
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
@@ -83,8 +83,8 @@ class Token(Immutable):
     returned all at once).
     """
 
-    text: str
     model_: Literal["token"] = "token"
+    text: str
 
 
 class StreamedMessage(ABC):
