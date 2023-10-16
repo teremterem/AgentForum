@@ -1,9 +1,9 @@
 """Data models."""
 import hashlib
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Iterator
+from typing import AsyncIterator, Iterator, Dict, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class Immutable(BaseModel):
@@ -28,6 +28,30 @@ class Immutable(BaseModel):
             self._hash_key = hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
         return self._hash_key
 
+    # noinspection PyNestedDecorators
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_immutable_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively make sure that the field values of the object are immutable."""
+        for key, value in values.items():
+            cls._validate_value(key, value)
+        return values
+
+    @classmethod
+    def _validate_value(cls, key: str, value: Any) -> None:
+        """Recursively make sure that the field value is immutable."""
+        if isinstance(value, tuple):
+            for sub_value in value:
+                cls._validate_value(key, sub_value)
+        elif not isinstance(value, _ALLOWED_TYPES_IN_IMMUTABLE):
+            raise ValueError(
+                f"only {{{', '.join([t.__name__ for t in _ALLOWED_TYPES_IN_IMMUTABLE])}}} "
+                f"are allowed as field values in Immutable, got {type(value).__name__} in `{key}`"
+            )
+
+
+_ALLOWED_TYPES_IN_IMMUTABLE = (str, int, float, bool, type(None), Immutable)
+
 
 class Metadata(Immutable):
     """Metadata for a message. Supports arbitrary fields."""
@@ -36,8 +60,6 @@ class Metadata(Immutable):
         """Pydantic config."""
 
         extra = "allow"
-
-    # TODO Oleksandr: add a validation that ensures that field values are not mutable objects (e.g. lists, dicts, etc.)
 
 
 class Message(Immutable):
