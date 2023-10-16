@@ -7,12 +7,6 @@ class AgentCacheError(Exception):
     """
 
 
-class TokenStreamNotFinishedError(AgentCacheError):
-    """
-    Raised when a token stream is not finished and an attempt is made to get the full message.
-    """
-
-
 class MessageBundleNotFinishedError(AgentCacheError):
     """
     Raised when a MessageBundle is not finished fetching messages and an attempt is made to get all the messages from

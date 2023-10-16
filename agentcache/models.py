@@ -1,14 +1,18 @@
 """Data models."""
 import asyncio
 import hashlib
+import typing
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple, List, Optional, Iterable
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, PrivateAttr, ConfigDict
 
 from agentcache.errors import MessageBundleClosedError, MessageBundleNotFinishedError
 from agentcache.typing import MessageType
 from agentcache.utils import END_OF_QUEUE
+
+if typing.TYPE_CHECKING:
+    from agentcache.message_tree import MessageTree
 
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
@@ -19,12 +23,7 @@ class Immutable(BaseModel):
     JSON representation of the object.
     """
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
-        extra = "forbid"
-
+    model_config = ConfigDict(frozen=True, extra="forbid")
     ac_model_: str  # AgentCache model name
 
     @property
@@ -68,11 +67,7 @@ _TYPES_ALLOWED_IN_IMMUTABLE = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Immutable
 class Metadata(Immutable):
     """Metadata for a message. Supports arbitrary fields."""
 
-    class Config:
-        """Pydantic config."""
-
-        extra = "allow"
-
+    model_config = ConfigDict(extra="allow")
     ac_model_: Literal["metadata"] = "metadata"
 
     @classmethod
@@ -87,8 +82,42 @@ class Message(Immutable):
     """A message."""
 
     ac_model_: Literal["message"] = "message"
+    _message_tree: "MessageTree" = PrivateAttr()  # set by MessageTree.anew_message()
     content: str
     metadata: Metadata = Metadata()  # empty metadata by default
+    prev_msg_hash_key: Optional[str] = None
+
+    @property
+    def message_tree(self) -> "MessageTree":
+        """Get the message tree that this message belongs to."""
+        return self._message_tree
+
+    async def aget_previous_message(self) -> Optional["Message"]:
+        """Get the previous message in the conversation."""
+        if not self.prev_msg_hash_key:
+            return None
+
+        if not hasattr(self, "_prev_msg"):
+            # pylint: disable=attribute-defined-outside-init
+            # noinspection PyAttributeOutsideInit
+            self._prev_msg = await self.message_tree.afind_message(self.prev_msg_hash_key)
+        return self._prev_msg
+
+    async def areply(self, content: str, metadata: Optional[Metadata] = None) -> "Message":
+        """Reply to this message."""
+        return await self.message_tree.anew_message(
+            content=content, metadata=metadata, prev_msg_hash_key=self.hash_key
+        )
+
+    async def aget_full_chat(self) -> List["Message"]:
+        """Get the full chat history for this message (including this message)."""
+        # TODO Oleksandr: introduce a limit on the number of messages to fetch
+        msg = self
+        result = [msg]
+        while msg := await msg.aget_previous_message():
+            result.append(msg)
+        result.reverse()
+        return result
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
@@ -169,6 +198,7 @@ class MessageBundle:
 
     def get_all_messages(self) -> List[MessageType]:
         """Get all the messages in the bundle."""
+        # TODO Oleksandr: drop support of this method ?
         if not self.complete:
             raise MessageBundleNotFinishedError(
                 "MessageBundle hasn't finished fetching messages. Either finish iterating over it asynchronously "

@@ -1,7 +1,7 @@
 """OpenAI API extension for AgentCache."""
 from typing import List, AsyncIterator, Dict, Any, Set, Optional
 
-from agentcache.errors import AgentCacheError, TokenStreamNotFinishedError
+from agentcache.errors import AgentCacheError
 from agentcache.models import Message, StreamedMessage, Token, Metadata
 from agentcache.typing import MessageType
 
@@ -17,14 +17,13 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
 
+    messages = [msg.get_full_message() if isinstance(msg, StreamedMessage) else msg for msg in messages]
     message_dicts = [
         {
-            "role": getattr(message.metadata, "openai_role", "user"),
-            "content": message.content,
+            "role": getattr(msg.metadata, "openai_role", "user"),
+            "content": msg.content,
         }
-        for message in (
-            msg_type.get_full_message() if isinstance(msg_type, StreamedMessage) else msg_type for msg_type in messages
-        )
+        for msg in messages
     ]
     # pprint(message_dicts)
     # print("\n")
@@ -32,11 +31,11 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
 
     if stream:
         # noinspection PyTypeChecker
-        return _StreamedMessageAsync(token async for token in response)
+        return _StreamedMessageAsync(response, messages[-1])
 
     # pprint(response)
     # print()
-    return Message(
+    return await messages[-1].areply(
         content=response["choices"][0]["message"]["content"],
         metadata=Metadata(**_build_openai_metadata_dict(response)),
     )
@@ -45,35 +44,31 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
 class _StreamedMessageAsync(StreamedMessage):
     """A message that is streamed token by token instead of being returned all at once (async version)."""
 
-    def __init__(self, stream: AsyncIterator[Dict[str, Any]]):
+    def __init__(self, stream: AsyncIterator[Dict[str, Any]], reply_to: Message):
         self._stream = stream
         self._tokens_raw: List[Dict[str, Any]] = []
         self._metadata: Dict[str, Any] = {}
         self._done = False
         self._full_message = None
-        # TODO Oleksandr: use asyncio.Queue and _Iterator approach just like you did in MessageBundle ?
-        #  (in order to ensure that the producer of the tokens is not blocked by the consumer)
+        self._reply_to = reply_to
+        # TODO Oleksandr: use asyncio.Queue and _Iterator approach just like you did in MessageBundle in order to
+        #  ensure that the stream can have multiple consumers
 
     def get_full_message(self) -> Message:
+        raise NotImplementedError("Use aget_full_message()")
+
+    async def aget_full_message(self) -> Message:
         if not self._done:
-            raise TokenStreamNotFinishedError(
-                "Token stream in not finished yet. Either finish reading tokens from the stream first or use "
-                "aget_full_message() instead of get_full_message() to finish reading the stream automatically."
-            )
+            # first, make sure that all the tokens are received
+            async for _ in self:
+                pass
 
         if not self._full_message:
-            self._full_message = Message(
+            self._full_message = await self._reply_to.areply(
                 content="".join([self._token_raw_to_text(token_raw) for token_raw in self._tokens_raw]),
                 metadata=Metadata(**self._metadata),
             )
         return self._full_message
-
-    async def aget_full_message(self) -> Message:
-        # first, make sure that all the tokens are received
-        async for _ in self:
-            pass
-
-        return self.get_full_message()
 
     def __next__(self) -> Token:
         raise NotImplementedError('Use "async for", anext() or __anext__()')
