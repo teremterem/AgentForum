@@ -16,10 +16,12 @@ pydantic = ">=2.0.0,<3.0.0"
 [tool.poetry.dev-dependencies]
 black = "*"
 ipython = "*"
+jupyterlab = "*"
+notebook = "*"
+openai = "*"
 pre-commit = "*"
 pylint = "*"
 python-dotenv = "*"
-openai = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.2"
