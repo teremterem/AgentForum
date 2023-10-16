@@ -138,30 +138,38 @@ class StreamedMessage(ABC):
 
 class MessageBundle:
     """
-    A bundle of messages that can be iterated over asynchronously. The speed at which messages can be sent to this
+    A bundle of messages that can be iterated over asynchronously. The speed at which messages can be sent to the
     bundle is independent of the speed at which consumers iterate over them.
+    - If the bundle is `closed`, then it is not possible to send new messages to it anymore.
+    - If the bundle is `complete`, then all the messages are already in the `messages_so_far` list and the async queue
+      has been disposed.
     """
 
     def __init__(
         self,
         bundle_metadata: Optional[Metadata] = None,
         messages_so_far: Optional[Iterable[MessageType]] = None,
-        closed: bool = False,
+        complete: bool = False,
     ) -> None:
         self.bundle_metadata: Metadata = bundle_metadata or Metadata()
         self.messages_so_far: List[MessageType] = list(messages_so_far or [])
-        self.closed: bool = closed
+        self.closed: bool = complete
 
-        self._message_queue = None if closed else asyncio.Queue()
+        self._message_queue = None if complete else asyncio.Queue()
         self._lock = asyncio.Lock()
 
     def __aiter__(self) -> AsyncIterator[MessageType]:
         # noinspection PyTypeChecker
         return self._Iterator(self)
 
+    @property
+    def complete(self) -> bool:
+        """Check whether all the messages in the bundle have been fetched."""
+        return not self._message_queue
+
     def get_all_messages(self) -> List[MessageType]:
         """Get all the messages in the bundle."""
-        if self._message_queue:
+        if not self.complete:
             raise MessageBundleNotFinishedError(
                 "MessageBundle hasn't finished fetching messages. Either finish iterating over it asynchronously "
                 "first or use aget_all_messages() instead of get_all_messages() which would finish iterating over it "
@@ -171,7 +179,7 @@ class MessageBundle:
 
     async def aget_all_messages(self) -> List[MessageType]:
         """Get all the messages in the bundle, but make sure that all the messages are fetched first."""
-        if self._message_queue:
+        if not self.complete:
             async for _ in self:
                 pass
         return self.messages_so_far
@@ -194,13 +202,14 @@ class MessageBundle:
         self.send_message(message, close_bundle=True)
 
     async def _wait_for_next_message(self) -> MessageType:
-        if not self._message_queue:
+        if self.complete:
             raise StopAsyncIteration
 
         message = await self._message_queue.get()
 
         if message is END_OF_QUEUE:
             self._message_queue = None
+            self.closed = True
             raise StopAsyncIteration
 
         self.messages_so_far.append(message)
@@ -214,7 +223,7 @@ class MessageBundle:
         async def __anext__(self) -> MessageType:
             if self._index < len(self._message_bundle.messages_so_far):
                 message = self._message_bundle.messages_so_far[self._index]
-            elif not self._message_bundle._message_queue:
+            elif self._message_bundle.complete:
                 raise StopAsyncIteration
             else:
                 async with self._message_bundle._lock:
