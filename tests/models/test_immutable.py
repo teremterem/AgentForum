@@ -38,8 +38,9 @@ def test_immutable_hash_key() -> None:
 
     # print(sample.model_dump_json())
     expected_hash_key = hashlib.sha256(
-        '{"some_req_field":"test","some_opt_field":2,"sub_immutable":'
-        '{"some_req_field":"юнікод","some_opt_field":3,"sub_immutable":null}}'.encode("utf-8")
+        '{"model_":"tests.models.test_immutable.SampleImmutable","some_req_field":"test","some_opt_field":2,'
+        '"sub_immutable":{"model_":"tests.models.test_immutable.SampleImmutable","some_req_field":"юнікод",'
+        '"some_opt_field":3,"sub_immutable":null}}'.encode("utf-8")
     ).hexdigest()
     assert sample.hash_key == expected_hash_key
 
@@ -55,10 +56,10 @@ def test_immutable_hash_key_calculated_once() -> None:
         sample = SampleImmutable(some_req_field="test")
         mock_sha256.assert_not_called()  # not calculated yet
 
-        assert sample.hash_key == "0e01bc6fe48e037749bac16227d3d4154aff19f6c2fbdf82ddadaf2fa5c98108"
+        assert sample.hash_key == "b7c86b292585e045aba60d4aed50f3b69e5600d7f8eae6feb9c012f5b6ed3da4"
         mock_sha256.assert_called_once()  # calculated once
 
-        assert sample.hash_key == "0e01bc6fe48e037749bac16227d3d4154aff19f6c2fbdf82ddadaf2fa5c98108"
+        assert sample.hash_key == "b7c86b292585e045aba60d4aed50f3b69e5600d7f8eae6feb9c012f5b6ed3da4"
         mock_sha256.assert_called_once()  # check that it wasn't calculated again
 
 

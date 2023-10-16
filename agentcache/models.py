@@ -18,6 +18,8 @@ class Immutable(BaseModel):
         frozen = True
         extra = "forbid"
 
+    model_: str
+
     @property
     def hash_key(self) -> str:
         """Get the hash key for this object. It is a hash of the JSON representation of the object."""
@@ -33,6 +35,8 @@ class Immutable(BaseModel):
     @classmethod
     def _validate_immutable_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Recursively make sure that the field values of the object are immutable."""
+        if "model_" not in values:
+            values["model_"] = cls.__module__ + "." + cls.__name__
         for key, value in values.items():
             cls._validate_value(key, value)
         return values
