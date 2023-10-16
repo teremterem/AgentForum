@@ -2,11 +2,11 @@
 import asyncio
 import hashlib
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple, List
+from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple, List, Optional, Iterable
 
 from pydantic import BaseModel, model_validator
 
-from agentcache.errors import MessageBundleClosedError
+from agentcache.errors import MessageBundleClosedError, MessageBundleNotFinishedError
 from agentcache.typing import MessageType
 from agentcache.utils import END_OF_QUEUE
 
@@ -142,24 +142,41 @@ class MessageBundle:
     bundle is independent of the speed at which consumers iterate over them.
     """
 
-    def __init__(self) -> None:
-        self.closed = False
-        self.messages_so_far: List[MessageType] = []
+    def __init__(
+        self,
+        bundle_metadata: Optional[Metadata] = None,
+        messages_so_far: Optional[Iterable[MessageType]] = None,
+        closed: bool = False,
+    ) -> None:
+        self.bundle_metadata: Metadata = bundle_metadata or Metadata()
+        self.messages_so_far: List[MessageType] = list(messages_so_far or [])
+        self.closed: bool = closed
 
-        self._message_queue = asyncio.Queue()
+        self._message_queue = None if closed else asyncio.Queue()
         self._lock = asyncio.Lock()
 
     def __aiter__(self) -> AsyncIterator[MessageType]:
         # noinspection PyTypeChecker
         return self._Iterator(self)
 
-    async def aget_all_messages(self) -> List[MessageType]:
-        """Get all the messages in the bundle (making sure that all the messages are fetched first)."""
-        async for _ in self:
-            pass
+    def get_all_messages(self) -> List[MessageType]:
+        """Get all the messages in the bundle."""
+        if self._message_queue:
+            raise MessageBundleNotFinishedError(
+                "MessageBundle hasn't finished fetching messages. Either finish iterating over it asynchronously "
+                "first or use aget_all_messages() instead of get_all_messages() which would finish iterating over it "
+                "automatically."
+            )
         return self.messages_so_far
 
-    async def asend_message(self, message: MessageType, close_bundle: bool) -> None:
+    async def aget_all_messages(self) -> List[MessageType]:
+        """Get all the messages in the bundle, but make sure that all the messages are fetched first."""
+        if self._message_queue:
+            async for _ in self:
+                pass
+        return self.messages_so_far
+
+    def send_message(self, message: MessageType, close_bundle: bool) -> None:
         """Send a message to the bundle."""
         if self.closed:
             raise MessageBundleClosedError("Cannot send messages to a closed bundle.")
@@ -168,13 +185,13 @@ class MessageBundle:
             self._message_queue.put_nowait(END_OF_QUEUE)
             self.closed = True
 
-    async def asend_interim_message(self, message: MessageType) -> None:
+    def send_interim_message(self, message: MessageType) -> None:
         """Send an interim message to the bundle."""
-        await self.asend_message(message, close_bundle=False)
+        self.send_message(message, close_bundle=False)
 
-    async def asend_final_message(self, message: MessageType) -> None:
+    def send_final_message(self, message: MessageType) -> None:
         """Send the final message to the bundle. The bundle will be closed after this."""
-        await self.asend_message(message, close_bundle=True)
+        self.send_message(message, close_bundle=True)
 
     async def _wait_for_next_message(self) -> MessageType:
         if not self._message_queue:
