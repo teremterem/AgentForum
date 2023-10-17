@@ -7,7 +7,7 @@ class AgentCacheError(Exception):
     """
 
 
-class MessageBundleClosedError(AgentCacheError):
+class SendClosedError(AgentCacheError):
     """
-    Raised when a MessageBundle is closed and an attempt is made to add a message to it.
+    Raised when a Broadcastable is closed for sending.
     """

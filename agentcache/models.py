@@ -1,15 +1,13 @@
 """Data models."""
-import asyncio
 import hashlib
 import typing
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple, List, Optional, Iterable
+from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple, List, Optional
 
 from pydantic import BaseModel, model_validator, PrivateAttr, ConfigDict
 
-from agentcache.errors import MessageBundleClosedError
 from agentcache.typing import MessageType
-from agentcache.utils import END_OF_QUEUE
+from agentcache.utils import Broadcastable
 
 if typing.TYPE_CHECKING:
     from agentcache.message_tree import MessageTree
@@ -165,91 +163,9 @@ class StreamedMessage(ABC):
         return self
 
 
-class MessageBundle:
-    """
-    A bundle of messages that can be iterated over asynchronously. The speed at which messages can be sent to the
-    bundle is independent of the speed at which consumers iterate over them.
-    - If the bundle is `closed`, then it is not possible to send new messages to it anymore.
-    - If the bundle is `complete`, then all the messages are already in the `messages_so_far` list and the async queue
-      has been disposed.
-    """
+class MessageBundle(Broadcastable[MessageType]):
+    """A bundle of messages. Used to group messages that are sent together."""
 
-    def __init__(
-        self,
-        bundle_metadata: Optional[Metadata] = None,
-        messages_so_far: Optional[Iterable[MessageType]] = None,
-        complete: bool = False,
-    ) -> None:
+    def __init__(self, *args, bundle_metadata: Optional[Metadata] = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
         self.bundle_metadata: Metadata = bundle_metadata or Metadata()
-        self.messages_so_far: List[MessageType] = list(messages_so_far or [])
-        self.closed: bool = complete
-
-        self._message_queue = None if complete else asyncio.Queue()
-        self._lock = asyncio.Lock()
-
-    def __aiter__(self) -> AsyncIterator[MessageType]:
-        # noinspection PyTypeChecker
-        return self._Iterator(self)
-
-    @property
-    def complete(self) -> bool:
-        """Check whether all the messages in the bundle have been fetched."""
-        return not self._message_queue
-
-    async def aget_all_messages(self) -> List[MessageType]:
-        """Get all the messages in the bundle, but make sure that all the messages are fetched first."""
-        if not self.complete:
-            async for _ in self:
-                pass
-        return self.messages_so_far
-
-    def send_message(self, message: MessageType, close_bundle: bool) -> None:
-        """Send a message to the bundle."""
-        if self.closed:
-            raise MessageBundleClosedError("Cannot send messages to a closed bundle.")
-        self._message_queue.put_nowait(message)
-        if close_bundle:
-            self._message_queue.put_nowait(END_OF_QUEUE)
-            self.closed = True
-
-    def send_interim_message(self, message: MessageType) -> None:
-        """Send an interim message to the bundle."""
-        self.send_message(message, close_bundle=False)
-
-    def send_final_message(self, message: MessageType) -> None:
-        """Send the final message to the bundle. The bundle will be closed after this."""
-        self.send_message(message, close_bundle=True)
-
-    async def _wait_for_next_message(self) -> MessageType:
-        if self.complete:
-            raise StopAsyncIteration
-
-        message = await self._message_queue.get()
-
-        if message is END_OF_QUEUE:
-            self._message_queue = None
-            self.closed = True
-            raise StopAsyncIteration
-
-        self.messages_so_far.append(message)
-        return message
-
-    class _Iterator:
-        def __init__(self, message_bundle: "MessageBundle") -> None:
-            self._message_bundle = message_bundle
-            self._index = 0
-
-        async def __anext__(self) -> MessageType:
-            if self._index < len(self._message_bundle.messages_so_far):
-                message = self._message_bundle.messages_so_far[self._index]
-            elif self._message_bundle.complete:
-                raise StopAsyncIteration
-            else:
-                async with self._message_bundle._lock:
-                    if self._index < len(self._message_bundle.messages_so_far):
-                        message = self._message_bundle.messages_so_far[self._index]
-                    else:
-                        message = await self._message_bundle._wait_for_next_message()
-
-            self._index += 1
-            return message
