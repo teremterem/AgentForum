@@ -1,17 +1,13 @@
-from typing import List
-
+"""TODO Oleksandr: add module docstring"""
 from agentcache.ext.llms.openai import aopenai_chat_completion
-from agentcache.models import Message
-from agentcache.typing import MessageType
+from agentcache.models import MessageBundle
 
 
-class AgentFirstDraft:
-    def __init__(self) -> None:
-        # TODO Oleksandr: make message history the responsibility of the AgentCache framework
-        self._message_history: List[MessageType] = []
-
-    async def arun(self, user_input: str, **kwargs) -> MessageType:
-        self._message_history.append(Message(content=user_input))
-        response = await aopenai_chat_completion(messages=self._message_history, **kwargs)
-        self._message_history.append(response)
-        return response
+async def afirst_agent(incoming: MessageBundle) -> MessageBundle:
+    """The very first agent."""
+    # TODO Oleksandr: a bundle of messages that are not part of the same conversation doesn't make sense
+    # TODO Oleksandr: if we want to cache the agent response then all incoming messages should be known before the
+    #  agent function is entered
+    message = (await incoming.aget_all_messages())[-1]
+    response = await aopenai_chat_completion(messages=await message.aget_full_chat(), kwargs=incoming.bundle_metadata)
+    return MessageBundle(messages_so_far=[response], complete=True)
