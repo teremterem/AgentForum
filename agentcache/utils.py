@@ -64,6 +64,7 @@ class Broadcastable(Generic[T]):
 
     def close(self) -> None:
         """Close the container for sending. Has no effect if the container is already closed."""
+        # TODO Oleksandr: turn this into a context manager
         if not self.send_closed:
             self.send_closed = True
             self._queue.put_nowait(END_OF_QUEUE)
