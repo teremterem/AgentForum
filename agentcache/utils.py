@@ -58,6 +58,7 @@ class Broadcastable(Generic[T]):
 
     def send(self, item: T) -> None:
         """Send an item to the container."""
+        # TODO Oleksandr: sending should be allowed only in the context of a "with" block
         if self.send_closed:
             raise SendClosedError("Cannot send items to a closed Broadcastable.")
         self._queue.put_nowait(item)
