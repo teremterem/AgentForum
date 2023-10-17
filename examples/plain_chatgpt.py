@@ -31,8 +31,8 @@ async def main() -> None:
                     model="gpt-3.5-turbo-0613",
                     stream=True,
                 ),
-                messages_so_far=[message],
-                complete=True,
+                items_so_far=[message],
+                completed=True,
             )
             response_bundle = await afirst_agent(request_bundle)
 
@@ -41,7 +41,7 @@ async def main() -> None:
                 async for token in streamed_message:
                     print(token.text, end="", flush=True)
                 print()
-            message = await (await response_bundle.aget_all_messages())[-1].aget_full_message()
+            message = await (await response_bundle.aget_all())[-1].aget_full_message()
     except KeyboardInterrupt:
         print()
 
