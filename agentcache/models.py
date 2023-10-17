@@ -7,7 +7,7 @@ from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple, Lis
 
 from pydantic import BaseModel, model_validator, PrivateAttr, ConfigDict
 
-from agentcache.errors import MessageBundleClosedError, MessageBundleNotFinishedError
+from agentcache.errors import MessageBundleClosedError
 from agentcache.typing import MessageType
 from agentcache.utils import END_OF_QUEUE
 
@@ -195,17 +195,6 @@ class MessageBundle:
     def complete(self) -> bool:
         """Check whether all the messages in the bundle have been fetched."""
         return not self._message_queue
-
-    def get_all_messages(self) -> List[MessageType]:
-        """Get all the messages in the bundle."""
-        # TODO Oleksandr: drop support of this method ?
-        if not self.complete:
-            raise MessageBundleNotFinishedError(
-                "MessageBundle hasn't finished fetching messages. Either finish iterating over it asynchronously "
-                "first or use aget_all_messages() instead of get_all_messages() which would finish iterating over it "
-                "automatically."
-            )
-        return self.messages_so_far
 
     async def aget_all_messages(self) -> List[MessageType]:
         """Get all the messages in the bundle, but make sure that all the messages are fetched first."""

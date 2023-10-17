@@ -41,7 +41,7 @@ async def main() -> None:
                 async for token in streamed_message:
                     print(token.text, end="", flush=True)
                 print()
-            message = await response_bundle.get_all_messages()[-1].aget_full_message()
+            message = await (await response_bundle.aget_all_messages())[-1].aget_full_message()
     except KeyboardInterrupt:
         print()
 
