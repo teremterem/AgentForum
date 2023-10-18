@@ -8,7 +8,7 @@ load_dotenv()
 
 from agentcache.agents import afirst_agent
 from agentcache.message_tree import MessageTree
-from agentcache.models import MessageBundle, Metadata
+from agentcache.models import MessageBundle, Freeform
 from agentcache.storage import InMemoryStorage
 
 
@@ -27,7 +27,7 @@ async def main() -> None:
             else:
                 message = await message.areply(content=user_input)
             request_bundle = MessageBundle(  # TODO Oleksandr: move this to the framework level
-                bundle_metadata=Metadata(
+                bundle_metadata=Freeform(
                     model="gpt-3.5-turbo-0613",
                     stream=True,
                 ),

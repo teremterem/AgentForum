@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from agentcache.models import Metadata, Message
+from agentcache.models import Freeform, Message
 from agentcache.storage import ImmutableStorage
 
 
@@ -14,10 +14,10 @@ class MessageTree(BaseModel):
     immutable_storage: ImmutableStorage
 
     async def anew_message(
-        self, content: str, metadata: Optional[Metadata] = None, prev_msg_hash_key: Optional[str] = None
+        self, content: str, metadata: Optional[Freeform] = None, prev_msg_hash_key: Optional[str] = None
     ) -> Message:
         """Create a new message."""
-        message = Message(content=content, metadata=metadata or Metadata(), prev_msg_hash_key=prev_msg_hash_key)
+        message = Message(content=content, metadata=metadata or Freeform(), prev_msg_hash_key=prev_msg_hash_key)
         message._message_tree = self  # pylint: disable=protected-access
         await self.immutable_storage.astore_immutable(message)
         return message

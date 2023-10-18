@@ -61,18 +61,21 @@ class Immutable(BaseModel):
 _TYPES_ALLOWED_IN_IMMUTABLE = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Immutable
 
 
-class Metadata(Immutable):
-    """Metadata for a message. Supports arbitrary fields."""
+class Freeform(Immutable):
+    """
+    An immutable generic model that has no predefined fields and only supports arbitrary ones. It also supports nested
+    Freeform objects if necessary.
+    """
 
     model_config = ConfigDict(extra="allow")
-    ac_model_: Literal["metadata"] = "metadata"
+    ac_model_: Literal["metadata"] = "freeform"
 
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
-        return _TYPES_ALLOWED_IN_METADATA
+        return _TYPES_ALLOWED_IN_FREEFORM
 
 
-_TYPES_ALLOWED_IN_METADATA = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Metadata
+_TYPES_ALLOWED_IN_FREEFORM = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Freeform
 
 
 class Message(Immutable):
@@ -81,7 +84,7 @@ class Message(Immutable):
     ac_model_: Literal["message"] = "message"
     _message_tree: "MessageTree" = PrivateAttr()  # set by MessageTree.anew_message()
     content: str
-    metadata: Metadata = Metadata()  # empty metadata by default
+    metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
 
     @property
@@ -100,7 +103,7 @@ class Message(Immutable):
             self._prev_msg = await self.message_tree.afind_message(self.prev_msg_hash_key)
         return self._prev_msg
 
-    async def areply(self, content: str, metadata: Optional[Metadata] = None) -> "Message":
+    async def areply(self, content: str, metadata: Optional[Freeform] = None) -> "Message":
         """Reply to this message."""
         return await self.message_tree.anew_message(
             content=content, metadata=metadata, prev_msg_hash_key=self.hash_key
@@ -148,7 +151,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
             tokens = await self.aget_all()
             self._full_message = await self._reply_to.areply(  # TODO Oleksandr: allow _reply_to to be None
                 content="".join([token.text for token in tokens]),
-                metadata=Metadata(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
+                metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
             )
         return self._full_message
 
@@ -156,6 +159,6 @@ class StreamedMessage(Broadcastable[IN, Token]):
 class MessageBundle(Broadcastable[MessageType, MessageType]):
     """A bundle of messages. Used to group messages that are sent together."""
 
-    def __init__(self, *args, bundle_metadata: Optional[Metadata] = None, **kwargs) -> None:
+    def __init__(self, *args, bundle_metadata: Optional[Freeform] = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.bundle_metadata: Metadata = bundle_metadata or Metadata()
+        self.bundle_metadata: Freeform = bundle_metadata or Freeform()

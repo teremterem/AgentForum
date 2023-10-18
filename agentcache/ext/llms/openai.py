@@ -3,12 +3,12 @@ import asyncio
 from typing import List, Dict, Any, Set, Optional, Union
 
 from agentcache.errors import AgentCacheError
-from agentcache.models import StreamedMessage, Token, Metadata
+from agentcache.models import StreamedMessage, Token, Freeform
 from agentcache.typing import MessageType
 from agentcache.utils import Sentinel
 
 
-async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[Metadata] = None) -> MessageType:
+async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[Freeform] = None) -> MessageType:
     """Chat with OpenAI models (async version). Returns a message or a stream of tokens."""
     import openai  # pylint: disable=import-outside-toplevel
 
@@ -46,7 +46,7 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
     # print()
     return await messages[-1].areply(
         content=response["choices"][0]["message"]["content"],
-        metadata=Metadata(**_build_openai_metadata_dict(response)),
+        metadata=Freeform(**_build_openai_metadata_dict(response)),
     )
 
 

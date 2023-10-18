@@ -1,4 +1,4 @@
-"""Tests for the Immutable base class."""
+"""Tests for the Immutable models."""
 import hashlib
 from typing import Literal, Optional
 from unittest.mock import patch
@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from agentcache.models import Immutable
+from agentcache.models import Immutable, Freeform, Message
 
 
 class SampleImmutable(Immutable):
@@ -32,6 +32,26 @@ def test_immutable_frozen() -> None:
     assert sample.some_opt_field == 2
 
 
+def test_message_frozen() -> None:
+    """Test that the `Message` class is frozen."""
+    message = Message(content="test")
+
+    with pytest.raises(ValidationError):
+        message.content = "test2"
+
+    assert message.content == "test"
+
+
+def test_freeform_frozen() -> None:
+    """Test that the `Freeform` class is frozen."""
+    metadata = Freeform(some_field="some value")
+
+    with pytest.raises(ValidationError):
+        metadata.content = "some other value"
+
+    assert metadata.some_field == "some value"
+
+
 def test_immutable_hash_key() -> None:
     """Test the `Immutable.hash_key` property."""
     sample = SampleImmutable(
@@ -44,6 +64,41 @@ def test_immutable_hash_key() -> None:
         '"sample_immutable","some_req_field":"юнікод","some_opt_field":3,"sub_immutable":null}}'.encode("utf-8")
     ).hexdigest()
     assert sample.hash_key == expected_hash_key
+
+
+def test_message_hash_key() -> None:
+    """Test the `Message.hash_key` property."""
+    message = Message(content="test", metadata=Freeform(role="user"))
+    # print(message.model_dump_json())
+    expected_hash_key = hashlib.sha256(
+        '{"ac_model_":"message","content":"test","metadata":'
+        '{"ac_model_":"freeform","role":"user"},"prev_msg_hash_key":null}'.encode("utf-8")
+    ).hexdigest()
+    assert message.hash_key == expected_hash_key
+
+    message = Message(content="test")
+    # print(message.model_dump_json())
+    expected_hash_key = hashlib.sha256(
+        '{"ac_model_":"message","content":"test","metadata":'
+        '{"ac_model_":"freeform"},"prev_msg_hash_key":null}'.encode("utf-8")
+    ).hexdigest()
+    assert message.hash_key == expected_hash_key
+
+
+def test_nested_object_not_copied() -> None:
+    """Test that nested objects are not copied when the outer pydantic model is created."""
+    sub_immutable = SampleImmutable(some_req_field="test")
+    sample = SampleImmutable(some_req_field="test", sub_immutable=sub_immutable)
+
+    assert sample.sub_immutable is sub_immutable
+
+
+def test_nested_message_freeform_not_copied() -> None:
+    """Test that Freeform nested in Message is not copied."""
+    metadata = Freeform(role="assistant")
+    message = Message(content="test", metadata=metadata)
+
+    assert message.metadata is metadata
 
 
 def test_immutable_hash_key_calculated_once() -> None:
@@ -62,11 +117,3 @@ def test_immutable_hash_key_calculated_once() -> None:
 
         assert sample.hash_key == "694b7a9dfab8ec9e3a74459f734f0af0d5f7486629f9618db603c60c46bf4027"
         mock_sha256.assert_called_once()  # check that it wasn't calculated again
-
-
-def test_nested_object_not_copied() -> None:
-    """Test that nested objects are not copied when the outer pydantic model is created."""
-    sub_immutable = SampleImmutable(some_req_field="test")
-    sample = SampleImmutable(some_req_field="test", sub_immutable=sub_immutable)
-
-    assert sample.sub_immutable is sub_immutable
