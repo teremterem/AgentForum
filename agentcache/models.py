@@ -1,8 +1,7 @@
 """Data models."""
 import hashlib
 import typing
-from abc import ABC
-from typing import Dict, Any, Literal, Type, Tuple, List, Optional, Generic
+from typing import Dict, Any, Literal, Type, Tuple, List, Optional
 
 from pydantic import BaseModel, model_validator, PrivateAttr, ConfigDict
 
@@ -131,7 +130,7 @@ class Token(Immutable):
     text: str
 
 
-class StreamedMessage(ABC, Generic[IN], Broadcastable[IN, Token]):
+class StreamedMessage(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
     def __init__(self, *args, reply_to: Message, **kwargs) -> None:

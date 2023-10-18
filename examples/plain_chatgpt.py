@@ -38,7 +38,6 @@ async def main() -> None:
 
             async for streamed_message in response_bundle:
                 print("\nGPT: ", end="", flush=True)
-                # TODO Oleksandr: why PyCharm complains about wrong type of streamed_message and how to fix it ?
                 async for token in streamed_message:
                     print(token.text, end="", flush=True)
                 print()
