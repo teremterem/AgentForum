@@ -38,6 +38,14 @@ class Broadcastable(Generic[IN, OUT]):
     def __aiter__(self) -> AsyncIterator[OUT]:
         return self._AsyncIterator(self)
 
+    def __enter__(self) -> "Broadcastable":
+        return self
+
+    def __exit__(
+        self, exc_type: Optional[Exception], exc_val: Optional[Exception], exc_tb: Optional[Exception]
+    ) -> None:
+        self.close()
+
     @property
     def completed(self) -> bool:
         """
@@ -57,14 +65,13 @@ class Broadcastable(Generic[IN, OUT]):
 
     def send(self, item: IN) -> None:
         """Send an item to the container."""
-        # TODO Oleksandr: sending should be allowed only in the context of a "with" block
+        # TODO Oleksandr: should sending be allowed only in the context of a "with" block ?
         if self.send_closed:
             raise SendClosedError("Cannot send items to a closed Broadcastable.")
         self._queue.put_nowait(item)
 
     def close(self) -> None:
         """Close the container for sending. Has no effect if the container is already closed."""
-        # TODO Oleksandr: turn this into a context manager
         if not self.send_closed:
             self.send_closed = True
             self._queue.put_nowait(END_OF_QUEUE)

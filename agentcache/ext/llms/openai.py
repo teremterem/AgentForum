@@ -35,9 +35,9 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
         streamed_message = _OpenAIStreamedMessage(reply_to=messages[-1])
 
         async def _send_tokens() -> None:
-            async for token_raw in response:
-                streamed_message.send(token_raw)
-            streamed_message.close()  # TODO Oleksandr: turn this into a context manager
+            with streamed_message:
+                async for token_raw in response:
+                    streamed_message.send(token_raw)
 
         asyncio.create_task(_send_tokens())
         return streamed_message
