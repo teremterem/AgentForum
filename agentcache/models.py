@@ -1,13 +1,13 @@
 """Data models."""
 import hashlib
 import typing
-from abc import ABC, abstractmethod
-from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple, List, Optional
+from abc import ABC
+from typing import Dict, Any, Literal, Type, Tuple, List, Optional, Generic
 
 from pydantic import BaseModel, model_validator, PrivateAttr, ConfigDict
 
 from agentcache.typing import MessageType
-from agentcache.utils import Broadcastable
+from agentcache.utils import Broadcastable, IN
 
 if typing.TYPE_CHECKING:
     from agentcache.message_tree import MessageTree
@@ -131,39 +131,30 @@ class Token(Immutable):
     text: str
 
 
-class StreamedMessage(ABC):
+class StreamedMessage(ABC, Generic[IN], Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
-    @abstractmethod
-    def get_full_message(self) -> Message:
-        """
-        Get the full message. This method will "await" until all the tokens are received and then return the complete
-        message.
-        """
+    def __init__(self, *args, reply_to: Message, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._reply_to = reply_to
+        self._metadata: Dict[str, Any] = {}
+        self._full_message = None
 
-    @abstractmethod
     async def aget_full_message(self) -> Message:
         """
         Get the full message. This method will "await" until all the tokens are received and then return the complete
         message (async version).
         """
-
-    @abstractmethod
-    def __next__(self) -> Token:
-        """Get the next token of a message that is being streamed."""
-
-    @abstractmethod
-    async def __anext__(self) -> Token:
-        """Get the next token of a message that is being streamed (async version)."""
-
-    def __aiter__(self) -> AsyncIterator[Token]:
-        return self
-
-    def __iter__(self) -> Iterator[Token]:
-        return self
+        if not self._full_message:
+            tokens = await self.aget_all()
+            self._full_message = await self._reply_to.areply(  # TODO Oleksandr: allow _reply_to to be None
+                content="".join([token.text for token in tokens]),
+                metadata=Metadata(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
+            )
+        return self._full_message
 
 
-class MessageBundle(Broadcastable[MessageType]):
+class MessageBundle(Broadcastable[MessageType, MessageType]):
     """A bundle of messages. Used to group messages that are sent together."""
 
     def __init__(self, *args, bundle_metadata: Optional[Metadata] = None, **kwargs) -> None:

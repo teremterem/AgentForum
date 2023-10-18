@@ -1,8 +1,9 @@
 """Utility functions and classes for the AgentCache framework."""
 import asyncio
-from typing import Optional, Iterable, List, AsyncIterator, TypeVar, Generic
+from typing import Optional, Iterable, List, AsyncIterator, Generic, Union
 
 from agentcache.errors import SendClosedError
+from agentcache.typing import IN, OUT
 
 
 class Sentinel:
@@ -11,10 +12,8 @@ class Sentinel:
 
 END_OF_QUEUE = Sentinel()
 
-T = TypeVar("T")
 
-
-class Broadcastable(Generic[T]):
+class Broadcastable(Generic[IN, OUT]):
     """
     A container of items that can be iterated over asynchronously. The support of multiple concurrent consumers is
     seamless. The speed at which items can be sent to the container is independent of the speed at which consumers
@@ -27,16 +26,16 @@ class Broadcastable(Generic[T]):
 
     def __init__(
         self,
-        items_so_far: Optional[Iterable[T]] = None,
+        items_so_far: Optional[Iterable[IN]] = None,
         completed: bool = False,
     ) -> None:
         self.send_closed: bool = completed
-        self.items_so_far: List[T] = list(items_so_far or [])
+        self.items_so_far: List[OUT] = [self._convert_item(item) for item in items_so_far or ()]
 
         self._queue = None if completed else asyncio.Queue()
         self._lock = asyncio.Lock()
 
-    def __aiter__(self) -> AsyncIterator[T]:
+    def __aiter__(self) -> AsyncIterator[OUT]:
         return self._AsyncIterator(self)
 
     @property
@@ -47,7 +46,7 @@ class Broadcastable(Generic[T]):
         """
         return not self._queue
 
-    async def aget_all(self) -> List[T]:
+    async def aget_all(self) -> List[OUT]:
         """
         Get all the items in the container. This will block until all the items are available and sending is closed.
         """
@@ -56,7 +55,7 @@ class Broadcastable(Generic[T]):
                 pass
         return self.items_so_far
 
-    def send(self, item: T) -> None:
+    def send(self, item: IN) -> None:
         """Send an item to the container."""
         # TODO Oleksandr: sending should be allowed only in the context of a "with" block
         if self.send_closed:
@@ -70,11 +69,11 @@ class Broadcastable(Generic[T]):
             self.send_closed = True
             self._queue.put_nowait(END_OF_QUEUE)
 
-    async def _wait_for_next_item(self) -> T:
+    async def _await_for_next_item(self) -> OUT:
         if self.completed:
             raise StopAsyncIteration
 
-        item = await self._queue.get()
+        item = await self._aget_and_convert_item()
 
         if item is END_OF_QUEUE:
             self.send_closed = True
@@ -84,12 +83,26 @@ class Broadcastable(Generic[T]):
         self.items_so_far.append(item)
         return item
 
-    class _AsyncIterator(AsyncIterator[T]):
+    async def _aget_and_convert_item(self) -> Union[OUT, Sentinel]:
+        item = await self._aget_item_from_queue()
+        if not isinstance(item, Sentinel):
+            item = self._convert_item(item)
+        return item
+
+    async def _aget_item_from_queue(self) -> Union[IN, Sentinel]:
+        return await self._queue.get()
+
+    # noinspection PyMethodMayBeStatic
+    def _convert_item(self, item: IN) -> OUT:
+        """Convert an item from IN to OUT. Default implementation just returns the item as-is."""
+        return item
+
+    class _AsyncIterator(AsyncIterator[OUT]):
         def __init__(self, broadcastable: "Broadcastable") -> None:
             self._broadcastable = broadcastable
             self._index = 0
 
-        async def __anext__(self) -> T:
+        async def __anext__(self) -> OUT:
             if self._index < len(self._broadcastable.items_so_far):
                 item = self._broadcastable.items_so_far[self._index]
             elif self._broadcastable.completed:
@@ -99,7 +112,7 @@ class Broadcastable(Generic[T]):
                     if self._index < len(self._broadcastable.items_so_far):
                         item = self._broadcastable.items_so_far[self._index]
                     else:
-                        item = await self._broadcastable._wait_for_next_item()
+                        item = await self._broadcastable._await_for_next_item()
 
             self._index += 1
             return item
