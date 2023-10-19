@@ -61,7 +61,6 @@ class InMemoryStorage(ImmutableStorage, StringStorage):
         return self._immutable_data[hash_key]
 
     def store_string(self, key: Tuple[str, ...], value: str) -> None:
-        # TODO is any kind of locking needed here ?
         self._string_data[key] = value
 
     def retrieve_string(self, key: Tuple[str, ...]) -> str:

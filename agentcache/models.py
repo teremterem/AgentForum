@@ -1,15 +1,12 @@
 """Data models."""
-import asyncio
 import hashlib
 import typing
-from abc import ABC, abstractmethod
-from typing import AsyncIterator, Iterator, Dict, Any, Literal, Type, Tuple, List, Optional, Iterable
+from typing import Dict, Any, Literal, Type, Tuple, List, Optional
 
 from pydantic import BaseModel, model_validator, PrivateAttr, ConfigDict
 
-from agentcache.errors import MessageBundleClosedError, MessageBundleNotFinishedError
 from agentcache.typing import MessageType
-from agentcache.utils import END_OF_QUEUE
+from agentcache.utils import Broadcastable, IN
 
 if typing.TYPE_CHECKING:
     from agentcache.message_tree import MessageTree
@@ -64,18 +61,21 @@ class Immutable(BaseModel):
 _TYPES_ALLOWED_IN_IMMUTABLE = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Immutable
 
 
-class Metadata(Immutable):
-    """Metadata for a message. Supports arbitrary fields."""
+class Freeform(Immutable):
+    """
+    An immutable generic model that has no predefined fields and only supports arbitrary ones. It also supports nested
+    Freeform objects if necessary.
+    """
 
     model_config = ConfigDict(extra="allow")
-    ac_model_: Literal["metadata"] = "metadata"
+    ac_model_: Literal["metadata"] = "freeform"
 
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
-        return _TYPES_ALLOWED_IN_METADATA
+        return _TYPES_ALLOWED_IN_FREEFORM
 
 
-_TYPES_ALLOWED_IN_METADATA = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Metadata
+_TYPES_ALLOWED_IN_FREEFORM = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Freeform
 
 
 class Message(Immutable):
@@ -84,7 +84,7 @@ class Message(Immutable):
     ac_model_: Literal["message"] = "message"
     _message_tree: "MessageTree" = PrivateAttr()  # set by MessageTree.anew_message()
     content: str
-    metadata: Metadata = Metadata()  # empty metadata by default
+    metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
 
     @property
@@ -103,7 +103,7 @@ class Message(Immutable):
             self._prev_msg = await self.message_tree.afind_message(self.prev_msg_hash_key)
         return self._prev_msg
 
-    async def areply(self, content: str, metadata: Optional[Metadata] = None) -> "Message":
+    async def areply(self, content: str, metadata: Optional[Freeform] = None) -> "Message":
         """Reply to this message."""
         return await self.message_tree.anew_message(
             content=content, metadata=metadata, prev_msg_hash_key=self.hash_key
@@ -133,134 +133,36 @@ class Token(Immutable):
     text: str
 
 
-class StreamedMessage(ABC):
+class StreamedMessage(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
-    @abstractmethod
-    def get_full_message(self) -> Message:
-        """
-        Get the full message. This method will "await" until all the tokens are received and then return the complete
-        message.
-        """
+    def __init__(self, *args, reply_to: Message, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._reply_to = reply_to
+        self._metadata: Dict[str, Any] = {}
+        self._full_message = None
 
-    @abstractmethod
     async def aget_full_message(self) -> Message:
         """
         Get the full message. This method will "await" until all the tokens are received and then return the complete
         message (async version).
         """
-
-    @abstractmethod
-    def __next__(self) -> Token:
-        """Get the next token of a message that is being streamed."""
-
-    @abstractmethod
-    async def __anext__(self) -> Token:
-        """Get the next token of a message that is being streamed (async version)."""
-
-    def __aiter__(self) -> AsyncIterator[Token]:
-        return self
-
-    def __iter__(self) -> Iterator[Token]:
-        return self
-
-
-class MessageBundle:
-    """
-    A bundle of messages that can be iterated over asynchronously. The speed at which messages can be sent to the
-    bundle is independent of the speed at which consumers iterate over them.
-    - If the bundle is `closed`, then it is not possible to send new messages to it anymore.
-    - If the bundle is `complete`, then all the messages are already in the `messages_so_far` list and the async queue
-      has been disposed.
-    """
-
-    def __init__(
-        self,
-        bundle_metadata: Optional[Metadata] = None,
-        messages_so_far: Optional[Iterable[MessageType]] = None,
-        complete: bool = False,
-    ) -> None:
-        self.bundle_metadata: Metadata = bundle_metadata or Metadata()
-        self.messages_so_far: List[MessageType] = list(messages_so_far or [])
-        self.closed: bool = complete
-
-        self._message_queue = None if complete else asyncio.Queue()
-        self._lock = asyncio.Lock()
-
-    def __aiter__(self) -> AsyncIterator[MessageType]:
-        # noinspection PyTypeChecker
-        return self._Iterator(self)
-
-    @property
-    def complete(self) -> bool:
-        """Check whether all the messages in the bundle have been fetched."""
-        return not self._message_queue
-
-    def get_all_messages(self) -> List[MessageType]:
-        """Get all the messages in the bundle."""
-        # TODO Oleksandr: drop support of this method ?
-        if not self.complete:
-            raise MessageBundleNotFinishedError(
-                "MessageBundle hasn't finished fetching messages. Either finish iterating over it asynchronously "
-                "first or use aget_all_messages() instead of get_all_messages() which would finish iterating over it "
-                "automatically."
+        if not self._full_message:
+            tokens = await self.aget_all()
+            self._full_message = await self._reply_to.areply(  # TODO Oleksandr: allow _reply_to to be None
+                content="".join([token.text for token in tokens]),
+                metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
             )
-        return self.messages_so_far
+        return self._full_message
 
-    async def aget_all_messages(self) -> List[MessageType]:
-        """Get all the messages in the bundle, but make sure that all the messages are fetched first."""
-        if not self.complete:
-            async for _ in self:
-                pass
-        return self.messages_so_far
 
-    def send_message(self, message: MessageType, close_bundle: bool) -> None:
-        """Send a message to the bundle."""
-        if self.closed:
-            raise MessageBundleClosedError("Cannot send messages to a closed bundle.")
-        self._message_queue.put_nowait(message)
-        if close_bundle:
-            self._message_queue.put_nowait(END_OF_QUEUE)
-            self.closed = True
+class AsyncMessageBundle(Broadcastable[MessageType, MessageType]):
+    """
+    An asynchronous iterator over a bundle of messages that are being produced by an agent. Because the bundle is
+    Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
+    bundle is independent of the speed at which consumers iterate over them.
+    """
 
-    def send_interim_message(self, message: MessageType) -> None:
-        """Send an interim message to the bundle."""
-        self.send_message(message, close_bundle=False)
-
-    def send_final_message(self, message: MessageType) -> None:
-        """Send the final message to the bundle. The bundle will be closed after this."""
-        self.send_message(message, close_bundle=True)
-
-    async def _wait_for_next_message(self) -> MessageType:
-        if self.complete:
-            raise StopAsyncIteration
-
-        message = await self._message_queue.get()
-
-        if message is END_OF_QUEUE:
-            self._message_queue = None
-            self.closed = True
-            raise StopAsyncIteration
-
-        self.messages_so_far.append(message)
-        return message
-
-    class _Iterator:
-        def __init__(self, message_bundle: "MessageBundle") -> None:
-            self._message_bundle = message_bundle
-            self._index = 0
-
-        async def __anext__(self) -> MessageType:
-            if self._index < len(self._message_bundle.messages_so_far):
-                message = self._message_bundle.messages_so_far[self._index]
-            elif self._message_bundle.complete:
-                raise StopAsyncIteration
-            else:
-                async with self._message_bundle._lock:
-                    if self._index < len(self._message_bundle.messages_so_far):
-                        message = self._message_bundle.messages_so_far[self._index]
-                    else:
-                        message = await self._message_bundle._wait_for_next_message()
-
-            self._index += 1
-            return message
+    def __init__(self, *args, bundle_metadata: Optional[Freeform] = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.bundle_metadata: Freeform = bundle_metadata or Freeform()  # TODO Oleksandr: drop this field ?

@@ -1,12 +1,14 @@
 """OpenAI API extension for AgentCache."""
-from typing import List, AsyncIterator, Dict, Any, Set, Optional
+import asyncio
+from typing import List, Dict, Any, Set, Optional, Union
 
 from agentcache.errors import AgentCacheError
-from agentcache.models import Message, StreamedMessage, Token, Metadata
+from agentcache.models import StreamedMessage, Token, Freeform
 from agentcache.typing import MessageType
+from agentcache.utils import Sentinel
 
 
-async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[Metadata] = None) -> MessageType:
+async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[Freeform] = None) -> MessageType:
     """Chat with OpenAI models (async version). Returns a message or a stream of tokens."""
     import openai  # pylint: disable=import-outside-toplevel
 
@@ -17,7 +19,7 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
 
-    messages = [msg.get_full_message() if isinstance(msg, StreamedMessage) else msg for msg in messages]
+    messages = [await msg.aget_full_message() if isinstance(msg, StreamedMessage) else msg for msg in messages]
     message_dicts = [
         {
             "role": getattr(msg.metadata, "openai_role", "user"),
@@ -30,66 +32,49 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
-        # noinspection PyTypeChecker
-        return _StreamedMessageAsync(response, messages[-1])
+        streamed_message = _OpenAIStreamedMessage(reply_to=messages[-1])
+
+        async def _send_tokens() -> None:
+            with streamed_message:
+                async for token_raw in response:
+                    streamed_message.send(token_raw)
+
+        asyncio.create_task(_send_tokens())
+        return streamed_message
 
     # pprint(response)
     # print()
     return await messages[-1].areply(
         content=response["choices"][0]["message"]["content"],
-        metadata=Metadata(**_build_openai_metadata_dict(response)),
+        metadata=Freeform(**_build_openai_metadata_dict(response)),
     )
 
 
-class _StreamedMessageAsync(StreamedMessage):
-    """A message that is streamed token by token instead of being returned all at once (async version)."""
+class _OpenAIStreamedMessage(StreamedMessage[Dict[str, Any]]):
+    """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
-    def __init__(self, stream: AsyncIterator[Dict[str, Any]], reply_to: Message):
-        self._stream = stream
-        self._tokens_raw: List[Dict[str, Any]] = []
-        self._metadata: Dict[str, Any] = {}
-        self._done = False
-        self._full_message = None
-        self._reply_to = reply_to
-        # TODO Oleksandr: use asyncio.Queue and _Iterator approach just like you did in MessageBundle in order to
-        #  ensure that the stream can have multiple consumers
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._tokens_raw: List[Dict[str, Any]] = []  # TODO Oleksandr: do we even need this list ?
 
-    def get_full_message(self) -> Message:
-        raise NotImplementedError("Use aget_full_message()")
+    async def _aget_item_from_queue(self) -> Union[Dict[str, Any], Sentinel]:
+        while True:
+            token_raw = await self._queue.get()
+            if isinstance(token_raw, Sentinel):
+                # if Sentinel, return it immediately
+                return token_raw
 
-    async def aget_full_message(self) -> Message:
-        if not self._done:
-            # first, make sure that all the tokens are received
-            async for _ in self:
-                pass
+            # pprint(token_raw)
+            # print()
+            self._tokens_raw.append(token_raw)
+            self._metadata.update({k: v for k, v in _build_openai_metadata_dict(token_raw).items() if v is not None})
 
-        if not self._full_message:
-            self._full_message = await self._reply_to.areply(
-                content="".join([self._token_raw_to_text(token_raw) for token_raw in self._tokens_raw]),
-                metadata=Metadata(**self._metadata),
-            )
-        return self._full_message
+            if self._token_raw_to_text(token_raw):
+                # we found a token that actually has some text - return it
+                return token_raw
 
-    def __next__(self) -> Token:
-        raise NotImplementedError('Use "async for", anext() or __anext__()')
-
-    async def __anext__(self) -> Token:
-        token_text = None
-        try:
-            while not token_text:
-                token_raw = await self._stream.__anext__()
-                # pprint(token_raw)
-                # print()
-                self._tokens_raw.append(token_raw)
-                self._metadata.update(
-                    {k: v for k, v in _build_openai_metadata_dict(token_raw).items() if v is not None}
-                )
-                token_text = self._token_raw_to_text(token_raw)
-        except StopAsyncIteration:
-            self._done = True
-            raise
-
-        return Token(text=token_text)
+    def _convert_item(self, item: Dict[str, Any]) -> Token:
+        return Token(text=self._token_raw_to_text(item))
 
     @staticmethod
     def _token_raw_to_text(token_raw: Dict[str, Any]) -> str:
