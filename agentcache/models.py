@@ -156,9 +156,13 @@ class StreamedMessage(Broadcastable[IN, Token]):
         return self._full_message
 
 
-class MessageBundle(Broadcastable[MessageType, MessageType]):
-    """A bundle of messages. Used to group messages that are sent together."""
+class AsyncMessageBundle(Broadcastable[MessageType, MessageType]):
+    """
+    An asynchronous iterator over a bundle of messages that are being produced by an agent. Because the bundle is
+    Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
+    bundle is independent of the speed at which consumers iterate over them.
+    """
 
     def __init__(self, *args, bundle_metadata: Optional[Freeform] = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.bundle_metadata: Freeform = bundle_metadata or Freeform()
+        self.bundle_metadata: Freeform = bundle_metadata or Freeform()  # TODO Oleksandr: drop this field ?

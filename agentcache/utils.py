@@ -17,7 +17,8 @@ class Broadcastable(Generic[IN, OUT]):
     """
     A container of items that can be iterated over asynchronously. The support of multiple concurrent consumers is
     seamless. The speed at which items can be sent to the container is independent of the speed at which consumers
-    iterate over them.
+    iterate over them. It is not a generator, it is a container that can be iterated over multiple times.
+
     - If `send_closed` is True, then it is not possible to send new items to the container anymore.
     - If `completed` is True, then all the items are already in the `items_so_far` list and the internal async queue
       has been disposed (all the items were already sent to the container AND at least one consumer already consumed
