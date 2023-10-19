@@ -1,6 +1,6 @@
 """TODO Oleksandr: add module docstring"""
 from agentcache.ext.llms.openai import aopenai_chat_completion
-from agentcache.models import AsyncMessageBundle
+from agentcache.model_wrappers import AsyncMessageBundle
 
 
 async def afirst_agent(incoming: AsyncMessageBundle) -> AsyncMessageBundle:

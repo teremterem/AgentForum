@@ -8,7 +8,8 @@ load_dotenv()
 
 from agentcache.agents import afirst_agent
 from agentcache.message_tree import MessageTree
-from agentcache.models import AsyncMessageBundle, Freeform
+from agentcache.model_wrappers import AsyncMessageBundle
+from agentcache.models import Freeform
 from agentcache.storage import InMemoryStorage
 
 
