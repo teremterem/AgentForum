@@ -9,7 +9,7 @@ possibility for an Agent to have memory that is not implemented as plain chat hi
 - Inversion of Control for agents.
 - Agents are as stateless as possible.
 - Agents can receive multiple messages before responding, as well as respond with multiple messages.
-- Caching of agent responses, which is necessary for effective Inversion of Control and also simplifies debugging /
+- Caching of agent responses. Necessary for effective Inversion of Control and also to simplify debugging /
   experimenting with agents' internal logic by making message replay inside a complex chain of interactions possible.
 - LLM token streaming is supported no matter how many nested levels of agents there are.
 - Messages are represented as immutable objects.
@@ -18,4 +18,4 @@ possibility for an Agent to have memory that is not implemented as plain chat hi
 
 This framework is async-first, and uses the [asyncio](https://docs.python.org/3/library/asyncio.html) library to
 achieve concurrency. The classes also have synchronous versions of the methods here and there, but the full potential
-of the framework is only unlocked when using the async methods. It is designed to support **Python 3.8 or higher**.
+of the framework is only unlocked when using the async methods. **Supports Python 3.8 or higher**.
