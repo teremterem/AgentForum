@@ -1,25 +1,29 @@
 """OpenAI API extension for AgentCache."""
 import asyncio
-from typing import List, Dict, Any, Set, Optional, Union
+from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
-from agentcache.models import StreamedMessage, Token, Freeform
-from agentcache.typing import MessageType
+from agentcache.model_wrappers import StreamedMessage
+from agentcache.models import Token, Freeform, Message
+from agentcache.storage import ImmutableStorage
 from agentcache.utils import Sentinel
 
 
-async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[Freeform] = None) -> MessageType:
+async def aopenai_chat_completion(
+    forum: ImmutableStorage,
+    prompt: List[Union[StreamedMessage, Message]],  # TODO Oleksandr: support str, List[str] and List[Dict] too ?
+    reply_to: Optional[StreamedMessage] = None,
+    stream: bool = False,
+    n: int = 1,
+    **kwargs,
+) -> StreamedMessage:
     """Chat with OpenAI models (async version). Returns a message or a stream of tokens."""
     import openai  # pylint: disable=import-outside-toplevel
-
-    kwargs = kwargs.model_dump(exclude={"ac_model_"}) if kwargs else {}
-    stream = kwargs.pop("stream", False)
-    n = kwargs.pop("n", 1)
 
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
 
-    messages = [await msg.aget_full_message() if isinstance(msg, StreamedMessage) else msg for msg in messages]
+    messages = [await msg.aget_full_message() if isinstance(msg, StreamedMessage) else msg for msg in prompt]
     message_dicts = [
         {
             "role": getattr(msg.metadata, "openai_role", "user"),
@@ -32,7 +36,7 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
-        streamed_message = _OpenAIStreamedMessage(reply_to=messages[-1])
+        streamed_message = _OpenAIStreamedMessage(forum=forum, reply_to=reply_to)
 
         async def _send_tokens() -> None:
             with streamed_message:
@@ -44,9 +48,12 @@ async def aopenai_chat_completion(messages: List[MessageType], kwargs: Optional[
 
     # pprint(response)
     # print()
-    return await messages[-1].areply(
-        content=response["choices"][0]["message"]["content"],
-        metadata=Freeform(**_build_openai_metadata_dict(response)),
+    return StreamedMessage(  # TODO Oleksandr: cover this case with a unit test ?
+        forum=forum,
+        full_message=Message(
+            content=response["choices"][0]["message"]["content"],
+            metadata=Freeform(**_build_openai_metadata_dict(response)),
+        ),
     )
 
 
@@ -55,7 +62,7 @@ class _OpenAIStreamedMessage(StreamedMessage[Dict[str, Any]]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._tokens_raw: List[Dict[str, Any]] = []  # TODO Oleksandr: do we even need this list ?
+        self._tokens_raw: List[Dict[str, Any]] = []
 
     async def _aget_item_from_queue(self) -> Union[Dict[str, Any], Sentinel]:
         while True:
@@ -67,6 +74,7 @@ class _OpenAIStreamedMessage(StreamedMessage[Dict[str, Any]]):
             # pprint(token_raw)
             # print()
             self._tokens_raw.append(token_raw)
+            # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built
             self._metadata.update({k: v for k, v in _build_openai_metadata_dict(token_raw).items() if v is not None})
 
             if self._token_raw_to_text(token_raw):

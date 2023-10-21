@@ -1,15 +1,8 @@
 """Data models."""
 import hashlib
-import typing
-from typing import Dict, Any, Literal, Type, Tuple, List, Optional
+from typing import Dict, Any, Literal, Type, Tuple, Optional
 
-from pydantic import BaseModel, model_validator, PrivateAttr, ConfigDict
-
-from agentcache.typing import MessageType
-from agentcache.utils import Broadcastable, IN
-
-if typing.TYPE_CHECKING:
-    from agentcache.message_tree import MessageTree
+from pydantic import BaseModel, model_validator, ConfigDict
 
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
@@ -68,7 +61,16 @@ class Freeform(Immutable):
     """
 
     model_config = ConfigDict(extra="allow")
-    ac_model_: Literal["metadata"] = "freeform"
+    ac_model_: Literal["freeform"] = "freeform"
+
+    @property
+    def as_kwargs(self) -> Dict[str, Any]:
+        """Get the fields of the object as a dictionary of keyword arguments."""
+        if not hasattr(self, "_as_kwargs"):
+            # pylint: disable=attribute-defined-outside-init
+            # noinspection PyAttributeOutsideInit
+            self._as_kwargs = self.model_dump(exclude={"ac_model_"})
+        return self._as_kwargs
 
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
@@ -82,42 +84,33 @@ class Message(Immutable):
     """A message."""
 
     ac_model_: Literal["message"] = "message"
-    _message_tree: "MessageTree" = PrivateAttr()  # set by MessageTree.anew_message()
     content: str
     metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
 
+
+class _AgentCall(Message):
+    """A subtype of Message that represents a call to an agent."""
+
+    ac_model_: Literal["call"] = "call"
+
     @property
-    def message_tree(self) -> "MessageTree":
-        """Get the message tree that this message belongs to."""
-        return self._message_tree
+    def agent_alias(self) -> str:
+        """Get the alias of the agent that is being called."""
+        return self.content
 
-    async def aget_previous_message(self) -> Optional["Message"]:
-        """Get the previous message in the conversation."""
-        if not self.prev_msg_hash_key:
-            return None
+    @property
+    def request_hash_key(self) -> str:
+        """
+        Get the hash key of the request message. The message this "call" object is a response to is considered the
+        request.
+        """
+        return self.prev_msg_hash_key
 
-        if not hasattr(self, "_prev_msg"):
-            # pylint: disable=attribute-defined-outside-init
-            # noinspection PyAttributeOutsideInit
-            self._prev_msg = await self.message_tree.afind_message(self.prev_msg_hash_key)
-        return self._prev_msg
-
-    async def areply(self, content: str, metadata: Optional[Freeform] = None) -> "Message":
-        """Reply to this message."""
-        return await self.message_tree.anew_message(
-            content=content, metadata=metadata, prev_msg_hash_key=self.hash_key
-        )
-
-    async def aget_full_chat(self) -> List["Message"]:
-        """Get the full chat history for this message (including this message)."""
-        # TODO Oleksandr: introduce a limit on the number of messages to fetch
-        msg = self
-        result = [msg]
-        while msg := await msg.aget_previous_message():
-            result.append(msg)
-        result.reverse()
-        return result
+    @property
+    def kwargs(self) -> Freeform:
+        """Get the keyword arguments for the agent call."""
+        return self.metadata
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
@@ -131,38 +124,3 @@ class Token(Immutable):
 
     ac_model_: Literal["token"] = "token"
     text: str
-
-
-class StreamedMessage(Broadcastable[IN, Token]):
-    """A message that is streamed token by token instead of being returned all at once."""
-
-    def __init__(self, *args, reply_to: Message, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._reply_to = reply_to
-        self._metadata: Dict[str, Any] = {}
-        self._full_message = None
-
-    async def aget_full_message(self) -> Message:
-        """
-        Get the full message. This method will "await" until all the tokens are received and then return the complete
-        message (async version).
-        """
-        if not self._full_message:
-            tokens = await self.aget_all()
-            self._full_message = await self._reply_to.areply(  # TODO Oleksandr: allow _reply_to to be None
-                content="".join([token.text for token in tokens]),
-                metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
-            )
-        return self._full_message
-
-
-class AsyncMessageBundle(Broadcastable[MessageType, MessageType]):
-    """
-    An asynchronous iterator over a bundle of messages that are being produced by an agent. Because the bundle is
-    Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
-    bundle is independent of the speed at which consumers iterate over them.
-    """
-
-    def __init__(self, *args, bundle_metadata: Optional[Freeform] = None, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.bundle_metadata: Freeform = bundle_metadata or Freeform()  # TODO Oleksandr: drop this field ?

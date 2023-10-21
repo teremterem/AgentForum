@@ -27,11 +27,20 @@ class Broadcastable(Generic[IN, OUT]):
 
     def __init__(
         self,
-        items_so_far: Optional[Iterable[IN]] = None,
+        items_so_far: Optional[Iterable[OUT]] = None,
+        items_so_far_raw: Optional[Iterable[IN]] = None,
         completed: bool = False,
     ) -> None:
+        if items_so_far and items_so_far_raw:
+            raise ValueError("Only one of `items_so_far` and `items_so_far_raw` should be provided.")
+
         self.send_closed: bool = completed
-        self.items_so_far: List[OUT] = [self._convert_item(item) for item in items_so_far or ()]
+
+        self.items_so_far: List[OUT] = []
+        if items_so_far:
+            self.items_so_far = list(items_so_far)
+        elif items_so_far_raw:
+            self.items_so_far = [self._convert_item(item_raw) for item_raw in items_so_far_raw or ()]
 
         self._queue = None if completed else asyncio.Queue()
         self._lock = asyncio.Lock()
@@ -86,6 +95,7 @@ class Broadcastable(Generic[IN, OUT]):
         if item is END_OF_QUEUE:
             self.send_closed = True
             self._queue = None
+            # TODO Oleksandr: at this point full Message should be built and stored (StreamedMessage subclass)
             raise StopAsyncIteration
 
         self.items_so_far.append(item)
