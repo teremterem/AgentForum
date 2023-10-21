@@ -63,6 +63,15 @@ class Freeform(Immutable):
     model_config = ConfigDict(extra="allow")
     ac_model_: Literal["freeform"] = "freeform"
 
+    @property
+    def as_kwargs(self) -> Dict[str, Any]:
+        """Get the fields of the object as a dictionary of keyword arguments."""
+        if not hasattr(self, "_as_kwargs"):
+            # pylint: disable=attribute-defined-outside-init
+            # noinspection PyAttributeOutsideInit
+            self._as_kwargs = self.model_dump(exclude={"ac_model_"})
+        return self._as_kwargs
+
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
         return _TYPES_ALLOWED_IN_FREEFORM
@@ -78,6 +87,30 @@ class Message(Immutable):
     content: str
     metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
+
+
+class _AgentCall(Message):
+    """A subtype of Message that represents a call to an agent."""
+
+    ac_model_: Literal["call"] = "call"
+
+    @property
+    def agent_alias(self) -> str:
+        """Get the alias of the agent that is being called."""
+        return self.content
+
+    @property
+    def request_hash_key(self) -> str:
+        """
+        Get the hash key of the request message. The message this "call" object is a response to is considered the
+        request.
+        """
+        return self.prev_msg_hash_key
+
+    @property
+    def kwargs(self) -> Freeform:
+        """Get the keyword arguments for the agent call."""
+        return self.metadata
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)

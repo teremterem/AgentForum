@@ -23,17 +23,22 @@ async def main() -> None:
             if user_input == "exit":
                 raise KeyboardInterrupt
 
-            latest_message = StreamedMessage(  # TODO Oleksandr: move this to the framework level
-                forum=forum,
-                full_message=Message(content=user_input),
-                reply_to=latest_message,
+            _msg = Message(
+                content=user_input,
+                prev_msg_hash_key=(await latest_message.aget_full_message()).hash_key if latest_message else None,
             )
+            await forum.astore_immutable(_msg)
+            latest_message = StreamedMessage(
+                forum=forum,
+                full_message=_msg,
+            )
+
             responses = await acall_agent_draft(
+                forum=forum,
                 request=latest_message,
                 model="gpt-3.5-turbo-0613",
                 stream=True,
             )
-
             async for streamed_message in responses:
                 print("\nGPT: ", end="", flush=True)
                 async for token in streamed_message:

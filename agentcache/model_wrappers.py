@@ -5,7 +5,7 @@ functionality to the models without modifying the models themselves.
 """
 from typing import Dict, Any, Optional, List
 
-from agentcache.models import Message, Freeform, Token
+from agentcache.models import Message, Freeform, Token, _AgentCall
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import IN
 from agentcache.utils import Broadcastable
@@ -41,6 +41,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
                 metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
                 prev_msg_hash_key=(await self._reply_to.aget_full_message()).hash_key if self._reply_to else None,
             )
+            await self.forum.astore_immutable(self._full_message)
         return self._full_message
 
     async def aget_content(self) -> str:
@@ -58,11 +59,13 @@ class StreamedMessage(Broadcastable[IN, Token]):
             return None
 
         if not hasattr(self, "_prev_msg"):
+            prev_msg_hash_key = full_message.prev_msg_hash_key
+            while isinstance(prev_msg := await self.forum.aretrieve_immutable(prev_msg_hash_key), _AgentCall):
+                # skip agent calls
+                prev_msg_hash_key = prev_msg.request_hash_key
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit
-            self._prev_msg = StreamedMessage(
-                forum=self.forum, full_message=await self.forum.retrieve_immutable(full_message.prev_msg_hash_key)
-            )
+            self._prev_msg = StreamedMessage(forum=self.forum, full_message=prev_msg)
         return self._prev_msg
 
     async def aget_full_chat(self) -> List["StreamedMessage"]:
@@ -82,8 +85,3 @@ class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
     Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
     sequence is independent of the speed at which consumers iterate over them.
     """
-
-    def __init__(self, *args, sequence_metadata: Optional[Freeform] = None, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        # TODO Oleksandr: This shouldn't be necessary when AgentCall message type is introduced
-        self.sequence_metadata: Freeform = sequence_metadata or Freeform()
