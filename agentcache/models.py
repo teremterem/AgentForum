@@ -1,12 +1,8 @@
 """Data models."""
 import hashlib
-import typing
-from typing import Dict, Any, Literal, Type, Tuple, List, Optional
+from typing import Dict, Any, Literal, Type, Tuple, Optional
 
-from pydantic import BaseModel, model_validator, PrivateAttr, ConfigDict
-
-if typing.TYPE_CHECKING:
-    from agentcache.message_tree import MessageTree
+from pydantic import BaseModel, model_validator, ConfigDict
 
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
@@ -79,42 +75,9 @@ class Message(Immutable):
     """A message."""
 
     ac_model_: Literal["message"] = "message"
-    _message_tree: "MessageTree" = PrivateAttr()  # set by MessageTree.anew_message()
     content: str
     metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
-
-    @property
-    def message_tree(self) -> "MessageTree":
-        """Get the message tree that this message belongs to."""
-        return self._message_tree
-
-    async def aget_previous_message(self) -> Optional["Message"]:
-        """Get the previous message in the conversation."""
-        if not self.prev_msg_hash_key:
-            return None
-
-        if not hasattr(self, "_prev_msg"):
-            # pylint: disable=attribute-defined-outside-init
-            # noinspection PyAttributeOutsideInit
-            self._prev_msg = await self.message_tree.afind_message(self.prev_msg_hash_key)
-        return self._prev_msg
-
-    async def areply(self, content: str, metadata: Optional[Freeform] = None) -> "Message":
-        """Reply to this message."""
-        return await self.message_tree.anew_message(
-            content=content, metadata=metadata, prev_msg_hash_key=self.hash_key
-        )
-
-    async def aget_full_chat(self) -> List["Message"]:
-        """Get the full chat history for this message (including this message)."""
-        # TODO Oleksandr: introduce a limit on the number of messages to fetch
-        msg = self
-        result = [msg]
-        while msg := await msg.aget_previous_message():
-            result.append(msg)
-        result.reverse()
-        return result
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
