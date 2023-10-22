@@ -4,18 +4,33 @@ functionality to the models without modifying the models themselves.
 """
 from typing import Dict, Any, Optional, List
 
+from pydantic import BaseModel, ConfigDict
+
 from agentcache.models import Message, Freeform, Token, _AgentCall
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import IN
 from agentcache.utils import Broadcastable
 
 
+class Forum(BaseModel):
+    config = ConfigDict(arbitrary_types_allowed=True)
+    immutable_storage: ImmutableStorage
+
+    async def anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
+        """Create a StreamedMessage object that represents a call to an agent (_AgentCall)."""
+        agent_call = _AgentCall(
+            content=agent_alias,
+            metadata=Freeform(**kwargs),
+            prev_msg_hash_key=await request.aget_hash_key(),
+        )
+        await self.immutable_storage.astore_immutable(agent_call)
+        return StreamedMessage(forum=self, full_message=agent_call)
+
+
 class StreamedMessage(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
-    def __init__(
-        self, forum: ImmutableStorage, full_message: Message = None, reply_to: "StreamedMessage" = None
-    ) -> None:
+    def __init__(self, forum: Forum, full_message: Message = None, reply_to: "StreamedMessage" = None) -> None:
         if full_message and reply_to:
             raise ValueError("Only one of `full_message` and `reply_to` should be specified")
 
@@ -23,15 +38,15 @@ class StreamedMessage(Broadcastable[IN, Token]):
             items_so_far=[Token(text=full_message.content)] if full_message else None,
             completed=bool(full_message),
         )
-        self.forum: ImmutableStorage = forum
-        self._full_message: Message = full_message
-        self._reply_to: StreamedMessage = reply_to
+        self.forum = forum
+        self._full_message = full_message
+        self._reply_to = reply_to
         self._metadata: Dict[str, Any] = {}
 
     async def aget_full_message(self) -> Message:
         """
         Get the full message. This method will "await" until all the tokens are received and then return the complete
-        message (async version).
+        message.
         """
         if not self._full_message:
             tokens = await self.aget_all()
@@ -44,12 +59,16 @@ class StreamedMessage(Broadcastable[IN, Token]):
         return self._full_message
 
     async def aget_content(self) -> str:
-        """Get the content of the full message (async version)."""
+        """Get the content of the full message."""
         return (await self.aget_full_message()).content
 
     async def aget_metadata(self) -> Freeform:
-        """Get the metadata of the full message (async version)."""
+        """Get the metadata of the full message."""
         return (await self.aget_full_message()).metadata
+
+    async def aget_hash_key(self) -> str:
+        """Get the hash key of the full message."""
+        return (await self.aget_full_message()).hash_key
 
     async def aget_previous_message(self) -> Optional["StreamedMessage"]:
         """Get the previous message in the conversation."""
