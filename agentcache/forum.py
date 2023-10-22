@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, List, Union
 
 from pydantic import BaseModel, ConfigDict
 
-from agentcache.models import Message, Freeform, Token, _AgentCall
+from agentcache.models import Message, Freeform, Token, AgentCall
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import IN
 from agentcache.utils import Broadcastable
@@ -19,8 +19,8 @@ class Forum(BaseModel):
     immutable_storage: ImmutableStorage
 
     async def anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
-        """Create a StreamedMessage object that represents a call to an agent (_AgentCall)."""
-        agent_call = _AgentCall(
+        """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
+        agent_call = AgentCall(
             content=agent_alias,
             metadata=Freeform(**kwargs),
             prev_msg_hash_key=await request.aget_hash_key(),
@@ -115,7 +115,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
             # TODO Oleksandr: offload most of this logic to the Forum class ?
             prev_msg_hash_key = full_message.prev_msg_hash_key
             while isinstance(
-                prev_msg := await self.forum.immutable_storage.aretrieve_immutable(prev_msg_hash_key), _AgentCall
+                prev_msg := await self.forum.immutable_storage.aretrieve_immutable(prev_msg_hash_key), AgentCall
             ):
                 # skip agent calls
                 prev_msg_hash_key = prev_msg.request_hash_key

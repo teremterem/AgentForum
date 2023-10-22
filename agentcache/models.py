@@ -89,7 +89,7 @@ class Message(Immutable):
     prev_msg_hash_key: Optional[str] = None
 
 
-class _AgentCall(Message):
+class AgentCall(Message):
     """A subtype of Message that represents a call to an agent."""
 
     ac_model_: Literal["call"] = "call"
