@@ -3,21 +3,20 @@ import asyncio
 from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
-from agentcache.model_wrappers import StreamedMessage
-from agentcache.models import Token, Freeform, Message
-from agentcache.storage import ImmutableStorage
+from agentcache.forum import StreamedMessage, Forum
+from agentcache.models import Token, Message
 from agentcache.utils import Sentinel
 
 
 async def aopenai_chat_completion(
-    forum: ImmutableStorage,
-    prompt: List[Union[StreamedMessage, Message]],  # TODO Oleksandr: support str, List[str] and List[Dict] too ?
+    forum: Forum,
+    prompt: List[Union[StreamedMessage, Message]],  # TODO Oleksandr: support more variants ?
     reply_to: Optional[StreamedMessage] = None,
     stream: bool = False,
     n: int = 1,
     **kwargs,
 ) -> StreamedMessage:
-    """Chat with OpenAI models (async version). Returns a message or a stream of tokens."""
+    """Chat with OpenAI models. Returns a message or a stream of tokens."""
     import openai  # pylint: disable=import-outside-toplevel
 
     if n != 1:
@@ -48,12 +47,11 @@ async def aopenai_chat_completion(
 
     # pprint(response)
     # print()
-    return StreamedMessage(  # TODO Oleksandr: cover this case with a unit test ?
+    return await forum.anew_message(  # TODO Oleksandr: cover this case with a unit test ?
         forum=forum,
-        full_message=Message(
-            content=response["choices"][0]["message"]["content"],
-            metadata=Freeform(**_build_openai_metadata_dict(response)),
-        ),
+        content=response["choices"][0]["message"]["content"],
+        reply_to=reply_to,
+        **_build_openai_metadata_dict(response),
     )
 
 

@@ -12,11 +12,11 @@ class ImmutableStorage(ABC):
 
     @abstractmethod
     async def astore_immutable(self, immutable: Immutable) -> None:
-        """Store an Immutable object (async version)."""
+        """Store an Immutable object."""
 
     @abstractmethod
     async def aretrieve_immutable(self, hash_key: str) -> Immutable:
-        """Retrieve an Immutable object (async version)."""
+        """Retrieve an Immutable object."""
 
 
 class StringStorage(ABC):
@@ -24,11 +24,11 @@ class StringStorage(ABC):
 
     @abstractmethod
     async def astore_string(self, key: Tuple[str, ...], value: str) -> None:
-        """Store a string (async version)."""
+        """Store a string."""
 
     @abstractmethod
     async def aretrieve_string(self, key: Tuple[str, ...]) -> str:
-        """Retrieve a string (async version)."""
+        """Retrieve a string."""
 
 
 class InMemoryStorage(ImmutableStorage, StringStorage):
