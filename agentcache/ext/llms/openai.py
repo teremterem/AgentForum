@@ -3,7 +3,7 @@ import asyncio
 from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
-from agentcache.model_wrappers import StreamedMessage
+from agentcache.forum import StreamedMessage
 from agentcache.models import Token, Freeform, Message
 from agentcache.storage import ImmutableStorage
 from agentcache.utils import Sentinel

@@ -1,5 +1,5 @@
 from agentcache.ext.llms.openai import aopenai_chat_completion
-from agentcache.model_wrappers import MessageSequence, StreamedMessage
+from agentcache.forum import MessageSequence, StreamedMessage
 from agentcache.models import Freeform, _AgentCall
 from agentcache.storage import ImmutableStorage
 

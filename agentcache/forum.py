@@ -1,4 +1,3 @@
-# TODO Oleksandr: rename this module to streamable.py ?
 """
 This module contains wrappers for the models defined in agentcache.models. These wrappers are used to add additional
 functionality to the models without modifying the models themselves.

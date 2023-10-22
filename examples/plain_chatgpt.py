@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from agentcache.agents import acall_agent_draft
-from agentcache.model_wrappers import StreamedMessage
+from agentcache.forum import StreamedMessage
 from agentcache.models import Message
 from agentcache.storage import InMemoryStorage
 
