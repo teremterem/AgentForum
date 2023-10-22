@@ -15,7 +15,7 @@ from agentcache.utils import Broadcastable
 class Forum(BaseModel):
     """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
 
-    config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     immutable_storage: ImmutableStorage
 
     async def anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
