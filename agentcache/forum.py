@@ -49,7 +49,7 @@ class Forum(BaseModel):
             metadata=Freeform(**metadata),
             prev_msg_hash_key=reply_to,
         )
-        await self.forum.astore_immutable(message)
+        await self.immutable_storage.astore_immutable(message)
         return StreamedMessage(forum=self, full_message=message)
 
     async def afind_message(self, hash_key: str) -> "StreamedMessage":
@@ -83,10 +83,14 @@ class StreamedMessage(Broadcastable[IN, Token]):
         message.
         """
         if not self._full_message:
+            # TODO Oleksandr: offload most of this logic to the Forum class ?
             tokens = await self.aget_all()
-            self._full_message = await self.forum.anew_message(
-                content="".join([token.text for token in tokens]), **self._metadata, reply_to=self._reply_to
+            self._full_message = Message(
+                content="".join([token.text for token in tokens]),
+                metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
+                prev_msg_hash_key=await self._reply_to.aget_hash_key() if self._reply_to else None,
             )
+            await self.forum.immutable_storage.astore_immutable(self._full_message)
         return self._full_message
 
     async def aget_content(self) -> str:
@@ -108,7 +112,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
             return None
 
         if not hasattr(self, "_prev_msg"):
-            # TODO Oleksandr: offload this logic to the Forum class ?
+            # TODO Oleksandr: offload most of this logic to the Forum class ?
             prev_msg_hash_key = full_message.prev_msg_hash_key
             while isinstance(
                 prev_msg := await self.forum.immutable_storage.aretrieve_immutable(prev_msg_hash_key), _AgentCall

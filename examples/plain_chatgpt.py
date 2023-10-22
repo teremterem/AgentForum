@@ -26,7 +26,6 @@ async def main() -> None:
             latest_message = await forum.anew_message(content=user_input, reply_to=latest_message)
 
             responses = await acall_agent_draft(
-                forum=forum,
                 request=latest_message,
                 model="gpt-3.5-turbo-0613",
                 stream=True,
