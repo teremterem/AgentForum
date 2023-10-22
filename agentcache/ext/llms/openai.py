@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
 from agentcache.forum import StreamedMessage, Forum
-from agentcache.models import Token, Freeform, Message
+from agentcache.models import Token, Message
 from agentcache.utils import Sentinel
 
 
@@ -47,12 +47,11 @@ async def aopenai_chat_completion(
 
     # pprint(response)
     # print()
-    return StreamedMessage(  # TODO Oleksandr: cover this case with a unit test ?
+    return await forum.anew_message(  # TODO Oleksandr: cover this case with a unit test ?
         forum=forum,
-        full_message=Message(
-            content=response["choices"][0]["message"]["content"],
-            metadata=Freeform(**_build_openai_metadata_dict(response)),
-        ),
+        content=response["choices"][0]["message"]["content"],
+        reply_to=reply_to,
+        **_build_openai_metadata_dict(response),
     )
 
 

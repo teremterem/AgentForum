@@ -2,7 +2,7 @@
 This module contains wrappers for the models defined in agentcache.models. These wrappers are used to add additional
 functionality to the models without modifying the models themselves.
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +13,8 @@ from agentcache.utils import Broadcastable
 
 
 class Forum(BaseModel):
+    """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
+
     config = ConfigDict(arbitrary_types_allowed=True)
     immutable_storage: ImmutableStorage
 
@@ -25,6 +27,38 @@ class Forum(BaseModel):
         )
         await self.immutable_storage.astore_immutable(agent_call)
         return StreamedMessage(forum=self, full_message=agent_call)
+
+    async def anew_message(
+        self,
+        content: str,
+        reply_to: Union["StreamedMessage", Message, str] = None,
+        **metadata,
+    ) -> "StreamedMessage":
+        """
+        Create a StreamedMessage object that represents a message and store the underlying Message in ImmutableStorage.
+        """
+        if isinstance(reply_to, StreamedMessage):
+            reply_to = await reply_to.aget_hash_key()
+        elif isinstance(reply_to, Message):
+            reply_to = reply_to.hash_key
+        # if reply_to is a string, we assume it's already a hash key
+        # TODO Oleksandr: assert somehow that reply_to is a valid hash key when it's a string
+
+        message = Message(
+            content=content,
+            metadata=Freeform(**metadata),
+            prev_msg_hash_key=reply_to,
+        )
+        await self.forum.astore_immutable(message)
+        return StreamedMessage(forum=self, full_message=message)
+
+    async def afind_message(self, hash_key: str) -> "StreamedMessage":
+        """Find a message in the forum."""
+        message = await self.immutable_storage.aretrieve_immutable(hash_key)
+        if not isinstance(message, Message):
+            # TODO Oleksandr: introduce a custom exception for this case ?
+            raise ValueError(f"Expected a Message, got a {type(message)}")
+        return StreamedMessage(forum=self, full_message=message)
 
 
 class StreamedMessage(Broadcastable[IN, Token]):
@@ -50,12 +84,9 @@ class StreamedMessage(Broadcastable[IN, Token]):
         """
         if not self._full_message:
             tokens = await self.aget_all()
-            self._full_message = Message(
-                content="".join([token.text for token in tokens]),
-                metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
-                prev_msg_hash_key=(await self._reply_to.aget_full_message()).hash_key if self._reply_to else None,
+            self._full_message = await self.forum.anew_message(
+                content="".join([token.text for token in tokens]), **self._metadata, reply_to=self._reply_to
             )
-            await self.forum.astore_immutable(self._full_message)
         return self._full_message
 
     async def aget_content(self) -> str:
@@ -77,12 +108,15 @@ class StreamedMessage(Broadcastable[IN, Token]):
             return None
 
         if not hasattr(self, "_prev_msg"):
+            # TODO Oleksandr: offload this logic to the Forum class ?
             prev_msg_hash_key = full_message.prev_msg_hash_key
-            while isinstance(prev_msg := await self.forum.aretrieve_immutable(prev_msg_hash_key), _AgentCall):
+            while isinstance(
+                prev_msg := await self.forum.immutable_storage.aretrieve_immutable(prev_msg_hash_key), _AgentCall
+            ):
                 # skip agent calls
                 prev_msg_hash_key = prev_msg.request_hash_key
             # pylint: disable=attribute-defined-outside-init
-            # noinspection PyAttributeOutsideInit
+            # noinspection PyAttributeOutsideInit,PyTypeChecker
             self._prev_msg = StreamedMessage(forum=self.forum, full_message=prev_msg)
         return self._prev_msg
 
