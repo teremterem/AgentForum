@@ -141,3 +141,13 @@ class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
     Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
     sequence is independent of the speed at which consumers iterate over them.
     """
+
+    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[StreamedMessage]:
+        """Get the last message in the sequence."""
+        messages = await self.aget_all()
+        if messages:
+            return messages[-1]
+        if raise_if_none:
+            # TODO Oleksandr: introduce a custom exception for this case
+            raise ValueError("MessageSequence is empty")
+        return None

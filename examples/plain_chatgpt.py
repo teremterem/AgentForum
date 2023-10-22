@@ -22,7 +22,7 @@ async def main() -> None:
             if user_input == "exit":
                 raise KeyboardInterrupt
 
-            # TODO Oleksandr: move this inside the acall_agent_draft()
+            # TODO Oleksandr: move this inside the acall_agent_draft() ?
             latest_message = await forum.anew_message(content=user_input, reply_to=latest_message)
 
             responses = await acall_agent_draft(
@@ -35,7 +35,7 @@ async def main() -> None:
                 async for token in streamed_message:
                     print(token.text, end="", flush=True)
                 print()
-            latest_message = (await responses.aget_all())[-1]  # TODO Oleksandr: aget_concluding_message()
+            latest_message = await responses.aget_concluding_message()
     except KeyboardInterrupt:
         print()
 
