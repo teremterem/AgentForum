@@ -2,14 +2,42 @@
 This module contains wrappers for the models defined in agentcache.models. These wrappers are used to add additional
 functionality to the models without modifying the models themselves.
 """
+import asyncio
 from typing import Dict, Any, Optional, List, Union
 
 from pydantic import BaseModel, ConfigDict
 
 from agentcache.models import Message, Freeform, Token, AgentCall
 from agentcache.storage import ImmutableStorage
-from agentcache.typing import IN
+from agentcache.typing import IN, AgentFunction
 from agentcache.utils import Broadcastable
+
+
+class AgentFunctionClass:
+    """A wrapper for an agent function that allows calling the agent."""
+
+    def __init__(self, forum: "Forum", func: AgentFunction) -> None:
+        self._forum = forum
+        self._func = func
+
+    def call(self, request: "StreamedMessage", **kwargs) -> "MessageSequence":
+        """Call the agent."""
+        response = MessageSequence()
+        asyncio.create_task(self._asubmit_agent_call(request, response, **kwargs))
+        return response
+
+    async def _asubmit_agent_call(self, request: "StreamedMessage", response: "MessageSequence", **kwargs) -> None:
+        agent_call = await request.forum.anew_agent_call(
+            agent_alias=self._func.__name__,
+            request=request,
+            **kwargs,
+        )
+        await self._acall_agent_func(agent_call, response)
+
+    async def _acall_agent_func(self, agent_call: "StreamedMessage", response: "MessageSequence") -> None:
+        request = await agent_call.aget_previous_message()
+        with response:
+            await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
 
 
 class Forum(BaseModel):
@@ -17,6 +45,10 @@ class Forum(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     immutable_storage: ImmutableStorage
+
+    def agent(self, func: AgentFunction) -> AgentFunctionClass:
+        """A decorator that registers an agent function in the forum."""
+        return AgentFunctionClass(self, func)
 
     async def anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
         """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
