@@ -8,8 +8,35 @@ from pydantic import BaseModel, ConfigDict
 
 from agentcache.models import Message, Freeform, Token, AgentCall
 from agentcache.storage import ImmutableStorage
-from agentcache.typing import IN
+from agentcache.typing import IN, AgentFunction
 from agentcache.utils import Broadcastable
+
+
+class AgentFunctionClass:
+    """A wrapper for an agent function that allows calling the agent."""
+
+    def __init__(self, forum: "Forum", func: AgentFunction) -> None:
+        self._forum = forum
+        self._func = func
+
+    async def acall(self, request: "StreamedMessage", **kwargs) -> "MessageSequence":
+        """Call the agent."""
+        return await self._acall(
+            self._func,
+            await request.forum.anew_agent_call(
+                agent_alias=self._func.__name__,
+                request=request,
+                **kwargs,
+            ),
+        )
+
+    async def _acall(self, func: AgentFunction, agent_call: "StreamedMessage") -> "MessageSequence":
+        # TODO Oleksandr: do asyncio.create_task() somewhere around here
+        request = await agent_call.aget_previous_message()
+        response = MessageSequence()
+        with response:
+            await func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
+        return response
 
 
 class Forum(BaseModel):
@@ -17,6 +44,10 @@ class Forum(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     immutable_storage: ImmutableStorage
+
+    def agent(self, func: AgentFunction) -> AgentFunctionClass:
+        """A decorator that registers an agent function in the forum."""
+        return AgentFunctionClass(self, func)
 
     async def anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
         """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
