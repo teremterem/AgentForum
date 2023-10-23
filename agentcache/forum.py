@@ -2,6 +2,7 @@
 This module contains wrappers for the models defined in agentcache.models. These wrappers are used to add additional
 functionality to the models without modifying the models themselves.
 """
+import asyncio
 from typing import Dict, Any, Optional, List, Union
 
 from pydantic import BaseModel, ConfigDict
@@ -19,24 +20,24 @@ class AgentFunctionClass:
         self._forum = forum
         self._func = func
 
-    async def acall(self, request: "StreamedMessage", **kwargs) -> "MessageSequence":
+    def call(self, request: "StreamedMessage", **kwargs) -> "MessageSequence":
         """Call the agent."""
-        return await self._acall(
-            self._func,
-            await request.forum.anew_agent_call(
-                agent_alias=self._func.__name__,
-                request=request,
-                **kwargs,
-            ),
-        )
-
-    async def _acall(self, func: AgentFunction, agent_call: "StreamedMessage") -> "MessageSequence":
-        # TODO Oleksandr: do asyncio.create_task() somewhere around here
-        request = await agent_call.aget_previous_message()
         response = MessageSequence()
-        with response:
-            await func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
+        asyncio.create_task(self._asubmit_agent_call(request, response, **kwargs))
         return response
+
+    async def _asubmit_agent_call(self, request: "StreamedMessage", response: "MessageSequence", **kwargs) -> None:
+        agent_call = await request.forum.anew_agent_call(
+            agent_alias=self._func.__name__,
+            request=request,
+            **kwargs,
+        )
+        await self._acall_agent_func(agent_call, response)
+
+    async def _acall_agent_func(self, agent_call: "StreamedMessage", response: "MessageSequence") -> None:
+        request = await agent_call.aget_previous_message()
+        with response:
+            await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
 
 
 class Forum(BaseModel):

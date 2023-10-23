@@ -33,11 +33,9 @@ async def main() -> None:
             if user_input == "exit":
                 raise KeyboardInterrupt
 
-            # TODO Oleksandr: move this inside the acall_agent_draft() ?
-            latest_message = await forum.anew_message(content=user_input, reply_to=latest_message)
-
-            responses = await first_openai_agent.acall(
-                request=latest_message,
+            responses = first_openai_agent.call(
+                # TODO Oleksandr: move the call to forum.anew_message inside the agent_func.call() method
+                request=await forum.anew_message(content=user_input, reply_to=latest_message),
                 model="gpt-3.5-turbo-0613",
                 stream=True,
             )
