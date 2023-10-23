@@ -3,6 +3,7 @@ This module contains wrappers for the models defined in agentcache.models. These
 functionality to the models without modifying the models themselves.
 """
 import asyncio
+from functools import wraps
 from typing import Dict, Any, Optional, List, Union
 
 from pydantic import BaseModel, ConfigDict
@@ -13,52 +14,15 @@ from agentcache.typing import IN, AgentFunction
 from agentcache.utils import Broadcastable
 
 
-class AgentFunctionClass:
-    """A wrapper for an agent function that allows calling the agent."""
-
-    def __init__(self, forum: "Forum", func: AgentFunction) -> None:
-        self._forum = forum
-        self._func = func
-
-    def call(self, request: "StreamedMessage", **kwargs) -> "MessageSequence":
-        """Call the agent."""
-        response = MessageSequence()
-        asyncio.create_task(self._asubmit_agent_call(request, response, **kwargs))
-        return response
-
-    async def _asubmit_agent_call(self, request: "StreamedMessage", response: "MessageSequence", **kwargs) -> None:
-        agent_call = await request.forum.anew_agent_call(
-            agent_alias=self._func.__name__,
-            request=request,
-            **kwargs,
-        )
-        await self._acall_agent_func(agent_call, response)
-
-    async def _acall_agent_func(self, agent_call: "StreamedMessage", response: "MessageSequence") -> None:
-        request = await agent_call.aget_previous_message()
-        with response:
-            await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
-
-
 class Forum(BaseModel):
     """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     immutable_storage: ImmutableStorage
 
-    def agent(self, func: AgentFunction) -> AgentFunctionClass:
+    def agent(self, func: AgentFunction) -> "Agent":
         """A decorator that registers an agent function in the forum."""
-        return AgentFunctionClass(self, func)
-
-    async def anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
-        """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
-        agent_call = AgentCall(
-            content=agent_alias,
-            metadata=Freeform(**kwargs),
-            prev_msg_hash_key=await request.aget_hash_key(),
-        )
-        await self.immutable_storage.astore_immutable(agent_call)
-        return StreamedMessage(forum=self, full_message=agent_call)
+        return wraps(func)(Agent(self, func))
 
     async def anew_message(
         self,
@@ -91,6 +55,16 @@ class Forum(BaseModel):
             # TODO Oleksandr: introduce a custom exception for this case ?
             raise ValueError(f"Expected a Message, got a {type(message)}")
         return StreamedMessage(forum=self, full_message=message)
+
+    async def _anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
+        """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
+        agent_call = AgentCall(
+            content=agent_alias,
+            metadata=Freeform(**kwargs),
+            prev_msg_hash_key=await request.aget_hash_key(),
+        )
+        await self.immutable_storage.astore_immutable(agent_call)
+        return StreamedMessage(forum=self, full_message=agent_call)
 
 
 class StreamedMessage(Broadcastable[IN, Token]):
@@ -183,3 +157,31 @@ class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
             # TODO Oleksandr: introduce a custom exception for this case
             raise ValueError("MessageSequence is empty")
         return None
+
+
+class Agent:
+    """A wrapper for an agent function that allows calling the agent."""
+
+    def __init__(self, forum: Forum, func: AgentFunction) -> None:
+        self._forum = forum
+        self._func = func
+
+    def call(self, request: StreamedMessage, **kwargs) -> MessageSequence:
+        """Call the agent."""
+        response = MessageSequence()
+        asyncio.create_task(self._asubmit_agent_call(request, response, **kwargs))
+        return response
+
+    async def _asubmit_agent_call(self, request: StreamedMessage, response: MessageSequence, **kwargs) -> None:
+        # noinspection PyProtectedMember
+        agent_call = await request.forum._anew_agent_call(  # pylint: disable=protected-access
+            agent_alias=self._func.__name__,
+            request=request,
+            **kwargs,
+        )
+        await self._acall_agent_func(agent_call, response)
+
+    async def _acall_agent_func(self, agent_call: StreamedMessage, response: MessageSequence) -> None:
+        request = await agent_call.aget_previous_message()
+        with response:
+            await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
