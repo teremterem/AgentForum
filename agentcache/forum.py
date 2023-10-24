@@ -47,7 +47,7 @@ class Forum(BaseModel):
 
         message = Message(
             content=content,
-            sender_alias=self._resolve_sender_alias(sender_alias),
+            sender_alias=self.resolve_sender_alias(sender_alias),
             metadata=Freeform(**metadata),
             prev_msg_hash_key=reply_to,
         )
@@ -72,7 +72,7 @@ class Forum(BaseModel):
         """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
         agent_call = AgentCall(
             content=agent_alias,
-            sender_alias=self._resolve_sender_alias(sender_alias),
+            sender_alias=self.resolve_sender_alias(sender_alias),
             metadata=Freeform(**kwargs),
             prev_msg_hash_key=await request.aget_hash_key(),
         )
@@ -80,8 +80,12 @@ class Forum(BaseModel):
         return StreamedMessage(forum=self, full_message=agent_call)
 
     @staticmethod
-    def _resolve_sender_alias(sender_alias: Optional[str]) -> str:
-        """Resolve the sender alias to use in a message."""
+    def resolve_sender_alias(sender_alias: Optional[str]) -> str:
+        """
+        Resolve the sender alias to use in a message. If sender_alias is not None, it is returned. Otherwise, the
+        current AgentContext is used to get the agent alias, and if there is no current AgentContext, then
+        DEFAULT_AGENT_ALIAS (which translates to "USER") is used.
+        """
         if not sender_alias:
             agent_context = AgentContext.get_current_context()
             if agent_context:
@@ -92,7 +96,9 @@ class Forum(BaseModel):
 class StreamedMessage(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
-    def __init__(self, forum: Forum, full_message: Message = None, reply_to: "StreamedMessage" = None) -> None:
+    def __init__(
+        self, forum: Forum, full_message: Message = None, sender_alias: str = None, reply_to: "StreamedMessage" = None
+    ) -> None:
         if full_message and reply_to:
             raise ValueError("Only one of `full_message` and `reply_to` should be specified")
 
@@ -102,6 +108,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
         )
         self.forum = forum
         self._full_message = full_message
+        self._sender_alias = forum.resolve_sender_alias(sender_alias)
         self._reply_to = reply_to
         self._metadata: Dict[str, Any] = {}
 
@@ -115,6 +122,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
             tokens = await self.aget_all()
             self._full_message = Message(
                 content="".join([token.text for token in tokens]),
+                sender_alias=self._sender_alias,
                 metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
                 prev_msg_hash_key=await self._reply_to.aget_hash_key() if self._reply_to else None,
             )
