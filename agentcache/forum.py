@@ -15,6 +15,8 @@ from agentcache.storage import ImmutableStorage
 from agentcache.typing import IN, AgentFunction
 from agentcache.utils import Broadcastable
 
+DEFAULT_AGENT_ALIAS = "USER"
+
 
 class Forum(BaseModel):
     """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
@@ -29,6 +31,7 @@ class Forum(BaseModel):
     async def anew_message(
         self,
         content: str,
+        sender_alias: Optional[str] = None,
         reply_to: Union["StreamedMessage", Message, str] = None,
         **metadata,
     ) -> "StreamedMessage":
@@ -44,6 +47,7 @@ class Forum(BaseModel):
 
         message = Message(
             content=content,
+            sender_alias=self._resolve_sender_alias(sender_alias),
             metadata=Freeform(**metadata),
             prev_msg_hash_key=reply_to,
         )
@@ -58,15 +62,31 @@ class Forum(BaseModel):
             raise ValueError(f"Expected a Message, got a {type(message)}")
         return StreamedMessage(forum=self, full_message=message)
 
-    async def _anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
+    async def _anew_agent_call(
+        self,
+        agent_alias: str,
+        request: "StreamedMessage",
+        sender_alias: Optional[str] = None,
+        **kwargs,
+    ) -> "StreamedMessage":
         """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
         agent_call = AgentCall(
             content=agent_alias,
+            sender_alias=self._resolve_sender_alias(sender_alias),
             metadata=Freeform(**kwargs),
             prev_msg_hash_key=await request.aget_hash_key(),
         )
         await self.immutable_storage.astore_immutable(agent_call)
         return StreamedMessage(forum=self, full_message=agent_call)
+
+    @staticmethod
+    def _resolve_sender_alias(sender_alias: Optional[str]) -> str:
+        """Resolve the sender alias to use in a message."""
+        if not sender_alias:
+            agent_context = AgentContext.get_current_context()
+            if agent_context:
+                sender_alias = agent_context.agent_alias
+        return sender_alias or DEFAULT_AGENT_ALIAS
 
 
 class StreamedMessage(Broadcastable[IN, Token]):
@@ -186,7 +206,7 @@ class Agent:
 
     async def _acall_agent_func(self, agent_call: StreamedMessage, response: MessageSequence) -> None:
         request = await agent_call.aget_previous_message()
-        with response:
+        with response, AgentContext(agent_alias=self.agent_alias):
             await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
 
 
