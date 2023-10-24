@@ -41,6 +41,24 @@ async def test_two_nested_agents(forum: Forum) -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_api_call_error_recovery(forum: Forum) -> None:
+    # TODO Oleksandr: implement the collaboration itself
+    return
+    await aassert_conversation(
+        None,
+        [
+            ("message", "USER", "set a reminder for me for tomorrow at 10am"),
+            # _assistant forwards the message to _reminder_api (separate conversation thread)
+            ("message", "_reminder_api", "api error: invalid date format"),
+            # _critic is a proxy agent that intercepts error messages and tells _reminder_api what to correct
+            ("message", "_critic", "try swapping the month and day"),
+            ("message", "_reminder_api", "success: reminder set"),
+            # _assistant forwards this last message to the user (in the original conversation thread) as its own
+        ],
+    )
+
+
 async def aassert_conversation(responses: MessageSequence, expected_conversation: List[Tuple[str, str, str]]) -> None:
     """
     Assert that the conversation recorded in the given responses matches the expected conversation. This function
