@@ -34,7 +34,7 @@ def test_immutable_frozen() -> None:
 
 def test_message_frozen() -> None:
     """Test that the `Message` class is frozen."""
-    message = Message(content="test")
+    message = Message(content="test", sender_alias="user")
 
     with pytest.raises(ValidationError):
         message.content = "test2"
@@ -68,18 +68,18 @@ def test_immutable_hash_key() -> None:
 
 def test_message_hash_key() -> None:
     """Test the `Message.hash_key` property."""
-    message = Message(content="test", metadata=Freeform(role="user"))
+    message = Message(content="test", sender_alias="user", metadata=Freeform(role="user"))
     # print(message.model_dump_json())
     expected_hash_key = hashlib.sha256(
-        '{"ac_model_":"message","content":"test","metadata":'
+        '{"ac_model_":"message","content":"test","sender_alias":"user","metadata":'
         '{"ac_model_":"freeform","role":"user"},"prev_msg_hash_key":null}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
-    message = Message(content="test")
+    message = Message(content="test", sender_alias="user")
     # print(message.model_dump_json())
     expected_hash_key = hashlib.sha256(
-        '{"ac_model_":"message","content":"test","metadata":'
+        '{"ac_model_":"message","content":"test","sender_alias":"user","metadata":'
         '{"ac_model_":"freeform"},"prev_msg_hash_key":null}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -96,7 +96,7 @@ def test_nested_object_not_copied() -> None:
 def test_nested_message_freeform_not_copied() -> None:
     """Test that Freeform nested in Message is not copied."""
     metadata = Freeform(role="assistant")
-    message = Message(content="test", metadata=metadata)
+    message = Message(content="test", sender_alias="user", metadata=metadata)
 
     assert message.metadata is metadata
 

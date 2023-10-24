@@ -3,6 +3,9 @@ This module contains wrappers for the models defined in agentcache.models. These
 functionality to the models without modifying the models themselves.
 """
 import asyncio
+import contextvars
+from contextvars import ContextVar
+from functools import wraps
 from typing import Dict, Any, Optional, List, Union
 
 from pydantic import BaseModel, ConfigDict
@@ -12,32 +15,7 @@ from agentcache.storage import ImmutableStorage
 from agentcache.typing import IN, AgentFunction
 from agentcache.utils import Broadcastable
 
-
-class AgentFunctionClass:
-    """A wrapper for an agent function that allows calling the agent."""
-
-    def __init__(self, forum: "Forum", func: AgentFunction) -> None:
-        self._forum = forum
-        self._func = func
-
-    def call(self, request: "StreamedMessage", **kwargs) -> "MessageSequence":
-        """Call the agent."""
-        response = MessageSequence()
-        asyncio.create_task(self._asubmit_agent_call(request, response, **kwargs))
-        return response
-
-    async def _asubmit_agent_call(self, request: "StreamedMessage", response: "MessageSequence", **kwargs) -> None:
-        agent_call = await request.forum.anew_agent_call(
-            agent_alias=self._func.__name__,
-            request=request,
-            **kwargs,
-        )
-        await self._acall_agent_func(agent_call, response)
-
-    async def _acall_agent_func(self, agent_call: "StreamedMessage", response: "MessageSequence") -> None:
-        request = await agent_call.aget_previous_message()
-        with response:
-            await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
+DEFAULT_AGENT_ALIAS = "USER"
 
 
 class Forum(BaseModel):
@@ -46,23 +24,14 @@ class Forum(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     immutable_storage: ImmutableStorage
 
-    def agent(self, func: AgentFunction) -> AgentFunctionClass:
+    def agent(self, func: AgentFunction) -> "Agent":
         """A decorator that registers an agent function in the forum."""
-        return AgentFunctionClass(self, func)
-
-    async def anew_agent_call(self, agent_alias: str, request: "StreamedMessage", **kwargs) -> "StreamedMessage":
-        """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
-        agent_call = AgentCall(
-            content=agent_alias,
-            metadata=Freeform(**kwargs),
-            prev_msg_hash_key=await request.aget_hash_key(),
-        )
-        await self.immutable_storage.astore_immutable(agent_call)
-        return StreamedMessage(forum=self, full_message=agent_call)
+        return wraps(func)(Agent(self, func))
 
     async def anew_message(
         self,
         content: str,
+        sender_alias: Optional[str] = None,
         reply_to: Union["StreamedMessage", Message, str] = None,
         **metadata,
     ) -> "StreamedMessage":
@@ -78,6 +47,7 @@ class Forum(BaseModel):
 
         message = Message(
             content=content,
+            sender_alias=self.resolve_sender_alias(sender_alias),
             metadata=Freeform(**metadata),
             prev_msg_hash_key=reply_to,
         )
@@ -92,11 +62,43 @@ class Forum(BaseModel):
             raise ValueError(f"Expected a Message, got a {type(message)}")
         return StreamedMessage(forum=self, full_message=message)
 
+    async def _anew_agent_call(
+        self,
+        agent_alias: str,
+        request: "StreamedMessage",
+        sender_alias: Optional[str] = None,
+        **kwargs,
+    ) -> "StreamedMessage":
+        """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
+        agent_call = AgentCall(
+            content=agent_alias,
+            sender_alias=self.resolve_sender_alias(sender_alias),
+            metadata=Freeform(**kwargs),
+            prev_msg_hash_key=await request.aget_hash_key(),
+        )
+        await self.immutable_storage.astore_immutable(agent_call)
+        return StreamedMessage(forum=self, full_message=agent_call)
+
+    @staticmethod
+    def resolve_sender_alias(sender_alias: Optional[str]) -> str:
+        """
+        Resolve the sender alias to use in a message. If sender_alias is not None, it is returned. Otherwise, the
+        current AgentContext is used to get the agent alias, and if there is no current AgentContext, then
+        DEFAULT_AGENT_ALIAS (which translates to "USER") is used.
+        """
+        if not sender_alias:
+            agent_context = AgentContext.get_current_context()
+            if agent_context:
+                sender_alias = agent_context.agent_alias
+        return sender_alias or DEFAULT_AGENT_ALIAS
+
 
 class StreamedMessage(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
-    def __init__(self, forum: Forum, full_message: Message = None, reply_to: "StreamedMessage" = None) -> None:
+    def __init__(
+        self, forum: Forum, full_message: Message = None, sender_alias: str = None, reply_to: "StreamedMessage" = None
+    ) -> None:
         if full_message and reply_to:
             raise ValueError("Only one of `full_message` and `reply_to` should be specified")
 
@@ -106,6 +108,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
         )
         self.forum = forum
         self._full_message = full_message
+        self._sender_alias = forum.resolve_sender_alias(sender_alias)
         self._reply_to = reply_to
         self._metadata: Dict[str, Any] = {}
 
@@ -119,6 +122,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
             tokens = await self.aget_all()
             self._full_message = Message(
                 content="".join([token.text for token in tokens]),
+                sender_alias=self._sender_alias,
                 metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
                 prev_msg_hash_key=await self._reply_to.aget_hash_key() if self._reply_to else None,
             )
@@ -183,3 +187,60 @@ class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
             # TODO Oleksandr: introduce a custom exception for this case
             raise ValueError("MessageSequence is empty")
         return None
+
+
+class Agent:
+    """A wrapper for an agent function that allows calling the agent."""
+
+    def __init__(self, forum: Forum, func: AgentFunction) -> None:
+        self._forum = forum
+        self._func = func
+        self.agent_alias = func.__name__
+
+    def call(self, request: StreamedMessage, **kwargs) -> MessageSequence:
+        """Call the agent."""
+        response = MessageSequence()
+        asyncio.create_task(self._asubmit_agent_call(request, response, **kwargs))
+        return response
+
+    async def _asubmit_agent_call(self, request: StreamedMessage, response: MessageSequence, **kwargs) -> None:
+        # noinspection PyProtectedMember
+        agent_call = await request.forum._anew_agent_call(  # pylint: disable=protected-access
+            agent_alias=self.agent_alias,
+            request=request,
+            **kwargs,
+        )
+        await self._acall_agent_func(agent_call, response)
+
+    async def _acall_agent_func(self, agent_call: StreamedMessage, response: MessageSequence) -> None:
+        request = await agent_call.aget_previous_message()
+        with response, AgentContext(agent_alias=self.agent_alias):
+            await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
+
+
+class AgentContext:
+    """
+    A context within which an agent is called. This is needed for things like looking up a sender alias for a message
+    that is being created by the agent, so it can be populated in the message automatically (and other similar things).
+    """
+
+    _current_context: ContextVar[Optional["AgentContext"]] = ContextVar("_current_context", default=None)
+
+    def __init__(self, agent_alias: str):
+        self.agent_alias = agent_alias
+        self._previous_ctx_token: Optional[contextvars.Token] = None
+
+    @classmethod
+    def get_current_context(cls) -> Optional["AgentContext"]:
+        """Get the current AgentContext object."""
+        return cls._current_context.get()
+
+    def __enter__(self) -> "AgentContext":
+        """Set this context as the current context."""
+        self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Restore the context that was current before this one."""
+        self._current_context.reset(self._previous_ctx_token)
+        self._previous_ctx_token = None

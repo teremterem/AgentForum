@@ -85,7 +85,7 @@ class Message(Immutable):
 
     ac_model_: Literal["message"] = "message"
     content: str
-    # TODO Oleksandr: support `sender_alias: str`
+    sender_alias: str
     metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
 
