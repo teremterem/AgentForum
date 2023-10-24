@@ -44,7 +44,6 @@ async def test_two_nested_agents(forum: Forum) -> None:
 @pytest.mark.asyncio
 async def test_api_call_error_recovery(forum: Forum) -> None:
     # TODO Oleksandr: implement the collaboration itself
-    return
     await aassert_conversation(
         None,
         [
