@@ -3,6 +3,8 @@ This module contains wrappers for the models defined in agentcache.models. These
 functionality to the models without modifying the models themselves.
 """
 import asyncio
+import contextvars
+from contextvars import ContextVar
 from functools import wraps
 from typing import Dict, Any, Optional, List, Union
 
@@ -165,6 +167,7 @@ class Agent:
     def __init__(self, forum: Forum, func: AgentFunction) -> None:
         self._forum = forum
         self._func = func
+        self.agent_alias = func.__name__
 
     def call(self, request: StreamedMessage, **kwargs) -> MessageSequence:
         """Call the agent."""
@@ -175,7 +178,7 @@ class Agent:
     async def _asubmit_agent_call(self, request: StreamedMessage, response: MessageSequence, **kwargs) -> None:
         # noinspection PyProtectedMember
         agent_call = await request.forum._anew_agent_call(  # pylint: disable=protected-access
-            agent_alias=self._func.__name__,
+            agent_alias=self.agent_alias,
             request=request,
             **kwargs,
         )
@@ -185,3 +188,31 @@ class Agent:
         request = await agent_call.aget_previous_message()
         with response:
             await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
+
+
+class AgentContext:
+    """
+    A context within which an agent is called. This is needed for things like looking up a sender alias for a message
+    that is being created by the agent, so it can be populated in the message automatically (and other similar things).
+    """
+
+    _current_context: ContextVar[Optional["AgentContext"]] = ContextVar("_current_context", default=None)
+
+    def __init__(self, agent_alias: str):
+        self.agent_alias = agent_alias
+        self._previous_ctx_token: Optional[contextvars.Token] = None
+
+    @classmethod
+    def get_current_context(cls) -> Optional["AgentContext"]:
+        """Get the current AgentContext object."""
+        return cls._current_context.get()
+
+    def __enter__(self) -> "AgentContext":
+        """Set this context as the current context."""
+        self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Restore the context that was current before this one."""
+        self._current_context.reset(self._previous_ctx_token)
+        self._previous_ctx_token = None
