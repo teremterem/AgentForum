@@ -101,6 +101,8 @@ class StreamedMessage(Broadcastable[IN, Token]):
     ) -> None:
         if full_message and reply_to:
             raise ValueError("Only one of `full_message` and `reply_to` should be specified")
+        if full_message and sender_alias:
+            raise ValueError("Only one of `full_message` and `sender_alias` should be specified")
 
         super().__init__(
             items_so_far=[Token(text=full_message.content)] if full_message else None,
@@ -132,6 +134,11 @@ class StreamedMessage(Broadcastable[IN, Token]):
     async def aget_content(self) -> str:
         """Get the content of the full message."""
         return (await self.aget_full_message()).content
+
+    @property
+    def sender_alias(self) -> str:
+        """Get the sender alias of the full message."""
+        return self._full_message.sender_alias if self._full_message else self._sender_alias
 
     async def aget_metadata(self) -> Freeform:
         """Get the metadata of the full message."""
@@ -177,6 +184,9 @@ class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
     Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
     sequence is independent of the speed at which consumers iterate over them.
     """
+
+    # TODO Oleksandr: throw an error if the sequence is being iterated over within the same agent that is producing it
+    #  to prevent deadlocks
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[StreamedMessage]:
         """Get the last message in the sequence."""
