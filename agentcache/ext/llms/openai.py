@@ -3,26 +3,26 @@ import asyncio
 from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
-from agentcache.forum import StreamedMessage, Forum
+from agentcache.forum import MessagePromise, Forum
 from agentcache.models import Token, Message
 from agentcache.utils import Sentinel
 
 
 async def aopenai_chat_completion(
     forum: Forum,
-    prompt: List[Union[StreamedMessage, Message]],  # TODO Oleksandr: support more variants ?
-    reply_to: Optional[StreamedMessage] = None,
+    prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
+    reply_to: Optional[MessagePromise] = None,
     stream: bool = False,
     n: int = 1,
     **kwargs,
-) -> StreamedMessage:
+) -> MessagePromise:
     """Chat with OpenAI models. Returns a message or a stream of tokens."""
     import openai  # pylint: disable=import-outside-toplevel
 
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
 
-    messages = [await msg.aget_full_message() if isinstance(msg, StreamedMessage) else msg for msg in prompt]
+    messages = [await msg.aget_full_message() if isinstance(msg, MessagePromise) else msg for msg in prompt]
     # pprint(messages)
     # print("\n")
     message_dicts = [
@@ -61,7 +61,7 @@ async def aopenai_chat_completion(
     )
 
 
-class _OpenAIStreamedMessage(StreamedMessage[Dict[str, Any]]):
+class _OpenAIStreamedMessage(MessagePromise[Dict[str, Any]]):
     """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
     def __init__(self, *args, **kwargs):

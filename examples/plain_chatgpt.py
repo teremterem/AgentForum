@@ -8,14 +8,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from agentcache.ext.llms.openai import aopenai_chat_completion
-from agentcache.forum import StreamedMessage, Forum, MessageSequence
+from agentcache.forum import MessagePromise, Forum, MessageSequence
 from agentcache.storage import InMemoryStorage
 
 forum = Forum(immutable_storage=InMemoryStorage())
 
 
 @forum.agent
-async def first_openai_agent(request: StreamedMessage, responses: MessageSequence, **kwargs) -> None:
+async def first_openai_agent(request: MessagePromise, responses: MessageSequence, **kwargs) -> None:
     """The first agent that uses OpenAI ChatGPT. It sends the full chat history to the OpenAI API."""
     full_chat = await request.aget_full_chat()
     # print()
@@ -35,7 +35,7 @@ async def first_openai_agent(request: StreamedMessage, responses: MessageSequenc
 
 
 @forum.agent
-async def user_proxy_agent(request: StreamedMessage, response: MessageSequence) -> None:
+async def user_proxy_agent(request: MessagePromise, response: MessageSequence) -> None:
     """An agent that acts as a proxy between the user and other agents."""
     print("\nGPT: ", end="", flush=True)
     async for token in request:
@@ -49,7 +49,7 @@ async def user_proxy_agent(request: StreamedMessage, response: MessageSequence) 
 
 async def main() -> None:
     """The chat loop."""
-    latest_message: Optional[StreamedMessage] = await forum.anew_message(
+    latest_message: Optional[MessagePromise] = await forum.anew_message(
         content="Hi, how are you doing?",
         sender_alias=first_openai_agent.agent_alias,
         openai_role="assistant",
@@ -60,7 +60,6 @@ async def main() -> None:
             latest_message = await user_responses.aget_concluding_message()
 
             assistant_responses = first_openai_agent.call(
-                # TODO Oleksandr: move the call to forum.anew_message inside the agent_func.call() method
                 latest_message,
                 model="gpt-3.5-turbo-0613",
                 # model="gpt-4-0613",

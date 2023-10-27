@@ -33,13 +33,13 @@ class Forum(BaseModel):
         self,
         content: str,
         sender_alias: Optional[str] = None,
-        reply_to: Union["StreamedMessage", Message, str] = None,
+        reply_to: Union["MessagePromise", Message, str] = None,
         **metadata,
-    ) -> "StreamedMessage":
+    ) -> "MessagePromise":
         """
-        Create a StreamedMessage object that represents a message and store the underlying Message in ImmutableStorage.
+        Create a MessagePromise object that represents a message and store the underlying Message in ImmutableStorage.
         """
-        if isinstance(reply_to, StreamedMessage):
+        if isinstance(reply_to, MessagePromise):
             reply_to = await reply_to.aget_hash_key()
         elif isinstance(reply_to, Message):
             reply_to = reply_to.hash_key
@@ -53,24 +53,24 @@ class Forum(BaseModel):
             prev_msg_hash_key=reply_to,
         )
         await self.immutable_storage.astore_immutable(message)
-        return StreamedMessage(forum=self, full_message=message)
+        return MessagePromise(forum=self, full_message=message)
 
-    async def afind_message(self, hash_key: str) -> "StreamedMessage":
+    async def afind_message(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
         message = await self.immutable_storage.aretrieve_immutable(hash_key)
         if not isinstance(message, Message):
             # TODO Oleksandr: introduce a custom exception for this case ?
             raise ValueError(f"Expected a Message, got a {type(message)}")
-        return StreamedMessage(forum=self, full_message=message)
+        return MessagePromise(forum=self, full_message=message)
 
     async def _anew_agent_call(
         self,
         agent_alias: str,
-        request: "StreamedMessage",
+        request: "MessagePromise",
         sender_alias: Optional[str] = None,
         **kwargs,
-    ) -> "StreamedMessage":
-        """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
+    ) -> "MessagePromise":
+        """Create a MessagePromise object that represents a call to an agent (AgentCall)."""
         agent_call = AgentCall(
             content=agent_alias,
             sender_alias=self.resolve_sender_alias(sender_alias),
@@ -78,7 +78,7 @@ class Forum(BaseModel):
             prev_msg_hash_key=await request.aget_hash_key(),
         )
         await self.immutable_storage.astore_immutable(agent_call)
-        return StreamedMessage(forum=self, full_message=agent_call)
+        return MessagePromise(forum=self, full_message=agent_call)
 
     @staticmethod
     def resolve_sender_alias(sender_alias: Optional[str]) -> str:
@@ -94,11 +94,11 @@ class Forum(BaseModel):
         return sender_alias or DEFAULT_AGENT_ALIAS
 
 
-class StreamedMessage(Broadcastable[IN, Token]):  # TODO Oleksandr: rename this to MessagePromise
+class MessagePromise(Broadcastable[IN, Token]):  # TODO Oleksandr: are you sure about `IN` ?
     """A message that is streamed token by token instead of being returned all at once."""
 
     def __init__(
-        self, forum: Forum, full_message: Message = None, sender_alias: str = None, reply_to: "StreamedMessage" = None
+        self, forum: Forum, full_message: Message = None, sender_alias: str = None, reply_to: "MessagePromise" = None
     ) -> None:
         if full_message and reply_to:
             raise ValueError("Only one of `full_message` and `reply_to` should be specified")
@@ -149,7 +149,7 @@ class StreamedMessage(Broadcastable[IN, Token]):  # TODO Oleksandr: rename this 
         """Get the hash key of the full message."""
         return (await self.aget_full_message()).hash_key
 
-    async def aget_previous_message(self) -> Optional["StreamedMessage"]:
+    async def aget_previous_message(self) -> Optional["MessagePromise"]:
         """Get the previous message in the conversation."""
         full_message = await self.aget_full_message()
         if not full_message.prev_msg_hash_key:
@@ -165,10 +165,10 @@ class StreamedMessage(Broadcastable[IN, Token]):  # TODO Oleksandr: rename this 
                 prev_msg_hash_key = prev_msg.request_hash_key
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit,PyTypeChecker
-            self._prev_msg = StreamedMessage(forum=self.forum, full_message=prev_msg)
+            self._prev_msg = MessagePromise(forum=self.forum, full_message=prev_msg)
         return self._prev_msg
 
-    async def aget_full_chat(self) -> List["StreamedMessage"]:
+    async def aget_full_chat(self) -> List["MessagePromise"]:
         """Get the full chat history for this message (including this message)."""
         # TODO Oleksandr: introduce a limit on the number of messages to fetch
         msg = self
@@ -179,7 +179,7 @@ class StreamedMessage(Broadcastable[IN, Token]):  # TODO Oleksandr: rename this 
         return result
 
 
-class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
+class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
@@ -189,7 +189,7 @@ class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
     # TODO Oleksandr: throw an error if the sequence is being iterated over within the same agent that is producing it
     #  to prevent deadlocks
 
-    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[StreamedMessage]:
+    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[MessagePromise]:
         """Get the last message in the sequence."""
         messages = await self.aget_all()
         if messages:
@@ -208,25 +208,25 @@ class Agent:
         self._func = func
         self.agent_alias = func.__name__
 
-    def call(self, request: StreamedMessage, **kwargs) -> MessageSequence:
+    def call(self, request: MessagePromise, **kwargs) -> MessageSequence:
         """Call the agent."""
         response = MessageSequence()
         asyncio.create_task(self._asubmit_agent_call(request, response, **kwargs))
         return response
 
-    async def _asubmit_agent_call(self, request: StreamedMessage, response: MessageSequence, **kwargs) -> None:
+    async def _asubmit_agent_call(self, request: MessagePromise, responses: MessageSequence, **kwargs) -> None:
         # noinspection PyProtectedMember
         agent_call = await request.forum._anew_agent_call(  # pylint: disable=protected-access
             agent_alias=self.agent_alias,
             request=request,
             **kwargs,
         )
-        await self._acall_agent_func(agent_call, response)
+        await self._acall_agent_func(agent_call, responses)
 
-    async def _acall_agent_func(self, agent_call: StreamedMessage, response: MessageSequence) -> None:
+    async def _acall_agent_func(self, agent_call: MessagePromise, responses: MessageSequence) -> None:
         request = await agent_call.aget_previous_message()
-        with response, AgentContext(agent_alias=self.agent_alias):
-            await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
+        with responses, AgentContext(agent_alias=self.agent_alias):
+            await self._func(request, responses, **(await agent_call.aget_metadata()).as_kwargs)
 
 
 class AgentContext:

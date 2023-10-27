@@ -15,7 +15,7 @@ possibility for an Agent to have memory that is not implemented as plain chat hi
 - Messages are represented as immutable objects.
 
 ### 💡 Some more philosophy
-- The user of the framework can pass either StreamedMessage or Message, but they should always receive StreamedMessage
+- The user of the framework can pass either MessagePromise or Message, but they should always receive MessagePromise
   back.
 
 ## 🔧 Implementation details

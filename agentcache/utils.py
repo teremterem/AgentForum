@@ -95,7 +95,7 @@ class Broadcastable(Generic[IN, OUT]):
         if item is END_OF_QUEUE:
             self.send_closed = True
             self._queue = None
-            # TODO Oleksandr: at this point full Message should be built and stored (StreamedMessage subclass)
+            # TODO Oleksandr: at this point full Message should be built and stored (MessagePromise subclass)
             raise StopAsyncIteration
 
         self.items_so_far.append(item)

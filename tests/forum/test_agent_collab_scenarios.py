@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 
 import pytest
 
-from agentcache.forum import Forum, StreamedMessage, MessageSequence
+from agentcache.forum import Forum, MessagePromise, MessageSequence
 
 
 @pytest.mark.asyncio
@@ -19,7 +19,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _assistant(request: StreamedMessage, responses: MessageSequence) -> None:
+    async def _assistant(request: MessagePromise, responses: MessageSequence) -> None:
         api_response = await _reminder_api.call(request=request).aget_concluding_message()
         if (await api_response.aget_content()).startswith("api error:"):
             # TODO Oleksandr: implement actual ErrorMessage class
@@ -40,14 +40,14 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         responses.send(response)
 
     @forum.agent
-    async def _reminder_api(request: StreamedMessage, responses: MessageSequence) -> None:
+    async def _reminder_api(request: MessagePromise, responses: MessageSequence) -> None:
         if request.sender_alias == "_critic":
             responses.send(await forum.anew_message("success: reminder set", reply_to=request))
         else:
             responses.send(await forum.anew_message("api error: invalid date format", reply_to=request))
 
     @forum.agent
-    async def _critic(request: StreamedMessage, responses: MessageSequence) -> None:
+    async def _critic(request: MessagePromise, responses: MessageSequence) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
         responses.send(await forum.anew_message("try swapping the month and day", reply_to=request))
 
@@ -70,7 +70,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _agent1(request: StreamedMessage, responses: MessageSequence) -> None:
+    async def _agent1(request: MessagePromise, responses: MessageSequence) -> None:
         responses2 = _agent2.call(request=request)
         async for msg in responses2:
             responses.send(msg)
@@ -79,7 +79,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         )
 
     @forum.agent
-    async def _agent2(request: StreamedMessage, responses: MessageSequence) -> None:
+    async def _agent2(request: MessagePromise, responses: MessageSequence) -> None:
         msg1 = await forum.anew_message("agent2 says hello", reply_to=request)
         responses.send(msg1)
         responses.send(await forum.anew_message("agent2 says hello again", reply_to=msg1))
@@ -98,13 +98,13 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
 
 async def aassert_conversation(
-    response: Union[StreamedMessage, MessageSequence], expected_conversation: List[Tuple[str, str, str]]
+    response: Union[MessagePromise, MessageSequence], expected_conversation: List[Tuple[str, str, str]]
 ) -> None:
     """
     Assert that the conversation recorded in the given responses matches the expected conversation. This function
     tests the full chat history, including messages that preceded the current `responses` MessageSequence.
     """
-    concluding_msg = response if isinstance(response, StreamedMessage) else await response.aget_concluding_message()
+    concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
     actual_conversation = [
         (msg.ac_model_, msg.sender_alias, msg.content)
         for msg in [await streamed_msg.aget_full_message() for streamed_msg in await concluding_msg.aget_full_chat()]
