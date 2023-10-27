@@ -107,6 +107,6 @@ async def aassert_conversation(
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
     actual_conversation = [
         (msg.ac_model_, msg.sender_alias, msg.content)
-        for msg in [await streamed_msg.aget_full_message() for streamed_msg in await concluding_msg.aget_full_chat()]
+        for msg in [await msg_promise.amaterialize() for msg_promise in await concluding_msg.aget_full_chat()]
     ]
     assert actual_conversation == expected_conversation

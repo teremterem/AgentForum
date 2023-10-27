@@ -115,7 +115,7 @@ class MessagePromise(Broadcastable[IN, Token]):
         self._reply_to = reply_to
         self._metadata: Dict[str, Any] = {}
 
-    async def aget_full_message(self) -> Message:  # TODO Oleksandr: rename to amaterialize
+    async def amaterialize(self) -> Message:
         """
         Get the full message. This method will "await" until all the tokens are received and then return the complete
         message.
@@ -134,7 +134,7 @@ class MessagePromise(Broadcastable[IN, Token]):
 
     async def aget_content(self) -> str:
         """Get the content of the full message."""
-        return (await self.aget_full_message()).content
+        return (await self.amaterialize()).content
 
     @property
     def sender_alias(self) -> str:
@@ -143,15 +143,15 @@ class MessagePromise(Broadcastable[IN, Token]):
 
     async def aget_metadata(self) -> Freeform:
         """Get the metadata of the full message."""
-        return (await self.aget_full_message()).metadata
+        return (await self.amaterialize()).metadata
 
     async def aget_hash_key(self) -> str:
         """Get the hash key of the full message."""
-        return (await self.aget_full_message()).hash_key
+        return (await self.amaterialize()).hash_key
 
     async def aget_previous_message(self) -> Optional["MessagePromise"]:
         """Get the previous message in the conversation."""
-        full_message = await self.aget_full_message()
+        full_message = await self.amaterialize()
         if not full_message.prev_msg_hash_key:
             return None
 

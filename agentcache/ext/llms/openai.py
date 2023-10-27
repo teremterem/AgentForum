@@ -22,7 +22,7 @@ async def aopenai_chat_completion(
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
 
-    messages = [await msg.aget_full_message() if isinstance(msg, MessagePromise) else msg for msg in prompt]
+    messages = [await msg.amaterialize() if isinstance(msg, MessagePromise) else msg for msg in prompt]
     message_dicts = [
         {
             "role": getattr(msg.metadata, "openai_role", "user"),
