@@ -94,7 +94,7 @@ class Forum(BaseModel):
         return sender_alias or DEFAULT_AGENT_ALIAS
 
 
-class MessagePromise(Broadcastable[IN, Token]):  # TODO Oleksandr: are you sure about `IN` ?
+class MessagePromise(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
     def __init__(
