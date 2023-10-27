@@ -128,7 +128,7 @@ class MessagePromise(Broadcastable[IN, Token]):
                 content="".join([token.text for token in tokens]),
                 sender_alias=self._sender_alias,
                 metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
-                prev_msg_hash_key=await self._reply_to.aget_hash_key() if self._reply_to else None,
+                prev_msg_hash_key=(await self._reply_to.amaterialize()).hash_key if self._reply_to else None,
             )
             await self.forum.immutable_storage.astore_immutable(self._full_message)
         return self._full_message
