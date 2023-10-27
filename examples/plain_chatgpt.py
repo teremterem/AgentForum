@@ -5,8 +5,6 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-from agentcache.models import Freeform
-
 load_dotenv()
 
 from agentcache.ext.llms.openai import aopenai_chat_completion
@@ -20,14 +18,20 @@ forum = Forum(immutable_storage=InMemoryStorage())
 async def first_openai_agent(request: StreamedMessage, responses: MessageSequence, **kwargs) -> None:
     """The first agent that uses OpenAI ChatGPT. It sends the full chat history to the OpenAI API."""
     full_chat = await request.aget_full_chat()
+    # print()
+    # pprint([(await m.aget_full_message()).model_dump() for m in full_chat])
+    # print()
+
     # TODO Oleksandr: try "slipping" PromptLayer in
     first_response = await aopenai_chat_completion(
         forum=request.forum, prompt=full_chat, reply_to=full_chat[-1], **kwargs
     )
     responses.send(first_response)
-    # responses.send(
-    #     await aopenai_chat_completion(forum=request.forum, prompt=full_chat, reply_to=first_response, **kwargs)
+
+    # second_response = await aopenai_chat_completion(
+    #     forum=request.forum, prompt=full_chat, reply_to=first_response, **kwargs
     # )
+    # responses.send(second_response)
 
 
 @forum.agent
@@ -48,7 +52,7 @@ async def main() -> None:
     latest_message: Optional[StreamedMessage] = await forum.anew_message(
         content="Hi, how are you doing?",
         sender_alias=first_openai_agent.agent_alias,
-        metadata=Freeform(openai_role="assistant"),
+        openai_role="assistant",
     )
     try:
         while True:
@@ -59,6 +63,7 @@ async def main() -> None:
                 # TODO Oleksandr: move the call to forum.anew_message inside the agent_func.call() method
                 latest_message,
                 model="gpt-3.5-turbo-0613",
+                # model="gpt-4-0613",
                 stream=True,
             )
             latest_message = await assistant_responses.aget_concluding_message()
