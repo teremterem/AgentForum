@@ -40,7 +40,8 @@ class Forum(BaseModel):
         Create a MessagePromise object that represents a message and store the underlying Message in ImmutableStorage.
         """
         if isinstance(reply_to, MessagePromise):
-            reply_to = await reply_to.aget_hash_key()
+            # TODO Oleksandr: find a way to avoid "materializing" the message at this point
+            reply_to = (await reply_to.amaterialize()).hash_key
         elif isinstance(reply_to, Message):
             reply_to = reply_to.hash_key
         # if reply_to is a string, we assume it's already a hash key
@@ -75,7 +76,7 @@ class Forum(BaseModel):
             content=agent_alias,
             sender_alias=self.resolve_sender_alias(sender_alias),
             metadata=Freeform(**kwargs),
-            prev_msg_hash_key=await request.aget_hash_key(),
+            prev_msg_hash_key=(await request.amaterialize()).hash_key,
         )
         await self.immutable_storage.astore_immutable(agent_call)
         return MessagePromise(forum=self, full_message=agent_call)
@@ -131,23 +132,6 @@ class MessagePromise(Broadcastable[IN, Token]):
             )
             await self.forum.immutable_storage.astore_immutable(self._full_message)
         return self._full_message
-
-    async def aget_content(self) -> str:
-        """Get the content of the full message."""
-        return (await self.amaterialize()).content
-
-    @property
-    def sender_alias(self) -> str:
-        """Get the sender alias of the full message."""
-        return self._full_message.sender_alias if self._full_message else self._sender_alias
-
-    async def aget_metadata(self) -> Freeform:
-        """Get the metadata of the full message."""
-        return (await self.amaterialize()).metadata
-
-    async def aget_hash_key(self) -> str:
-        """Get the hash key of the full message."""
-        return (await self.amaterialize()).hash_key
 
     async def aget_previous_message(self) -> Optional["MessagePromise"]:
         """Get the previous message in the conversation."""
@@ -231,7 +215,8 @@ class Agent:
     async def _acall_agent_func(self, agent_call: MessagePromise, responses: MessageSequence) -> None:
         request = await agent_call.aget_previous_message()
         with AgentContext(agent_alias=self.agent_alias):
-            await self._func(request, responses, **(await agent_call.aget_metadata()).as_kwargs)
+            # TODO Oleksandr: find a way to avoid "materializing" AgentCall message for the sake of metadata
+            await self._func(request, responses, **(await agent_call.amaterialize()).metadata.as_kwargs)
 
 
 class AgentContext:

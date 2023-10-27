@@ -21,7 +21,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     @forum.agent
     async def _assistant(request: MessagePromise, responses: MessageSequence) -> None:
         api_response = await _reminder_api.call(request=request).aget_concluding_message()
-        if (await api_response.aget_content()).startswith("api error:"):
+        if (await api_response.amaterialize()).content.startswith("api error:"):
             # TODO Oleksandr: implement actual ErrorMessage class
             correction = await _critic.call(request=api_response).aget_concluding_message()
             api_response = await _reminder_api.call(request=correction).aget_concluding_message()
@@ -36,12 +36,12 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             ],
         )
 
-        response = await forum.anew_message(await api_response.aget_content(), reply_to=request)
+        response = await forum.anew_message((await api_response.amaterialize()).content, reply_to=request)
         responses.send(response)
 
     @forum.agent
     async def _reminder_api(request: MessagePromise, responses: MessageSequence) -> None:
-        if request.sender_alias == "_critic":
+        if (await request.amaterialize()).sender_alias == "_critic":
             responses.send(await forum.anew_message("success: reminder set", reply_to=request))
         else:
             responses.send(await forum.anew_message("api error: invalid date format", reply_to=request))
