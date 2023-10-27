@@ -215,17 +215,22 @@ class Agent:
         return response
 
     async def _asubmit_agent_call(self, request: MessagePromise, responses: MessageSequence, **kwargs) -> None:
-        # noinspection PyProtectedMember
-        agent_call = await request.forum._anew_agent_call(  # pylint: disable=protected-access
-            agent_alias=self.agent_alias,
-            request=request,
-            **kwargs,
-        )
-        await self._acall_agent_func(agent_call, responses)
+        with responses:
+            try:
+                # noinspection PyProtectedMember
+                agent_call = await request.forum._anew_agent_call(  # pylint: disable=protected-access
+                    agent_alias=self.agent_alias,
+                    request=request,
+                    **kwargs,
+                )
+                await self._acall_agent_func(agent_call, responses)
+            except BaseException as exc:  # pylint: disable=broad-exception-caught
+                # catch all exceptions, including KeyboardInterrupt
+                responses.send(exc)  # TODO Oleksandr: introduce ErrorMessage
 
     async def _acall_agent_func(self, agent_call: MessagePromise, responses: MessageSequence) -> None:
         request = await agent_call.aget_previous_message()
-        with responses, AgentContext(agent_alias=self.agent_alias):
+        with AgentContext(agent_alias=self.agent_alias):
             await self._func(request, responses, **(await agent_call.aget_metadata()).as_kwargs)
 
 

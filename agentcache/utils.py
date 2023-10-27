@@ -103,6 +103,10 @@ class Broadcastable(Generic[IN, OUT]):
 
     async def _aget_and_convert_item(self) -> Union[OUT, Sentinel]:
         item = await self._aget_item_from_queue()
+        if isinstance(item, BaseException):
+            # TODO Oleksandr: expect ErrorMessage instead
+            # TODO Oleksandr: define this in the subclass instead
+            raise item
         if not isinstance(item, Sentinel):
             item = self._convert_item(item)
         return item
