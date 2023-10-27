@@ -26,6 +26,7 @@ class Forum(BaseModel):
 
     def agent(self, func: AgentFunction) -> "Agent":
         """A decorator that registers an agent function in the forum."""
+        # TODO Oleksandr: are you sure about `wraps` ? Agents don't implement `__call__`
         return wraps(func)(Agent(self, func))
 
     async def anew_message(
@@ -93,7 +94,7 @@ class Forum(BaseModel):
         return sender_alias or DEFAULT_AGENT_ALIAS
 
 
-class StreamedMessage(Broadcastable[IN, Token]):
+class StreamedMessage(Broadcastable[IN, Token]):  # TODO Oleksandr: rename this to MessagePromise
     """A message that is streamed token by token instead of being returned all at once."""
 
     def __init__(
@@ -114,7 +115,7 @@ class StreamedMessage(Broadcastable[IN, Token]):
         self._reply_to = reply_to
         self._metadata: Dict[str, Any] = {}
 
-    async def aget_full_message(self) -> Message:
+    async def aget_full_message(self) -> Message:  # TODO Oleksandr: rename to amaterialize
         """
         Get the full message. This method will "await" until all the tokens are received and then return the complete
         message.
@@ -247,6 +248,8 @@ class AgentContext:
 
     def __enter__(self) -> "AgentContext":
         """Set this context as the current context."""
+        if self._previous_ctx_token:
+            raise RuntimeError("AgentContext is not reentrant")
         self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
         return self
 
