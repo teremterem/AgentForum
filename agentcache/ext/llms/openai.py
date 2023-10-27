@@ -33,17 +33,17 @@ async def aopenai_chat_completion(
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
-        streamed_message = _OpenAIStreamedMessage(forum=forum, reply_to=reply_to)
+        message_promise = _OpenAIStreamedMessage(forum=forum, reply_to=reply_to)
 
         async def _send_tokens() -> None:
             # TODO Oleksandr: what if an exception occurs in this coroutine ?
             #  how to convert it into an ErrorMessage at this point ?
-            with streamed_message:
+            with message_promise:
                 async for token_raw in response:
-                    streamed_message.send(token_raw)
+                    message_promise.send(token_raw)
 
         asyncio.create_task(_send_tokens())
-        return streamed_message
+        return message_promise
 
     # TODO Oleksandr: cover this case with a unit test ?
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
