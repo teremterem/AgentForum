@@ -23,8 +23,6 @@ async def aopenai_chat_completion(
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
 
     messages = [await msg.aget_full_message() if isinstance(msg, MessagePromise) else msg for msg in prompt]
-    # pprint(messages)
-    # print("\n")
     message_dicts = [
         {
             "role": getattr(msg.metadata, "openai_role", "user"),
@@ -32,8 +30,6 @@ async def aopenai_chat_completion(
         }
         for msg in messages
     ]
-    # pprint(message_dicts)
-    # print("\n")
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
@@ -49,8 +45,6 @@ async def aopenai_chat_completion(
         asyncio.create_task(_send_tokens())
         return streamed_message
 
-    # pprint(response)
-    # print()
     # TODO Oleksandr: cover this case with a unit test ?
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
     return await forum.anew_message(
@@ -75,8 +69,6 @@ class _OpenAIStreamedMessage(MessagePromise[Dict[str, Any]]):
                 # if Sentinel, return it immediately
                 return token_raw
 
-            # pprint(token_raw)
-            # print()
             self._tokens_raw.append(token_raw)
             # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built
             self._metadata.update({k: v for k, v in _build_openai_metadata_dict(token_raw).items() if v is not None})

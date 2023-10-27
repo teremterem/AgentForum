@@ -18,9 +18,6 @@ forum = Forum(immutable_storage=InMemoryStorage())
 async def first_openai_agent(request: MessagePromise, responses: MessageSequence, **kwargs) -> None:
     """The first agent that uses OpenAI ChatGPT. It sends the full chat history to the OpenAI API."""
     full_chat = await request.aget_full_chat()
-    # print()
-    # pprint([(await m.aget_full_message()).model_dump() for m in full_chat])
-    # print()
 
     # TODO Oleksandr: try "slipping" PromptLayer in
     first_response = await aopenai_chat_completion(
