@@ -52,7 +52,7 @@ class Forum(BaseModel):
             prev_msg_hash_key=reply_to,
         )
         await self.immutable_storage.astore_immutable(message)
-        return MessagePromise(forum=self, full_message=message)
+        return MessagePromise(forum=self, materialized_msg=message)
 
     async def afind_message(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
@@ -60,7 +60,7 @@ class Forum(BaseModel):
         if not isinstance(message, Message):
             # TODO Oleksandr: introduce a custom exception for this case ?
             raise ValueError(f"Expected a Message, got a {type(message)}")
-        return MessagePromise(forum=self, full_message=message)
+        return MessagePromise(forum=self, materialized_msg=message)
 
     async def _anew_agent_call(
         self,
@@ -77,7 +77,7 @@ class Forum(BaseModel):
             prev_msg_hash_key=(await request.amaterialize()).hash_key,
         )
         await self.immutable_storage.astore_immutable(agent_call)
-        return MessagePromise(forum=self, full_message=agent_call)
+        return MessagePromise(forum=self, materialized_msg=agent_call)
 
     @staticmethod
     def resolve_sender_alias(sender_alias: Optional[str]) -> str:
@@ -97,19 +97,23 @@ class MessagePromise(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
     def __init__(
-        self, forum: Forum, full_message: Message = None, sender_alias: str = None, reply_to: "MessagePromise" = None
+        self,
+        forum: Forum,
+        materialized_msg: Message = None,
+        sender_alias: str = None,
+        reply_to: "MessagePromise" = None,
     ) -> None:
-        if full_message and reply_to:
-            raise ValueError("Only one of `full_message` and `reply_to` should be specified")
-        if full_message and sender_alias:
-            raise ValueError("Only one of `full_message` and `sender_alias` should be specified")
+        if materialized_msg and reply_to:
+            raise ValueError("Only one of `materialized_msg` and `reply_to` should be specified")
+        if materialized_msg and sender_alias:
+            raise ValueError("Only one of `materialized_msg` and `sender_alias` should be specified")
 
         super().__init__(
-            items_so_far=[Token(text=full_message.content)] if full_message else None,
-            completed=bool(full_message),
+            items_so_far=[Token(text=materialized_msg.content)] if materialized_msg else None,
+            completed=bool(materialized_msg),
         )
         self.forum = forum
-        self._full_message = full_message
+        self._materialized_msg = materialized_msg
         self._sender_alias = forum.resolve_sender_alias(sender_alias)
         self._reply_to = reply_to
         self._metadata: Dict[str, Any] = {}
@@ -119,26 +123,26 @@ class MessagePromise(Broadcastable[IN, Token]):
         Get the full message. This method will "await" until all the tokens are received and then return the complete
         message.
         """
-        if not self._full_message:
+        if not self._materialized_msg:
             tokens = await self.aget_all()
-            self._full_message = Message(
+            self._materialized_msg = Message(
                 content="".join([token.text for token in tokens]),
                 sender_alias=self._sender_alias,
                 metadata=Freeform(**self._metadata),
                 prev_msg_hash_key=(await self._reply_to.amaterialize()).hash_key if self._reply_to else None,
             )
-            await self.forum.immutable_storage.astore_immutable(self._full_message)
-        return self._full_message
+            await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
+        return self._materialized_msg
 
     async def aget_previous_message(self) -> Optional["MessagePromise"]:
         """Get the previous message in the conversation."""
-        full_message = await self.amaterialize()
-        if not full_message.prev_msg_hash_key:
+        materialized_msg = await self.amaterialize()
+        if not materialized_msg.prev_msg_hash_key:
             return None
 
         if not hasattr(self, "_prev_msg"):
             # TODO Oleksandr: offload most of this logic to the Forum class ?
-            prev_msg_hash_key = full_message.prev_msg_hash_key
+            prev_msg_hash_key = materialized_msg.prev_msg_hash_key
             while isinstance(
                 prev_msg := await self.forum.immutable_storage.aretrieve_immutable(prev_msg_hash_key), AgentCall
             ):
@@ -146,7 +150,7 @@ class MessagePromise(Broadcastable[IN, Token]):
                 prev_msg_hash_key = prev_msg.request_hash_key
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit,PyTypeChecker
-            self._prev_msg = MessagePromise(forum=self.forum, full_message=prev_msg)
+            self._prev_msg = MessagePromise(forum=self.forum, materialized_msg=prev_msg)
         return self._prev_msg
 
     async def aget_full_chat(self) -> List["MessagePromise"]:
