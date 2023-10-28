@@ -5,7 +5,6 @@ functionality to the models without modifying the models themselves.
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from functools import wraps
 from typing import Dict, Any, Optional, List, Union
 
 from pydantic import BaseModel, ConfigDict
@@ -26,8 +25,7 @@ class Forum(BaseModel):
 
     def agent(self, func: AgentFunction) -> "Agent":
         """A decorator that registers an agent function in the forum."""
-        # TODO Oleksandr: are you sure about `wraps` ? Agents don't implement `__call__`
-        return wraps(func)(Agent(self, func))
+        return Agent(self, func)
 
     async def anew_message(
         self,
@@ -122,12 +120,11 @@ class MessagePromise(Broadcastable[IN, Token]):
         message.
         """
         if not self._full_message:
-            # TODO Oleksandr: offload most of this logic to the Forum class ?
             tokens = await self.aget_all()
             self._full_message = Message(
                 content="".join([token.text for token in tokens]),
                 sender_alias=self._sender_alias,
-                metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
+                metadata=Freeform(**self._metadata),
                 prev_msg_hash_key=(await self._reply_to.amaterialize()).hash_key if self._reply_to else None,
             )
             await self.forum.immutable_storage.astore_immutable(self._full_message)
