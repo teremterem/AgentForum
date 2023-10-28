@@ -5,8 +5,7 @@ functionality to the models without modifying the models themselves.
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from functools import wraps
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Type
 
 from pydantic import BaseModel, ConfigDict
 
@@ -26,58 +25,33 @@ class Forum(BaseModel):
 
     def agent(self, func: AgentFunction) -> "Agent":
         """A decorator that registers an agent function in the forum."""
-        return wraps(func)(Agent(self, func))
+        return Agent(self, func)
 
     async def anew_message(
         self,
         content: str,
         sender_alias: Optional[str] = None,
-        reply_to: Union["StreamedMessage", Message, str] = None,
+        in_reply_to: Optional["MessagePromise"] = None,
         **metadata,
-    ) -> "StreamedMessage":
-        """
-        Create a StreamedMessage object that represents a message and store the underlying Message in ImmutableStorage.
-        """
-        if isinstance(reply_to, StreamedMessage):
-            reply_to = await reply_to.aget_hash_key()
-        elif isinstance(reply_to, Message):
-            reply_to = reply_to.hash_key
-        # if reply_to is a string, we assume it's already a hash key
-        # TODO Oleksandr: assert somehow that reply_to is a valid hash key when it's a string
-
-        message = Message(
-            content=content,
-            sender_alias=self.resolve_sender_alias(sender_alias),
-            metadata=Freeform(**metadata),
-            prev_msg_hash_key=reply_to,
+    ) -> "MessagePromise":
+        """Create a new message in the forum."""
+        return MessagePromise(
+            forum=self,
+            in_reply_to=in_reply_to,
+            detached_msg=Message(
+                content=content,
+                sender_alias=self.resolve_sender_alias(sender_alias),
+                metadata=Freeform(**metadata),
+            ),
         )
-        await self.immutable_storage.astore_immutable(message)
-        return StreamedMessage(forum=self, full_message=message)
 
-    async def afind_message(self, hash_key: str) -> "StreamedMessage":
+    async def afind_message(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
         message = await self.immutable_storage.aretrieve_immutable(hash_key)
         if not isinstance(message, Message):
             # TODO Oleksandr: introduce a custom exception for this case ?
             raise ValueError(f"Expected a Message, got a {type(message)}")
-        return StreamedMessage(forum=self, full_message=message)
-
-    async def _anew_agent_call(
-        self,
-        agent_alias: str,
-        request: "StreamedMessage",
-        sender_alias: Optional[str] = None,
-        **kwargs,
-    ) -> "StreamedMessage":
-        """Create a StreamedMessage object that represents a call to an agent (AgentCall)."""
-        agent_call = AgentCall(
-            content=agent_alias,
-            sender_alias=self.resolve_sender_alias(sender_alias),
-            metadata=Freeform(**kwargs),
-            prev_msg_hash_key=await request.aget_hash_key(),
-        )
-        await self.immutable_storage.astore_immutable(agent_call)
-        return StreamedMessage(forum=self, full_message=agent_call)
+        return MessagePromise(forum=self, materialized_msg=message)
 
     @staticmethod
     def resolve_sender_alias(sender_alias: Optional[str]) -> str:
@@ -93,92 +67,119 @@ class Forum(BaseModel):
         return sender_alias or DEFAULT_AGENT_ALIAS
 
 
-class StreamedMessage(Broadcastable[IN, Token]):
+class MessagePromise(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
-    def __init__(
-        self, forum: Forum, full_message: Message = None, sender_alias: str = None, reply_to: "StreamedMessage" = None
-    ) -> None:
-        if full_message and reply_to:
-            raise ValueError("Only one of `full_message` and `reply_to` should be specified")
-        if full_message and sender_alias:
-            raise ValueError("Only one of `full_message` and `sender_alias` should be specified")
+    # TODO Oleksandr: split all the logic in this class into three subclasses:
+    #  StreamedMsgPromise, DetachedMsgPromise and MaterializedMsgPromise
 
+    def __init__(  # pylint: disable=too-many-arguments
+        self,
+        forum: Forum,
+        sender_alias: Optional[str] = None,
+        in_reply_to: Optional["MessagePromise"] = None,
+        materialized_msg: Optional[Message] = None,
+        detached_msg: Optional[Message] = None,
+    ) -> None:
+        if materialized_msg and detached_msg:
+            raise ValueError("materialized_msg and detached_msg cannot be specified at the same time")
+        if materialized_msg and (sender_alias or in_reply_to):
+            raise ValueError("If materialized_msg is specified, sender_alias and in_reply_to must be None")
+        if detached_msg and sender_alias:
+            raise ValueError("If detached_msg is specified, sender_alias must be None")
+        if not (materialized_msg or detached_msg) and not sender_alias:
+            raise ValueError("sender_alias must be specified if neither materialized_msg nor detached_msg is given")
+
+        msg_content = None
+        if materialized_msg:
+            msg_content = materialized_msg.content
+        elif detached_msg:
+            msg_content = detached_msg.content
         super().__init__(
-            items_so_far=[Token(text=full_message.content)] if full_message else None,
-            completed=bool(full_message),
+            items_so_far=[Token(text=msg_content)] if msg_content else None,
+            completed=bool(materialized_msg or detached_msg),
         )
         self.forum = forum
-        self._full_message = full_message
-        self._sender_alias = forum.resolve_sender_alias(sender_alias)
-        self._reply_to = reply_to
+        self._sender_alias = sender_alias
+        self._in_reply_to = in_reply_to
+        self._materialized_msg = materialized_msg
+        self._detached_msg = detached_msg
         self._metadata: Dict[str, Any] = {}
 
-    async def aget_full_message(self) -> Message:
+    async def amaterialize(self) -> Message:
         """
         Get the full message. This method will "await" until all the tokens are received and then return the complete
         message.
         """
-        if not self._full_message:
-            # TODO Oleksandr: offload most of this logic to the Forum class ?
-            tokens = await self.aget_all()
-            self._full_message = Message(
-                content="".join([token.text for token in tokens]),
-                sender_alias=self._sender_alias,
-                metadata=Freeform(**self._metadata),  # TODO Oleksandr: create a separate function that does this ?
-                prev_msg_hash_key=await self._reply_to.aget_hash_key() if self._reply_to else None,
-            )
-            await self.forum.immutable_storage.astore_immutable(self._full_message)
-        return self._full_message
+        if not self._materialized_msg:
+            prev_msg_hash_key = (await self._in_reply_to.amaterialize()).hash_key if self._in_reply_to else None
 
-    async def aget_content(self) -> str:
-        """Get the content of the full message."""
-        return (await self.aget_full_message()).content
+            if self._detached_msg:
+                # This is a detached message - a message that on one hand is complete, but on the other hand doesn't
+                # reference the previous message in the conversation yet. This is why we are cloning it here and
+                # adding the prev_msg_hash_key value to the clone.
+                self._materialized_msg = self._detached_msg.model_copy(update={"prev_msg_hash_key": prev_msg_hash_key})
+            else:
+                # It is a streamed message, so we need to assemble it from the tokens.
+                tokens = await self.aget_all()
+                self._materialized_msg = Message(
+                    content="".join([token.text for token in tokens]),
+                    sender_alias=self._sender_alias,
+                    metadata=Freeform(**self._metadata),
+                    prev_msg_hash_key=prev_msg_hash_key,
+                )
+            await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
 
-    @property
-    def sender_alias(self) -> str:
-        """Get the sender alias of the full message."""
-        return self._full_message.sender_alias if self._full_message else self._sender_alias
+        return self._materialized_msg
 
-    async def aget_metadata(self) -> Freeform:
-        """Get the metadata of the full message."""
-        return (await self.aget_full_message()).metadata
+    def _real_msg_class(self) -> Type[Message]:
+        if self._materialized_msg:
+            return type(self._materialized_msg)
+        if self._detached_msg:
+            return type(self._detached_msg)
+        return Message
 
-    async def aget_hash_key(self) -> str:
-        """Get the hash key of the full message."""
-        return (await self.aget_full_message()).hash_key
-
-    async def aget_previous_message(self) -> Optional["StreamedMessage"]:
-        """Get the previous message in the conversation."""
-        full_message = await self.aget_full_message()
-        if not full_message.prev_msg_hash_key:
+    async def _aget_previous_message(self) -> Optional["MessagePromise"]:
+        if self._materialized_msg:
+            if self._materialized_msg.prev_msg_hash_key:
+                return await self.forum.afind_message(self._materialized_msg.prev_msg_hash_key)
             return None
+        return self._in_reply_to  # this is the source of truth in case of detached and streamed messages
 
+    async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+        """Get the previous message in the conversation."""
         if not hasattr(self, "_prev_msg"):
-            # TODO Oleksandr: offload most of this logic to the Forum class ?
-            prev_msg_hash_key = full_message.prev_msg_hash_key
-            while isinstance(
-                prev_msg := await self.forum.immutable_storage.aretrieve_immutable(prev_msg_hash_key), AgentCall
-            ):
-                # skip agent calls
-                prev_msg_hash_key = prev_msg.request_hash_key
+            prev_msg = await self._aget_previous_message()
+
+            if skip_agent_calls:
+                while prev_msg:
+                    if not issubclass(type(prev_msg), AgentCall):
+                        break
+                    prev_msg = await prev_msg._aget_previous_message()  # pylint: disable=protected-access
+
             # pylint: disable=attribute-defined-outside-init
-            # noinspection PyAttributeOutsideInit,PyTypeChecker
-            self._prev_msg = StreamedMessage(forum=self.forum, full_message=prev_msg)
+            # noinspection PyAttributeOutsideInit
+            self._prev_msg = prev_msg
         return self._prev_msg
 
-    async def aget_full_chat(self) -> List["StreamedMessage"]:
-        """Get the full chat history for this message (including this message)."""
+    async def aget_history(self, skip_agent_calls: bool = True, include_this_message=True) -> List["MessagePromise"]:
+        """Get the full chat history for this message."""
         # TODO Oleksandr: introduce a limit on the number of messages to fetch
         msg = self
-        result = [msg]
-        while msg := await msg.aget_previous_message():
+        result = [msg] if include_this_message else []
+        while msg := await msg.aget_previous_message(skip_agent_calls=skip_agent_calls):
             result.append(msg)
         result.reverse()
         return result
 
+    async def amaterialize_history(self, skip_agent_calls: bool = True) -> List[Message]:
+        """
+        Get the full chat history of this message, but return a list Message objects instead of MessagePromise objects.
+        """
+        return [await msg.amaterialize() for msg in await self.aget_history(skip_agent_calls=skip_agent_calls)]
 
-class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
+
+class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
@@ -188,7 +189,7 @@ class MessageSequence(Broadcastable[StreamedMessage, StreamedMessage]):
     # TODO Oleksandr: throw an error if the sequence is being iterated over within the same agent that is producing it
     #  to prevent deadlocks
 
-    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[StreamedMessage]:
+    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[MessagePromise]:
         """Get the last message in the sequence."""
         messages = await self.aget_all()
         if messages:
@@ -207,25 +208,39 @@ class Agent:
         self._func = func
         self.agent_alias = func.__name__
 
-    def call(self, request: StreamedMessage, **kwargs) -> MessageSequence:
+    def call(self, request: MessagePromise, sender_alias: Optional[str] = None, **kwargs) -> MessageSequence:
         """Call the agent."""
-        response = MessageSequence()
-        asyncio.create_task(self._asubmit_agent_call(request, response, **kwargs))
-        return response
-
-    async def _asubmit_agent_call(self, request: StreamedMessage, response: MessageSequence, **kwargs) -> None:
-        # noinspection PyProtectedMember
-        agent_call = await request.forum._anew_agent_call(  # pylint: disable=protected-access
-            agent_alias=self.agent_alias,
-            request=request,
-            **kwargs,
+        sender_alias = self._forum.resolve_sender_alias(sender_alias)
+        # TODO Oleksandr: make sure that responses are attached to the AgentCall in the message tree
+        responses = MessageSequence()
+        asyncio.create_task(
+            self._asubmit_agent_call(request=request, sender_alias=sender_alias, responses=responses, **kwargs)
         )
-        await self._acall_agent_func(agent_call, response)
+        return responses
 
-    async def _acall_agent_func(self, agent_call: StreamedMessage, response: MessageSequence) -> None:
+    async def _asubmit_agent_call(
+        self, request: MessagePromise, sender_alias: str, responses: MessageSequence, **kwargs
+    ) -> None:
+        with responses:
+            try:
+                agent_call = MessagePromise(
+                    forum=self._forum,
+                    in_reply_to=request,
+                    detached_msg=AgentCall(
+                        content=self.agent_alias,  # the recipient of the call is this agent
+                        sender_alias=sender_alias,
+                        metadata=Freeform(**kwargs),
+                    ),
+                )
+                await self._acall_agent_func(agent_call, responses, **kwargs)
+            except BaseException as exc:  # pylint: disable=broad-exception-caught
+                # catch all exceptions, including KeyboardInterrupt
+                responses.send(exc)  # TODO Oleksandr: introduce ErrorMessage
+
+    async def _acall_agent_func(self, agent_call: MessagePromise, responses: MessageSequence, **kwargs) -> None:
         request = await agent_call.aget_previous_message()
-        with response, AgentContext(agent_alias=self.agent_alias):
-            await self._func(request, response, **(await agent_call.aget_metadata()).as_kwargs)
+        with AgentContext(agent_alias=self.agent_alias):
+            await self._func(request, responses, **kwargs)
 
 
 class AgentContext:
@@ -247,6 +262,8 @@ class AgentContext:
 
     def __enter__(self) -> "AgentContext":
         """Set this context as the current context."""
+        if self._previous_ctx_token:
+            raise RuntimeError("AgentContext is not reentrant")
         self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
         return self
 

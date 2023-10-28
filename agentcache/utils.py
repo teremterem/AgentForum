@@ -95,7 +95,7 @@ class Broadcastable(Generic[IN, OUT]):
         if item is END_OF_QUEUE:
             self.send_closed = True
             self._queue = None
-            # TODO Oleksandr: at this point full Message should be built and stored (StreamedMessage subclass)
+            # TODO Oleksandr: at this point full Message should be built and stored (MessagePromise subclass)
             raise StopAsyncIteration
 
         self.items_so_far.append(item)
@@ -103,6 +103,10 @@ class Broadcastable(Generic[IN, OUT]):
 
     async def _aget_and_convert_item(self) -> Union[OUT, Sentinel]:
         item = await self._aget_item_from_queue()
+        if isinstance(item, BaseException):
+            # TODO Oleksandr: expect ErrorMessage instead
+            # TODO Oleksandr: define this in the subclass instead
+            raise item
         if not isinstance(item, Sentinel):
             item = self._convert_item(item)
         return item

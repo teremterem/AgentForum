@@ -3,26 +3,27 @@ import asyncio
 from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
-from agentcache.forum import StreamedMessage, Forum
+from agentcache.forum import MessagePromise, Forum
 from agentcache.models import Token, Message
 from agentcache.utils import Sentinel
 
 
-async def aopenai_chat_completion(
+async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     forum: Forum,
-    prompt: List[Union[StreamedMessage, Message]],  # TODO Oleksandr: support more variants ?
-    reply_to: Optional[StreamedMessage] = None,
+    prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
+    sender_alias: Optional[str] = None,
+    in_reply_to: Optional[MessagePromise] = None,
     stream: bool = False,
     n: int = 1,
     **kwargs,
-) -> StreamedMessage:
+) -> MessagePromise:
     """Chat with OpenAI models. Returns a message or a stream of tokens."""
     import openai  # pylint: disable=import-outside-toplevel
 
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
 
-    messages = [await msg.aget_full_message() if isinstance(msg, StreamedMessage) else msg for msg in prompt]
+    messages = [await msg.amaterialize() if isinstance(msg, MessagePromise) else msg for msg in prompt]
     message_dicts = [
         {
             "role": getattr(msg.metadata, "openai_role", "user"),
@@ -30,32 +31,38 @@ async def aopenai_chat_completion(
         }
         for msg in messages
     ]
-    # pprint(message_dicts)
-    # print("\n")
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
-        streamed_message = _OpenAIStreamedMessage(forum=forum, reply_to=reply_to)
+        message_promise = _OpenAIStreamedMessage(
+            forum=forum,
+            # TODO Oleksandr: is this a bad place for sender alias resolution ? where to move it ?
+            sender_alias=forum.resolve_sender_alias(sender_alias),
+            in_reply_to=in_reply_to,
+        )
 
         async def _send_tokens() -> None:
-            with streamed_message:
+            # TODO Oleksandr: what if an exception occurs in this coroutine ?
+            #  how to convert it into an ErrorMessage at this point ?
+            with message_promise:
                 async for token_raw in response:
-                    streamed_message.send(token_raw)
+                    message_promise.send(token_raw)
 
         asyncio.create_task(_send_tokens())
-        return streamed_message
+        return message_promise
 
-    # pprint(response)
-    # print()
-    return await forum.anew_message(  # TODO Oleksandr: cover this case with a unit test ?
-        forum=forum,
+    # TODO Oleksandr: cover this case with a unit test ?
+    # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
+    return await forum.anew_message(
         content=response["choices"][0]["message"]["content"],
-        reply_to=reply_to,
+        # TODO Oleksandr: is this a bad place for sender alias resolution ?
+        sender_alias=forum.resolve_sender_alias(sender_alias),
+        in_reply_to=in_reply_to,
         **_build_openai_metadata_dict(response),
     )
 
 
-class _OpenAIStreamedMessage(StreamedMessage[Dict[str, Any]]):
+class _OpenAIStreamedMessage(MessagePromise[Dict[str, Any]]):
     """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
     def __init__(self, *args, **kwargs):
@@ -69,11 +76,11 @@ class _OpenAIStreamedMessage(StreamedMessage[Dict[str, Any]]):
                 # if Sentinel, return it immediately
                 return token_raw
 
-            # pprint(token_raw)
-            # print()
             self._tokens_raw.append(token_raw)
             # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built
-            self._metadata.update({k: v for k, v in _build_openai_metadata_dict(token_raw).items() if v is not None})
+            for k, v in _build_openai_metadata_dict(token_raw).items():
+                if v is not None:
+                    self._metadata[k] = v
 
             if self._token_raw_to_text(token_raw):
                 # we found a token that actually has some text - return it

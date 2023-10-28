@@ -3,9 +3,9 @@ import typing
 from typing import TypeVar, Callable, Awaitable
 
 if typing.TYPE_CHECKING:
-    from agentcache.forum import StreamedMessage, MessageSequence
+    from agentcache.forum import MessagePromise, MessageSequence
 
-    AgentFunction = Callable[[StreamedMessage, MessageSequence, ...], Awaitable[None]]
+    AgentFunction = Callable[[MessagePromise, MessageSequence, ...], Awaitable[None]]
 else:
     AgentFunction = Callable
 

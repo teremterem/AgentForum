@@ -119,7 +119,7 @@ class AgentCall(Message):
 
 class Token(Immutable):
     """
-    A token. This class is used by StreamedMessage (when the message is streamed token by token instead of being
+    A token. This class is used by MessagePromise (when the message is streamed token by token instead of being
     returned all at once).
     """
 
