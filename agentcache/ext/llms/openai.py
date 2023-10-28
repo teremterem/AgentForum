@@ -8,9 +8,10 @@ from agentcache.models import Token, Message
 from agentcache.utils import Sentinel
 
 
-async def aopenai_chat_completion(
+async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     forum: Forum,
     prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
+    sender_alias: Optional[str] = None,
     in_reply_to: Optional[MessagePromise] = None,
     stream: bool = False,
     n: int = 1,
@@ -33,7 +34,12 @@ async def aopenai_chat_completion(
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
-        message_promise = _OpenAIStreamedMessage(forum=forum, in_reply_to=in_reply_to)
+        message_promise = _OpenAIStreamedMessage(
+            forum=forum,
+            # TODO Oleksandr: is this a bad place for sender alias resolution ? where to move it ?
+            sender_alias=forum.resolve_sender_alias(sender_alias),
+            in_reply_to=in_reply_to,
+        )
 
         async def _send_tokens() -> None:
             # TODO Oleksandr: what if an exception occurs in this coroutine ?
@@ -48,8 +54,9 @@ async def aopenai_chat_completion(
     # TODO Oleksandr: cover this case with a unit test ?
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
     return await forum.anew_message(
-        forum=forum,
         content=response["choices"][0]["message"]["content"],
+        # TODO Oleksandr: is this a bad place for sender alias resolution ?
+        sender_alias=forum.resolve_sender_alias(sender_alias),
         in_reply_to=in_reply_to,
         **_build_openai_metadata_dict(response),
     )
