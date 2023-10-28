@@ -11,7 +11,7 @@ from agentcache.utils import Sentinel
 async def aopenai_chat_completion(
     forum: Forum,
     prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
-    reply_to: Optional[MessagePromise] = None,
+    in_reply_to: Optional[MessagePromise] = None,
     stream: bool = False,
     n: int = 1,
     **kwargs,
@@ -33,7 +33,7 @@ async def aopenai_chat_completion(
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
-        message_promise = _OpenAIStreamedMessage(forum=forum, reply_to=reply_to)
+        message_promise = _OpenAIStreamedMessage(forum=forum, in_reply_to=in_reply_to)
 
         async def _send_tokens() -> None:
             # TODO Oleksandr: what if an exception occurs in this coroutine ?
@@ -50,7 +50,7 @@ async def aopenai_chat_completion(
     return await forum.anew_message(
         forum=forum,
         content=response["choices"][0]["message"]["content"],
-        reply_to=reply_to,
+        in_reply_to=in_reply_to,
         **_build_openai_metadata_dict(response),
     )
 

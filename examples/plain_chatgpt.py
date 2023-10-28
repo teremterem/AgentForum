@@ -21,12 +21,12 @@ async def first_openai_agent(request: MessagePromise, responses: MessageSequence
 
     # TODO Oleksandr: try "slipping" PromptLayer in
     first_response = await aopenai_chat_completion(
-        forum=request.forum, prompt=full_chat, reply_to=full_chat[-1], **kwargs
+        forum=request.forum, prompt=full_chat, in_reply_to=full_chat[-1], **kwargs
     )
     responses.send(first_response)
 
     # second_response = await aopenai_chat_completion(
-    #     forum=request.forum, prompt=full_chat, reply_to=first_response, **kwargs
+    #     forum=request.forum, prompt=full_chat, in_reply_to=first_response, **kwargs
     # )
     # responses.send(second_response)
 
