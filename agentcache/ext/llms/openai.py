@@ -71,7 +71,9 @@ class _OpenAIStreamedMessage(MessagePromise[Dict[str, Any]]):
 
             self._tokens_raw.append(token_raw)
             # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built
-            self._metadata.update({k: v for k, v in _build_openai_metadata_dict(token_raw).items() if v is not None})
+            for k, v in _build_openai_metadata_dict(token_raw).items():
+                if v is not None:
+                    self._metadata[k] = v
 
             if self._token_raw_to_text(token_raw):
                 # we found a token that actually has some text - return it
