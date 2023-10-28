@@ -34,9 +34,7 @@ class Forum(BaseModel):
         in_reply_to: Optional["MessagePromise"] = None,
         **metadata,
     ) -> "MessagePromise":
-        """
-        Create a MessagePromise object that represents a message and store the underlying Message in ImmutableStorage.
-        """
+        """Create a new message in the forum."""
         return MessagePromise(
             forum=self,
             in_reply_to=in_reply_to,
@@ -131,7 +129,7 @@ class MessagePromise(Broadcastable[IN, Token]):
 
         return self._materialized_msg
 
-    async def aget_previous_message(self) -> Optional["MessagePromise"]:
+    async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous message in the conversation."""
         materialized_msg = await self.amaterialize()
         if not materialized_msg.prev_msg_hash_key:
@@ -150,15 +148,21 @@ class MessagePromise(Broadcastable[IN, Token]):
             self._prev_msg = MessagePromise(forum=self.forum, materialized_msg=prev_msg)
         return self._prev_msg
 
-    async def aget_full_chat(self) -> List["MessagePromise"]:
-        """Get the full chat history for this message (including this message)."""
+    async def aget_history(self, skip_agent_calls: bool = True, include_this_message=True) -> List["MessagePromise"]:
+        """Get the full chat history for this message."""
         # TODO Oleksandr: introduce a limit on the number of messages to fetch
         msg = self
-        result = [msg]
-        while msg := await msg.aget_previous_message():
+        result = [msg] if include_this_message else []
+        while msg := await msg.aget_previous_message(skip_agent_calls=skip_agent_calls):
             result.append(msg)
         result.reverse()
         return result
+
+    async def amaterialize_history(self, skip_agent_calls: bool = True) -> List[Message]:
+        """
+        Get the full chat history of this message, but return a list Message objects instead of MessagePromise objects.
+        """
+        return [await msg.amaterialize() for msg in await self.aget_history(skip_agent_calls=skip_agent_calls)]
 
 
 class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
