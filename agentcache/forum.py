@@ -80,16 +80,14 @@ class MessagePromise(Broadcastable[IN, Token]):
         materialized_msg: Optional[Message] = None,
         detached_msg: Optional[Message] = None,
     ) -> None:
-        if materialized_msg or detached_msg:
-            if materialized_msg and detached_msg:
-                raise ValueError("materialized_msg and detached_msg cannot be specified at the same time")
-            if sender_alias or in_reply_to:
-                raise ValueError(
-                    "If either materialized_msg or detached_msg is specified, "
-                    "then sender_alias and in_reply_to must be None"
-                )
-        elif not sender_alias:
-            raise ValueError("sender_alias must be specified if materialized_msg is not")
+        if materialized_msg and detached_msg:
+            raise ValueError("materialized_msg and detached_msg cannot be specified at the same time")
+        if materialized_msg and (sender_alias or in_reply_to):
+            raise ValueError("If materialized_msg is specified, sender_alias and in_reply_to must be None")
+        if detached_msg and sender_alias:
+            raise ValueError("If detached_msg is specified, sender_alias must be None")
+        if not (materialized_msg or detached_msg) and not sender_alias:
+            raise ValueError("sender_alias must be specified if neither materialized_msg nor detached_msg is given")
 
         msg_content = None
         if materialized_msg:

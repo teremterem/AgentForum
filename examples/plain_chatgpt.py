@@ -41,7 +41,7 @@ async def user_proxy_agent(request: MessagePromise, response: MessageSequence) -
     user_input = input("\nYOU: ")
     if user_input == "exit":
         raise KeyboardInterrupt
-    response.send(await forum.anew_message(content=user_input, reply_to=request))
+    response.send(await forum.anew_message(content=user_input, in_reply_to=request))
 
 
 async def main() -> None:
