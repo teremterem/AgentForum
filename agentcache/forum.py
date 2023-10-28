@@ -5,7 +5,7 @@ functionality to the models without modifying the models themselves.
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Type
 
 from pydantic import BaseModel, ConfigDict
 
@@ -70,6 +70,9 @@ class Forum(BaseModel):
 class MessagePromise(Broadcastable[IN, Token]):
     """A message that is streamed token by token instead of being returned all at once."""
 
+    # TODO Oleksandr: split all the logic in this class into three subclasses:
+    #  StreamedMsgPromise, DetachedMsgPromise and MaterializedMsgPromise
+
     def __init__(  # pylint: disable=too-many-arguments
         self,
         forum: Forum,
@@ -94,7 +97,7 @@ class MessagePromise(Broadcastable[IN, Token]):
             msg_content = detached_msg.content
         super().__init__(
             items_so_far=[Token(text=msg_content)] if msg_content else None,
-            completed=bool(materialized_msg),
+            completed=bool(materialized_msg or detached_msg),
         )
         self.forum = forum
         self._sender_alias = sender_alias
@@ -129,23 +132,34 @@ class MessagePromise(Broadcastable[IN, Token]):
 
         return self._materialized_msg
 
+    def _real_msg_class(self) -> Type[Message]:
+        if self._materialized_msg:
+            return type(self._materialized_msg)
+        if self._detached_msg:
+            return type(self._detached_msg)
+        return Message
+
+    async def _aget_previous_message(self) -> Optional["MessagePromise"]:
+        if self._materialized_msg:
+            if self._materialized_msg.prev_msg_hash_key:
+                return await self.forum.afind_message(self._materialized_msg.prev_msg_hash_key)
+            return None
+        return self._in_reply_to  # this is the source of truth in case of detached and streamed messages
+
     async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous message in the conversation."""
-        materialized_msg = await self.amaterialize()
-        if not materialized_msg.prev_msg_hash_key:
-            return None
-
         if not hasattr(self, "_prev_msg"):
-            # TODO Oleksandr: offload most of this logic to the Forum class ?
-            prev_msg_hash_key = materialized_msg.prev_msg_hash_key
-            while isinstance(
-                prev_msg := await self.forum.immutable_storage.aretrieve_immutable(prev_msg_hash_key), AgentCall
-            ):
-                # skip agent calls
-                prev_msg_hash_key = prev_msg.request_hash_key
+            prev_msg = await self._aget_previous_message()
+
+            if skip_agent_calls:
+                while prev_msg:
+                    if not issubclass(type(prev_msg), AgentCall):
+                        break
+                    prev_msg = await prev_msg._aget_previous_message()  # pylint: disable=protected-access
+
             # pylint: disable=attribute-defined-outside-init
-            # noinspection PyAttributeOutsideInit,PyTypeChecker
-            self._prev_msg = MessagePromise(forum=self.forum, materialized_msg=prev_msg)
+            # noinspection PyAttributeOutsideInit
+            self._prev_msg = prev_msg
         return self._prev_msg
 
     async def aget_history(self, skip_agent_calls: bool = True, include_this_message=True) -> List["MessagePromise"]:
