@@ -36,24 +36,22 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             ],
         )
 
-        response = await forum.anew_message_promise((await api_response.amaterialize()).content, in_reply_to=request)
+        response = forum.new_message_promise((await api_response.amaterialize()).content, in_reply_to=request)
         responses.send(response)
 
     @forum.agent
     async def _reminder_api(request: MessagePromise, responses: MessageSequence) -> None:
         if (await request.amaterialize()).sender_alias == "_critic":
-            responses.send(await forum.anew_message_promise("success: reminder set", in_reply_to=request))
+            responses.send(forum.new_message_promise("success: reminder set", in_reply_to=request))
         else:
-            responses.send(await forum.anew_message_promise("api error: invalid date format", in_reply_to=request))
+            responses.send(forum.new_message_promise("api error: invalid date format", in_reply_to=request))
 
     @forum.agent
     async def _critic(request: MessagePromise, responses: MessageSequence) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
-        responses.send(await forum.anew_message_promise("try swapping the month and day", in_reply_to=request))
+        responses.send(forum.new_message_promise("try swapping the month and day", in_reply_to=request))
 
-    assistant_responses = _assistant.call(
-        await forum.anew_message_promise("set a reminder for me for tomorrow at 10am")
-    )
+    assistant_responses = _assistant.call(forum.new_message_promise("set a reminder for me for tomorrow at 10am"))
 
     await aassert_conversation(
         assistant_responses,
@@ -77,18 +75,16 @@ async def test_two_nested_agents(forum: Forum) -> None:
         async for msg in responses2:
             responses.send(msg)
         responses.send(
-            await forum.anew_message_promise(
-                "agent1 also says hello", in_reply_to=await responses2.aget_concluding_message()
-            )
+            forum.new_message_promise("agent1 also says hello", in_reply_to=await responses2.aget_concluding_message())
         )
 
     @forum.agent
     async def _agent2(request: MessagePromise, responses: MessageSequence) -> None:
-        msg1 = await forum.anew_message_promise("agent2 says hello", in_reply_to=request)
+        msg1 = forum.new_message_promise("agent2 says hello", in_reply_to=request)
         responses.send(msg1)
-        responses.send(await forum.anew_message_promise("agent2 says hello again", in_reply_to=msg1))
+        responses.send(forum.new_message_promise("agent2 says hello again", in_reply_to=msg1))
 
-    responses1 = _agent1.call(await forum.anew_message_promise("user says hello"))
+    responses1 = _agent1.call(forum.new_message_promise("user says hello"))
 
     await aassert_conversation(
         responses1,

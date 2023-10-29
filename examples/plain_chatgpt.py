@@ -41,12 +41,12 @@ async def user_proxy_agent(request: MessagePromise, response: MessageSequence) -
     user_input = input("\nYOU: ")
     if user_input == "exit":
         raise KeyboardInterrupt
-    response.send(await forum.anew_message_promise(content=user_input, in_reply_to=request))
+    response.send(forum.new_message_promise(content=user_input, in_reply_to=request))
 
 
 async def main() -> None:
     """The chat loop."""
-    latest_message: Optional[MessagePromise] = await forum.anew_message_promise(
+    latest_message: Optional[MessagePromise] = forum.new_message_promise(
         content="Hi, how are you doing?",
         sender_alias=first_openai_agent.agent_alias,
         openai_role="assistant",

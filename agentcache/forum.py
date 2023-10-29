@@ -27,27 +27,6 @@ class Forum(BaseModel):
         """A decorator that registers an agent function in the forum."""
         return Agent(self, func)
 
-    async def anew_message_promise(
-        self,
-        content: str,
-        sender_alias: Optional[str] = None,
-        in_reply_to: Optional["MessagePromise"] = None,
-        **metadata,
-    ) -> "MessagePromise":
-        """
-        Create a new, detached message promise in the forum. "Detached" means that this message promise is a reply to
-        another message promise that may or may not be "materialized" yet.
-        """
-        return MessagePromise(
-            forum=self,
-            in_reply_to=in_reply_to,
-            detached_msg=Message(
-                content=content,
-                sender_alias=self.resolve_sender_alias(sender_alias),
-                metadata=Freeform(**metadata),
-            ),
-        )
-
     async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
         message = await self.immutable_storage.aretrieve_immutable(hash_key)
@@ -55,6 +34,39 @@ class Forum(BaseModel):
             # TODO Oleksandr: introduce a custom exception for this case ?
             raise ValueError(f"Expected a Message, got a {type(message)}")
         return MessagePromise(forum=self, materialized_msg=message)
+
+    def new_message_promise(
+        self,
+        content: str,
+        sender_alias: Optional[str] = None,
+        in_reply_to: Optional["MessagePromise"] = None,
+        **metadata,
+    ) -> "MessagePromise":
+        """
+        Create a new, detached message promise in the forum. "Detached message promise" means that this message
+        promise is a reply to another message promise that may or may not be "materialized" yet.
+        """
+        return MessagePromise(
+            forum=self,
+            in_reply_to=in_reply_to,
+            detached_msg=self.new_detached_message(
+                content=content,
+                sender_alias=self.resolve_sender_alias(sender_alias),
+                **metadata,
+            ),
+        )
+
+    def new_detached_message(self, content: str, sender_alias: Optional[str] = None, **metadata) -> Message:
+        """
+        Create a new detached message in the forum. "Detached message" means that this message is lacking the
+        information of which message it is a reply to (which doesn't mean that it cannot be a reply to another
+        message - this is what the name "detached" is called to emphasize).
+        """
+        return Message(
+            content=content,
+            sender_alias=self.resolve_sender_alias(sender_alias),
+            metadata=Freeform(**metadata),
+        )
 
     @staticmethod
     def resolve_sender_alias(sender_alias: Optional[str]) -> str:
@@ -204,7 +216,7 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
     # def send(self, response: str, sender_alias: Optional[str] = None, **metadata) -> None:
     #     # TODO Oleksandr: when the concept of ForwardedMessage is introduced, allow sending sending fully fledged
     #     #  messages as responses
-    #     msg_promise = await self.forum.anew_message_promise(
+    #     msg_promise = self.forum.new_message_promise(
     #         content=response,
     #         sender_alias=self.forum.resolve_sender_alias(sender_alias),
     #         in_reply_to=self._in_reply_to,
