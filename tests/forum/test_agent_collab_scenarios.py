@@ -30,8 +30,11 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             api_response,
             [
                 ("message", "USER", "set a reminder for me for tomorrow at 10am"),
+                ("call", "_assistant", "_reminder_api"),
                 ("message", "_reminder_api", "api error: invalid date format"),
+                ("call", "_assistant", "_critic"),
                 ("message", "_critic", "try swapping the month and day"),
+                ("call", "_assistant", "_reminder_api"),
                 ("message", "_reminder_api", "success: reminder set"),
             ],
         )
@@ -56,6 +59,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         assistant_responses,
         [
             ("message", "USER", "set a reminder for me for tomorrow at 10am"),
+            ("call", "USER", "_assistant"),
             ("message", "_assistant", "success: reminder set"),
         ],
     )
@@ -87,6 +91,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         responses1,
         [
             ("message", "USER", "user says hello"),
+            ("call", "USER", "_agent1"),
             # TODO Oleksandr: "_agent1" is a sender that forwarded the following two messages,
             #  assert that the "original sender" is "_agent2"
             ("message", "_agent1", "agent2 says hello"),
@@ -105,6 +110,7 @@ async def aassert_conversation(
     """
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
     actual_conversation = [
-        (msg.ac_model_, msg.sender_alias, msg.content) for msg in await concluding_msg.amaterialize_history()
+        (msg.ac_model_, msg.sender_alias, msg.content)
+        for msg in await concluding_msg.amaterialize_history(skip_agent_calls=False)
     ]
     assert actual_conversation == expected_conversation
