@@ -20,11 +20,11 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     @forum.agent
     async def _assistant(request: MessagePromise, responses: MessageSequence) -> None:
-        api_response = await _reminder_api.call(request=request).aget_concluding_message()
+        api_response = await _reminder_api.call(request).aget_concluding_message()
         if (await api_response.amaterialize()).content.startswith("api error:"):
             # TODO Oleksandr: implement actual ErrorMessage class
-            correction = await _critic.call(request=api_response).aget_concluding_message()
-            api_response = await _reminder_api.call(request=correction).aget_concluding_message()
+            correction = await _critic.call(api_response).aget_concluding_message()
+            api_response = await _reminder_api.call(correction).aget_concluding_message()
 
         await aassert_conversation(
             api_response,
@@ -36,20 +36,19 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             ],
         )
 
-        response = forum.new_message_promise((await api_response.amaterialize()).content, in_reply_to=request)
-        responses.send(response)
+        responses.send((await api_response.amaterialize()).content)
 
     @forum.agent
     async def _reminder_api(request: MessagePromise, responses: MessageSequence) -> None:
         if (await request.amaterialize()).sender_alias == "_critic":
-            responses.send(forum.new_message_promise("success: reminder set", in_reply_to=request))
+            responses.send("success: reminder set")
         else:
-            responses.send(forum.new_message_promise("api error: invalid date format", in_reply_to=request))
+            responses.send("api error: invalid date format")
 
     @forum.agent
-    async def _critic(request: MessagePromise, responses: MessageSequence) -> None:
+    async def _critic(_: MessagePromise, responses: MessageSequence) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
-        responses.send(forum.new_message_promise("try swapping the month and day", in_reply_to=request))
+        responses.send("try swapping the month and day")
 
     assistant_responses = _assistant.call(forum.new_message_promise("set a reminder for me for tomorrow at 10am"))
 
@@ -71,18 +70,16 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent1(request: MessagePromise, responses: MessageSequence) -> None:
-        responses2 = _agent2.call(request=request)
-        async for msg in responses2:
-            responses.send(msg)
-        responses.send(
-            forum.new_message_promise("agent1 also says hello", in_reply_to=await responses2.aget_concluding_message())
-        )
+        async for msg in _agent2.call(request):
+            responses.send((await msg.amaterialize()).content)
+        # TODO Oleksandr: replace the above with something like this, when ForwardedMessages are supported:
+        #  responses.send(_agent2.call(request))
+        responses.send("agent1 also says hello")
 
     @forum.agent
-    async def _agent2(request: MessagePromise, responses: MessageSequence) -> None:
-        msg1 = forum.new_message_promise("agent2 says hello", in_reply_to=request)
-        responses.send(msg1)
-        responses.send(forum.new_message_promise("agent2 says hello again", in_reply_to=msg1))
+    async def _agent2(_: MessagePromise, responses: MessageSequence) -> None:
+        responses.send("agent2 says hello")
+        responses.send("agent2 says hello again")
 
     responses1 = _agent1.call(forum.new_message_promise("user says hello"))
 
@@ -90,8 +87,10 @@ async def test_two_nested_agents(forum: Forum) -> None:
         responses1,
         [
             ("message", "USER", "user says hello"),
-            ("message", "_agent2", "agent2 says hello"),
-            ("message", "_agent2", "agent2 says hello again"),
+            # TODO Oleksandr: "_agent1" is a sender that forwarded the following two messages,
+            #  assert that the "original sender" is "_agent2"
+            ("message", "_agent1", "agent2 says hello"),
+            ("message", "_agent1", "agent2 says hello again"),
             ("message", "_agent1", "agent1 also says hello"),
         ],
     )
