@@ -90,21 +90,18 @@ class Agent:
             ),
         )
         responses = MessageSequence(self.forum, in_reply_to=agent_call)
-        asyncio.create_task(self._asubmit_agent_call(agent_call=agent_call, responses=responses, **kwargs))
+        asyncio.create_task(self._acall_agent_func(agent_call=agent_call, responses=responses, **kwargs))
         return responses
 
-    async def _asubmit_agent_call(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
+    async def _acall_agent_func(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
         with responses:
             try:
-                await self._acall_agent_func(agent_call, responses, **kwargs)
+                request = await agent_call.aget_previous_message()
+                with AgentContext(agent_alias=self.agent_alias):
+                    await self._func(request, responses, **kwargs)
             except BaseException as exc:  # pylint: disable=broad-exception-caught
                 # catch all exceptions, including KeyboardInterrupt
                 responses.send(exc)  # TODO Oleksandr: introduce ErrorMessage
-
-    async def _acall_agent_func(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
-        request = await agent_call.aget_previous_message()
-        with AgentContext(agent_alias=self.agent_alias):
-            await self._func(request, responses, **kwargs)
 
 
 class AgentContext:
