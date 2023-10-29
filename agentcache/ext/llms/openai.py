@@ -53,7 +53,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
 
     # TODO Oleksandr: cover this case with a unit test ?
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
-    return await forum.anew_message(
+    return forum.new_message_promise(
         content=response["choices"][0]["message"]["content"],
         # TODO Oleksandr: is this a bad place for sender alias resolution ?
         sender_alias=forum.resolve_sender_alias(sender_alias),

@@ -23,7 +23,8 @@ async def first_openai_agent(request: MessagePromise, responses: MessageSequence
     first_response = await aopenai_chat_completion(
         forum=request.forum, prompt=full_chat, in_reply_to=full_chat[-1], **kwargs
     )
-    responses.send(first_response)
+    # TODO Oleksandr: !!! you broke streaming again !!! introduce the concept of ForwardedMessages !!!
+    responses.send((await first_response.amaterialize()).content)
 
     # second_response = await aopenai_chat_completion(
     #     forum=request.forum, prompt=full_chat, in_reply_to=first_response, **kwargs
@@ -41,12 +42,12 @@ async def user_proxy_agent(request: MessagePromise, response: MessageSequence) -
     user_input = input("\nYOU: ")
     if user_input == "exit":
         raise KeyboardInterrupt
-    response.send(await forum.anew_message(content=user_input, in_reply_to=request))
+    response.send(user_input)
 
 
 async def main() -> None:
     """The chat loop."""
-    latest_message: Optional[MessagePromise] = await forum.anew_message(
+    latest_message: Optional[MessagePromise] = forum.new_message_promise(
         content="Hi, how are you doing?",
         sender_alias=first_openai_agent.agent_alias,
         openai_role="assistant",

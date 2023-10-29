@@ -27,14 +27,25 @@ class Forum(BaseModel):
         """A decorator that registers an agent function in the forum."""
         return Agent(self, func)
 
-    async def anew_message(
+    async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
+        """Find a message in the forum."""
+        message = await self.immutable_storage.aretrieve_immutable(hash_key)
+        if not isinstance(message, Message):
+            # TODO Oleksandr: introduce a custom exception for this case ?
+            raise ValueError(f"Expected a Message, got a {type(message)}")
+        return MessagePromise(forum=self, materialized_msg=message)
+
+    def new_message_promise(
         self,
         content: str,
         sender_alias: Optional[str] = None,
         in_reply_to: Optional["MessagePromise"] = None,
         **metadata,
     ) -> "MessagePromise":
-        """Create a new message in the forum."""
+        """
+        Create a new, detached message promise in the forum. "Detached message promise" means that this message
+        promise is a reply to another message promise that may or may not be "materialized" yet.
+        """
         return MessagePromise(
             forum=self,
             in_reply_to=in_reply_to,
@@ -44,14 +55,6 @@ class Forum(BaseModel):
                 metadata=Freeform(**metadata),
             ),
         )
-
-    async def afind_message(self, hash_key: str) -> "MessagePromise":
-        """Find a message in the forum."""
-        message = await self.immutable_storage.aretrieve_immutable(hash_key)
-        if not isinstance(message, Message):
-            # TODO Oleksandr: introduce a custom exception for this case ?
-            raise ValueError(f"Expected a Message, got a {type(message)}")
-        return MessagePromise(forum=self, materialized_msg=message)
 
     @staticmethod
     def resolve_sender_alias(sender_alias: Optional[str]) -> str:
@@ -65,6 +68,73 @@ class Forum(BaseModel):
             if agent_context:
                 sender_alias = agent_context.agent_alias
         return sender_alias or DEFAULT_AGENT_ALIAS
+
+
+class Agent:
+    """A wrapper for an agent function that allows calling the agent."""
+
+    def __init__(self, forum: Forum, func: AgentFunction) -> None:
+        self.forum = forum
+        self.agent_alias = func.__name__
+        self._func = func
+
+    def call(self, request: "MessagePromise", sender_alias: Optional[str] = None, **kwargs) -> "MessageSequence":
+        """Call the agent."""
+        agent_call = MessagePromise(
+            forum=self.forum,
+            in_reply_to=request,
+            detached_msg=AgentCall(
+                content=self.agent_alias,  # the recipient of the call is this agent
+                sender_alias=self.forum.resolve_sender_alias(sender_alias),
+                metadata=Freeform(**kwargs),
+            ),
+        )
+        responses = MessageSequence(self.forum, in_reply_to=agent_call)
+        asyncio.create_task(self._asubmit_agent_call(agent_call=agent_call, responses=responses, **kwargs))
+        return responses
+
+    async def _asubmit_agent_call(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
+        with responses:
+            try:
+                await self._acall_agent_func(agent_call, responses, **kwargs)
+            except BaseException as exc:  # pylint: disable=broad-exception-caught
+                # catch all exceptions, including KeyboardInterrupt
+                responses.send(exc)  # TODO Oleksandr: introduce ErrorMessage
+
+    async def _acall_agent_func(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
+        request = await agent_call.aget_previous_message()
+        with AgentContext(agent_alias=self.agent_alias):
+            await self._func(request, responses, **kwargs)
+
+
+class AgentContext:
+    """
+    A context within which an agent is called. This is needed for things like looking up a sender alias for a message
+    that is being created by the agent, so it can be populated in the message automatically (and other similar things).
+    """
+
+    _current_context: ContextVar[Optional["AgentContext"]] = ContextVar("_current_context", default=None)
+
+    def __init__(self, agent_alias: str):
+        self.agent_alias = agent_alias
+        self._previous_ctx_token: Optional[contextvars.Token] = None
+
+    @classmethod
+    def get_current_context(cls) -> Optional["AgentContext"]:
+        """Get the current AgentContext object."""
+        return cls._current_context.get()
+
+    def __enter__(self) -> "AgentContext":
+        """Set this context as the current context."""
+        if self._previous_ctx_token:
+            raise RuntimeError("AgentContext is not reentrant")
+        self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Restore the context that was current before this one."""
+        self._current_context.reset(self._previous_ctx_token)
+        self._previous_ctx_token = None
 
 
 class MessagePromise(Broadcastable[IN, Token]):
@@ -132,7 +202,9 @@ class MessagePromise(Broadcastable[IN, Token]):
 
         return self._materialized_msg
 
-    def _real_msg_class(self) -> Type[Message]:
+    @property
+    def real_msg_class(self) -> Type[Message]:
+        """Return the type of the real message that this promise represents."""
         if self._materialized_msg:
             return type(self._materialized_msg)
         if self._detached_msg:
@@ -142,7 +214,7 @@ class MessagePromise(Broadcastable[IN, Token]):
     async def _aget_previous_message(self) -> Optional["MessagePromise"]:
         if self._materialized_msg:
             if self._materialized_msg.prev_msg_hash_key:
-                return await self.forum.afind_message(self._materialized_msg.prev_msg_hash_key)
+                return await self.forum.afind_message_promise(self._materialized_msg.prev_msg_hash_key)
             return None
         return self._in_reply_to  # this is the source of truth in case of detached and streamed messages
 
@@ -153,7 +225,7 @@ class MessagePromise(Broadcastable[IN, Token]):
 
             if skip_agent_calls:
                 while prev_msg:
-                    if not issubclass(type(prev_msg), AgentCall):
+                    if not issubclass(prev_msg.real_msg_class, AgentCall):
                         break
                     prev_msg = await prev_msg._aget_previous_message()  # pylint: disable=protected-access
 
@@ -162,7 +234,9 @@ class MessagePromise(Broadcastable[IN, Token]):
             self._prev_msg = prev_msg
         return self._prev_msg
 
-    async def aget_history(self, skip_agent_calls: bool = True, include_this_message=True) -> List["MessagePromise"]:
+    async def aget_history(
+        self, skip_agent_calls: bool = True, include_this_message: bool = True
+    ) -> List["MessagePromise"]:
         """Get the full chat history for this message."""
         # TODO Oleksandr: introduce a limit on the number of messages to fetch
         msg = self
@@ -172,11 +246,18 @@ class MessagePromise(Broadcastable[IN, Token]):
         result.reverse()
         return result
 
-    async def amaterialize_history(self, skip_agent_calls: bool = True) -> List[Message]:
+    async def amaterialize_history(
+        self, skip_agent_calls: bool = True, include_this_message: bool = True
+    ) -> List[Message]:
         """
         Get the full chat history of this message, but return a list Message objects instead of MessagePromise objects.
         """
-        return [await msg.amaterialize() for msg in await self.aget_history(skip_agent_calls=skip_agent_calls)]
+        return [
+            await msg.amaterialize()
+            for msg in await self.aget_history(
+                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
+            )
+        ]
 
 
 class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
@@ -189,6 +270,30 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
     # TODO Oleksandr: throw an error if the sequence is being iterated over within the same agent that is producing it
     #  to prevent deadlocks
 
+    def __init__(
+        self,
+        forum: Forum,
+        in_reply_to: Optional["MessagePromise"] = None,
+    ) -> None:
+        super().__init__()
+        self.forum = forum
+        self._in_reply_to = in_reply_to
+
+    def send(self, content: str, sender_alias: Optional[str] = None, **metadata) -> None:
+        """Send a message to the end of a sequence."""
+        # TODO Oleksandr: when the concept of ForwardedMessage is introduced, allow sending fully fledged messages as
+        #  responses
+        if isinstance(content, BaseException):
+            # TODO Oleksandr: replace with ErrorMessage when it is introduced
+            super().send(content)
+            return
+
+        msg_promise = self.forum.new_message_promise(
+            content=content, sender_alias=sender_alias, in_reply_to=self._in_reply_to, **metadata
+        )
+        self._in_reply_to = msg_promise
+        super().send(msg_promise)
+
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[MessagePromise]:
         """Get the last message in the sequence."""
         messages = await self.aget_all()
@@ -198,76 +303,3 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
             # TODO Oleksandr: introduce a custom exception for this case
             raise ValueError("MessageSequence is empty")
         return None
-
-
-class Agent:
-    """A wrapper for an agent function that allows calling the agent."""
-
-    def __init__(self, forum: Forum, func: AgentFunction) -> None:
-        self._forum = forum
-        self._func = func
-        self.agent_alias = func.__name__
-
-    def call(self, request: MessagePromise, sender_alias: Optional[str] = None, **kwargs) -> MessageSequence:
-        """Call the agent."""
-        sender_alias = self._forum.resolve_sender_alias(sender_alias)
-        # TODO Oleksandr: make sure that responses are attached to the AgentCall in the message tree
-        responses = MessageSequence()
-        asyncio.create_task(
-            self._asubmit_agent_call(request=request, sender_alias=sender_alias, responses=responses, **kwargs)
-        )
-        return responses
-
-    async def _asubmit_agent_call(
-        self, request: MessagePromise, sender_alias: str, responses: MessageSequence, **kwargs
-    ) -> None:
-        with responses:
-            try:
-                agent_call = MessagePromise(
-                    forum=self._forum,
-                    in_reply_to=request,
-                    detached_msg=AgentCall(
-                        content=self.agent_alias,  # the recipient of the call is this agent
-                        sender_alias=sender_alias,
-                        metadata=Freeform(**kwargs),
-                    ),
-                )
-                await self._acall_agent_func(agent_call, responses, **kwargs)
-            except BaseException as exc:  # pylint: disable=broad-exception-caught
-                # catch all exceptions, including KeyboardInterrupt
-                responses.send(exc)  # TODO Oleksandr: introduce ErrorMessage
-
-    async def _acall_agent_func(self, agent_call: MessagePromise, responses: MessageSequence, **kwargs) -> None:
-        request = await agent_call.aget_previous_message()
-        with AgentContext(agent_alias=self.agent_alias):
-            await self._func(request, responses, **kwargs)
-
-
-class AgentContext:
-    """
-    A context within which an agent is called. This is needed for things like looking up a sender alias for a message
-    that is being created by the agent, so it can be populated in the message automatically (and other similar things).
-    """
-
-    _current_context: ContextVar[Optional["AgentContext"]] = ContextVar("_current_context", default=None)
-
-    def __init__(self, agent_alias: str):
-        self.agent_alias = agent_alias
-        self._previous_ctx_token: Optional[contextvars.Token] = None
-
-    @classmethod
-    def get_current_context(cls) -> Optional["AgentContext"]:
-        """Get the current AgentContext object."""
-        return cls._current_context.get()
-
-    def __enter__(self) -> "AgentContext":
-        """Set this context as the current context."""
-        if self._previous_ctx_token:
-            raise RuntimeError("AgentContext is not reentrant")
-        self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Restore the context that was current before this one."""
-        self._current_context.reset(self._previous_ctx_token)
-        self._previous_ctx_token = None
