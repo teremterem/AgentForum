@@ -34,7 +34,10 @@ class Forum(BaseModel):
         in_reply_to: Optional["MessagePromise"] = None,
         **metadata,
     ) -> "MessagePromise":
-        """Create a new message in the forum."""
+        """
+        Create a new, detached message promise in the forum. "Detached" means that this message promise is a reply to
+        another message promise that may or may not be "materialized" yet.
+        """
         return MessagePromise(
             forum=self,
             in_reply_to=in_reply_to,
@@ -189,6 +192,25 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
     # TODO Oleksandr: throw an error if the sequence is being iterated over within the same agent that is producing it
     #  to prevent deadlocks
 
+    # def __init__(
+    #     self,
+    #     forum: Forum,
+    #     in_reply_to: Optional["MessagePromise"] = None,
+    # ) -> None:
+    #     super().__init__()
+    #     self.forum = forum
+    #     self._in_reply_to = in_reply_to
+    #
+    # def send(self, response: str, sender_alias: Optional[str] = None, **metadata) -> None:
+    #     # TODO Oleksandr: when the concept of ForwardedMessage is introduced, allow sending sending fully fledged
+    #     #  messages as responses
+    #     msg_promise = await self.forum.anew_message(
+    #         content=response,
+    #         sender_alias=self.forum.resolve_sender_alias(sender_alias),
+    #         in_reply_to=self._in_reply_to,
+    #         **metadata
+    #     )
+
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[MessagePromise]:
         """Get the last message in the sequence."""
         messages = await self.aget_all()
@@ -204,13 +226,13 @@ class Agent:
     """A wrapper for an agent function that allows calling the agent."""
 
     def __init__(self, forum: Forum, func: AgentFunction) -> None:
-        self._forum = forum
-        self._func = func
+        self.forum = forum
         self.agent_alias = func.__name__
+        self._func = func
 
     def call(self, request: MessagePromise, sender_alias: Optional[str] = None, **kwargs) -> MessageSequence:
         """Call the agent."""
-        sender_alias = self._forum.resolve_sender_alias(sender_alias)
+        sender_alias = self.forum.resolve_sender_alias(sender_alias)
         # TODO Oleksandr: make sure that responses are attached to the AgentCall in the message tree
         responses = MessageSequence()
         asyncio.create_task(
@@ -224,7 +246,7 @@ class Agent:
         with responses:
             try:
                 agent_call = MessagePromise(
-                    forum=self._forum,
+                    forum=self.forum,
                     in_reply_to=request,
                     detached_msg=AgentCall(
                         content=self.agent_alias,  # the recipient of the call is this agent
