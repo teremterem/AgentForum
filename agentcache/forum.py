@@ -27,7 +27,7 @@ class Forum(BaseModel):
         """A decorator that registers an agent function in the forum."""
         return Agent(self, func)
 
-    async def anew_message(
+    async def anew_message_promise(
         self,
         content: str,
         sender_alias: Optional[str] = None,
@@ -48,7 +48,7 @@ class Forum(BaseModel):
             ),
         )
 
-    async def afind_message(self, hash_key: str) -> "MessagePromise":
+    async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
         message = await self.immutable_storage.aretrieve_immutable(hash_key)
         if not isinstance(message, Message):
@@ -145,7 +145,7 @@ class MessagePromise(Broadcastable[IN, Token]):
     async def _aget_previous_message(self) -> Optional["MessagePromise"]:
         if self._materialized_msg:
             if self._materialized_msg.prev_msg_hash_key:
-                return await self.forum.afind_message(self._materialized_msg.prev_msg_hash_key)
+                return await self.forum.afind_message_promise(self._materialized_msg.prev_msg_hash_key)
             return None
         return self._in_reply_to  # this is the source of truth in case of detached and streamed messages
 
@@ -204,7 +204,7 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
     # def send(self, response: str, sender_alias: Optional[str] = None, **metadata) -> None:
     #     # TODO Oleksandr: when the concept of ForwardedMessage is introduced, allow sending sending fully fledged
     #     #  messages as responses
-    #     msg_promise = await self.forum.anew_message(
+    #     msg_promise = await self.forum.anew_message_promise(
     #         content=response,
     #         sender_alias=self.forum.resolve_sender_alias(sender_alias),
     #         in_reply_to=self._in_reply_to,
