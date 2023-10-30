@@ -64,6 +64,15 @@ class Broadcastable(Generic[IN, OUT]):
         """
         return not self._queue
 
+    async def aget_all(self) -> List[OUT]:
+        """
+        Get all the items in the container. This will block until all the items are available and sending is closed.
+        """
+        if not self.completed:
+            async for _ in self:
+                pass
+        return self.items_so_far
+
     def send(self, item: IN) -> None:
         """Send an item to the container."""
         # TODO Oleksandr: should sending be allowed only in the context of a "with" block ?

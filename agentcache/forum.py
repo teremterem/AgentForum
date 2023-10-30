@@ -382,12 +382,9 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[MessagePromise]:
         """Get the last message in the sequence."""
-        if not self.completed:
-            # make sure the whole sequence is consumed into self.items_so_far
-            async for _ in self:
-                pass
-        if self.items_so_far:
-            return self.items_so_far[-1]
+        messages = await self.aget_all()
+        if messages:
+            return messages[-1]
         if raise_if_none:
             # TODO Oleksandr: introduce a custom exception for this case
             raise ValueError("MessageSequence is empty")
