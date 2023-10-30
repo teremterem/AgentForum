@@ -90,6 +90,13 @@ class Message(Immutable):
     prev_msg_hash_key: Optional[str] = None
 
 
+class ForwardedMessage(Message):
+    """A subtype of Message that represents a message forwarded by an agent."""
+
+    ac_model_: Literal["message"] = "forward"
+    original_msg_hash_key: str
+
+
 class AgentCall(Message):
     """A subtype of Message that represents a call to an agent."""
 
