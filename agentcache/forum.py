@@ -5,11 +5,11 @@ functionality to the models without modifying the models themselves.
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Dict, Any, Optional, List, Type
+from typing import Dict, Any, Optional, List, Type, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict
 
-from agentcache.models import Message, Freeform, Token, AgentCall
+from agentcache.models import Message, Freeform, Token, AgentCall, ForwardedMessage
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import IN, AgentFunction
 from agentcache.utils import Broadcastable
@@ -135,22 +135,24 @@ class AgentContext:
 
 
 class MessagePromise(Broadcastable[IN, Token]):
+    # pylint: disable=too-many-arguments,too-many-instance-attributes
     """A message that is streamed token by token instead of being returned all at once."""
 
     # TODO Oleksandr: split all the logic in this class into three subclasses:
-    #  StreamedMsgPromise, DetachedMsgPromise and MaterializedMsgPromise
+    #  StreamedMsgPromise, DetachedMsgPromise and MaterializedMsgPromise (what about ForwardedMsgPromise, though ?)
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         forum: Forum,
         sender_alias: Optional[str] = None,
         in_reply_to: Optional["MessagePromise"] = None,
+        a_forward_of: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
         detached_msg: Optional[Message] = None,
     ) -> None:
         if materialized_msg and detached_msg:
             raise ValueError("materialized_msg and detached_msg cannot be specified at the same time")
-        if materialized_msg and (sender_alias or in_reply_to):
+        if materialized_msg and (sender_alias or in_reply_to or a_forward_of):
             raise ValueError("If materialized_msg is specified, sender_alias and in_reply_to must be None")
         if detached_msg and sender_alias:
             raise ValueError("If detached_msg is specified, sender_alias must be None")
@@ -169,9 +171,21 @@ class MessagePromise(Broadcastable[IN, Token]):
         self.forum = forum
         self._sender_alias = sender_alias
         self._in_reply_to = in_reply_to
+        self._a_forward_of = a_forward_of
         self._materialized_msg = materialized_msg
         self._detached_msg = detached_msg
         self._metadata: Dict[str, Any] = {}
+
+    def __aiter__(self) -> AsyncIterator[Token]:
+        if self._a_forward_of:
+            return self._a_forward_of.__aiter__()
+        return super().__aiter__()
+
+    @property
+    def completed(self) -> bool:
+        if self._a_forward_of:
+            return self._a_forward_of.completed
+        return super().completed
 
     async def amaterialize(self) -> Message:
         """
@@ -180,20 +194,36 @@ class MessagePromise(Broadcastable[IN, Token]):
         """
         if not self._materialized_msg:
             prev_msg_hash_key = (await self._in_reply_to.amaterialize()).hash_key if self._in_reply_to else None
+            original_msg = await self._a_forward_of.amaterialize() if self._a_forward_of else None
+
+            extra_kwargs = {"prev_msg_hash_key": prev_msg_hash_key}
+            if original_msg:
+                metadata_dict = original_msg.model_dump(exclude={"ac_model_"})
+                metadata_dict.update(self._metadata)
+                extra_kwargs["original_msg_hash_key"] = original_msg.hash_key
+            else:
+                metadata_dict = self._metadata
+            extra_kwargs["metadata"] = Freeform(**metadata_dict)
 
             if self._detached_msg:
                 # This is a detached message - a message that on one hand is complete, but on the other hand doesn't
-                # reference the previous message in the conversation yet. This is why we are cloning it here and
-                # adding the prev_msg_hash_key value to the clone.
-                self._materialized_msg = self._detached_msg.model_copy(update={"prev_msg_hash_key": prev_msg_hash_key})
+                # reference the previous message in the conversation yet (neither it references an original message,
+                # in case it's a forward). This is why we are cloning it here and adding the prev_msg_hash_key value
+                # to the clone (as well as original_msg_hash_key value if relevant).
+                message_cls = ForwardedMessage if self._a_forward_of else type(self._detached_msg)
+                self._materialized_msg = message_cls(
+                    **self._detached_msg.model_dump(
+                        exclude={"ac_model_", "metadata", "prev_msg_hash_key", "original_msg_hash_key"}
+                    ),
+                    **extra_kwargs,
+                )
             else:
                 # It is a streamed message, so we need to assemble it from the tokens.
-                tokens = await self.aget_all()
-                self._materialized_msg = Message(
-                    content="".join([token.text for token in tokens]),
+                message_cls = ForwardedMessage if self._a_forward_of else Message
+                self._materialized_msg = message_cls(
+                    content="".join([token.text async for token in self]),
                     sender_alias=self._sender_alias,
-                    metadata=Freeform(**self._metadata),
-                    prev_msg_hash_key=prev_msg_hash_key,
+                    **extra_kwargs,
                 )
             await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
 
@@ -206,7 +236,7 @@ class MessagePromise(Broadcastable[IN, Token]):
             return type(self._materialized_msg)
         if self._detached_msg:
             return type(self._detached_msg)
-        return Message
+        return ForwardedMessage if self._a_forward_of else Message
 
     async def _aget_previous_message(self) -> Optional["MessagePromise"]:
         if self._materialized_msg:
@@ -229,6 +259,25 @@ class MessagePromise(Broadcastable[IN, Token]):
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit
             self._prev_msg = prev_msg
+        return self._prev_msg
+
+    async def aget_original_message(self, return_self_if_none: bool = True) -> Optional["MessagePromise"]:
+        """Get the previous message in the conversation."""
+        if not hasattr(self, "_original_msg"):
+            if self._materialized_msg:
+                if isinstance(self._materialized_msg, ForwardedMessage):
+                    original_msg = await self.forum.afind_message_promise(self._materialized_msg.original_msg_hash_key)
+                else:
+                    original_msg = None
+            else:
+                original_msg = self._a_forward_of
+
+            if return_self_if_none:
+                original_msg = original_msg or self
+
+            # pylint: disable=attribute-defined-outside-init
+            # noinspection PyAttributeOutsideInit
+            self._original_msg = original_msg
         return self._prev_msg
 
     async def aget_history(
@@ -293,9 +342,11 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[MessagePromise]:
         """Get the last message in the sequence."""
-        messages = await self.aget_all()
-        if messages:
-            return messages[-1]
+        # make sure the whole sequence is consumed into self.items_so_far
+        async for _ in self:
+            pass
+        if self.items_so_far:
+            return self.items_so_far[-1]
         if raise_if_none:
             # TODO Oleksandr: introduce a custom exception for this case
             raise ValueError("MessageSequence is empty")
