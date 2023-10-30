@@ -39,7 +39,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             ],
         )
 
-        responses.send((await api_response.amaterialize()).content)
+        responses.send(api_response)
 
     @forum.agent
     async def _reminder_api(request: MessagePromise, responses: MessageSequence) -> None:
@@ -60,7 +60,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         [
             ("message", "USER", "set a reminder for me for tomorrow at 10am"),
             ("call", "USER", "_assistant"),
-            ("message", "_assistant", "success: reminder set"),
+            ("forward", "_assistant", "success: reminder set"),
         ],
     )
 
@@ -75,7 +75,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
     @forum.agent
     async def _agent1(request: MessagePromise, responses: MessageSequence) -> None:
         async for msg in _agent2.call(request):
-            responses.send((await msg.amaterialize()).content)
+            responses.send(msg)
         # TODO Oleksandr: replace the above with something like this, when ForwardedMessages are supported:
         #  responses.send(_agent2.call(request))
         responses.send("agent1 also says hello")
@@ -92,10 +92,9 @@ async def test_two_nested_agents(forum: Forum) -> None:
         [
             ("message", "USER", "user says hello"),
             ("call", "USER", "_agent1"),
-            # TODO Oleksandr: "_agent1" is a sender that forwarded the following two messages,
-            #  assert that the "original sender" is "_agent2"
-            ("message", "_agent1", "agent2 says hello"),
-            ("message", "_agent1", "agent2 says hello again"),
+            # TODO Oleksandr: assert that the "original sender" is "_agent2" in the following two messages
+            ("forward", "_agent1", "agent2 says hello"),
+            ("forward", "_agent1", "agent2 says hello again"),
             ("message", "_agent1", "agent1 also says hello"),
         ],
     )

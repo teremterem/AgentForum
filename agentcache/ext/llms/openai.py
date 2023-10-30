@@ -24,6 +24,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
 
     messages = [await msg.amaterialize() if isinstance(msg, MessagePromise) else msg for msg in prompt]
+    # pprint(messages)
     message_dicts = [
         {
             "role": getattr(msg.metadata, "openai_role", "user"),
@@ -31,6 +32,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
         }
         for msg in messages
     ]
+    # pprint(message_dicts)
     response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
