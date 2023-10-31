@@ -30,13 +30,16 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             api_response,
             [
                 ("message", "USER", "set a reminder for me for tomorrow at 10am"),
+                ("call", "_assistant", "_reminder_api"),
                 ("message", "_reminder_api", "api error: invalid date format"),
+                ("call", "_assistant", "_critic"),
                 ("message", "_critic", "try swapping the month and day"),
+                ("call", "_assistant", "_reminder_api"),
                 ("message", "_reminder_api", "success: reminder set"),
             ],
         )
 
-        responses.send((await api_response.amaterialize()).content)
+        responses.send(api_response)
 
     @forum.agent
     async def _reminder_api(request: MessagePromise, responses: MessageSequence) -> None:
@@ -56,7 +59,8 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         assistant_responses,
         [
             ("message", "USER", "set a reminder for me for tomorrow at 10am"),
-            ("message", "_assistant", "success: reminder set"),
+            ("call", "USER", "_assistant"),
+            ("forward", "_assistant", "success: reminder set"),
         ],
     )
 
@@ -71,7 +75,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
     @forum.agent
     async def _agent1(request: MessagePromise, responses: MessageSequence) -> None:
         async for msg in _agent2.call(request):
-            responses.send((await msg.amaterialize()).content)
+            responses.send(msg)
         # TODO Oleksandr: replace the above with something like this, when ForwardedMessages are supported:
         #  responses.send(_agent2.call(request))
         responses.send("agent1 also says hello")
@@ -87,10 +91,10 @@ async def test_two_nested_agents(forum: Forum) -> None:
         responses1,
         [
             ("message", "USER", "user says hello"),
-            # TODO Oleksandr: "_agent1" is a sender that forwarded the following two messages,
-            #  assert that the "original sender" is "_agent2"
-            ("message", "_agent1", "agent2 says hello"),
-            ("message", "_agent1", "agent2 says hello again"),
+            ("call", "USER", "_agent1"),
+            # TODO Oleksandr: assert that the "original sender" is "_agent2" in the following two messages
+            ("forward", "_agent1", "agent2 says hello"),
+            ("forward", "_agent1", "agent2 says hello again"),
             ("message", "_agent1", "agent1 also says hello"),
         ],
     )
@@ -105,6 +109,7 @@ async def aassert_conversation(
     """
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
     actual_conversation = [
-        (msg.ac_model_, msg.sender_alias, msg.content) for msg in await concluding_msg.amaterialize_history()
+        (msg.ac_model_, msg.sender_alias, msg.content)
+        for msg in await concluding_msg.amaterialize_history(skip_agent_calls=False)
     ]
     assert actual_conversation == expected_conversation

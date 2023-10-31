@@ -59,8 +59,8 @@ class Broadcastable(Generic[IN, OUT]):
     @property
     def completed(self) -> bool:
         """
-        Return True if all the items have been sent to the container and at least one consumer already consumed them
-        all.
+        Return True if all the items have been sent to this Broadcastable and at least one consumer already consumed
+        them all.
         """
         return not self._queue
 

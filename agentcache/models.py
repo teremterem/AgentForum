@@ -90,28 +90,27 @@ class Message(Immutable):
     prev_msg_hash_key: Optional[str] = None
 
 
+class ForwardedMessage(Message):
+    """A subtype of Message that represents a message forwarded by an agent."""
+
+    ac_model_: Literal["message"] = "forward"
+    original_msg_hash_key: str
+
+
 class AgentCall(Message):
     """A subtype of Message that represents a call to an agent."""
 
     ac_model_: Literal["call"] = "call"
 
     @property
-    def agent_alias(self) -> str:
+    def receiver_alias(self) -> str:
         """Get the alias of the agent that is being called."""
         return self.content
 
     @property
-    def request_hash_key(self) -> str:
-        """
-        Get the hash key of the request message. The message this "call" object is a response to is considered the
-        request.
-        """
-        return self.prev_msg_hash_key
-
-    @property
-    def kwargs(self) -> Freeform:
+    def kwargs(self) -> Dict[str, Any]:
         """Get the keyword arguments for the agent call."""
-        return self.metadata
+        return self.metadata.as_kwargs
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)

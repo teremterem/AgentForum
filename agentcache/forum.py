@@ -5,11 +5,11 @@ functionality to the models without modifying the models themselves.
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Dict, Any, Optional, List, Type
+from typing import Dict, Any, Optional, List, Type, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict
 
-from agentcache.models import Message, Freeform, Token, AgentCall
+from agentcache.models import Message, Freeform, Token, AgentCall, ForwardedMessage
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import IN, AgentFunction
 from agentcache.utils import Broadcastable
@@ -90,21 +90,18 @@ class Agent:
             ),
         )
         responses = MessageSequence(self.forum, in_reply_to=agent_call)
-        asyncio.create_task(self._asubmit_agent_call(agent_call=agent_call, responses=responses, **kwargs))
+        asyncio.create_task(self._acall_agent_func(agent_call=agent_call, responses=responses, **kwargs))
         return responses
 
-    async def _asubmit_agent_call(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
+    async def _acall_agent_func(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
         with responses:
             try:
-                await self._acall_agent_func(agent_call, responses, **kwargs)
+                request = await agent_call.aget_previous_message()
+                with AgentContext(agent_alias=self.agent_alias):
+                    await self._func(request, responses, **kwargs)
             except BaseException as exc:  # pylint: disable=broad-exception-caught
                 # catch all exceptions, including KeyboardInterrupt
                 responses.send(exc)  # TODO Oleksandr: introduce ErrorMessage
-
-    async def _acall_agent_func(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
-        request = await agent_call.aget_previous_message()
-        with AgentContext(agent_alias=self.agent_alias):
-            await self._func(request, responses, **kwargs)
 
 
 class AgentContext:
@@ -138,25 +135,29 @@ class AgentContext:
 
 
 class MessagePromise(Broadcastable[IN, Token]):
+    # pylint: disable=too-many-arguments,too-many-instance-attributes
     """A message that is streamed token by token instead of being returned all at once."""
 
     # TODO Oleksandr: split all the logic in this class into three subclasses:
     #  StreamedMsgPromise, DetachedMsgPromise and MaterializedMsgPromise
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         forum: Forum,
         sender_alias: Optional[str] = None,
         in_reply_to: Optional["MessagePromise"] = None,
+        a_forward_of: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
         detached_msg: Optional[Message] = None,
     ) -> None:
         if materialized_msg and detached_msg:
             raise ValueError("materialized_msg and detached_msg cannot be specified at the same time")
-        if materialized_msg and (sender_alias or in_reply_to):
+        if materialized_msg and (sender_alias or in_reply_to or a_forward_of):
             raise ValueError("If materialized_msg is specified, sender_alias and in_reply_to must be None")
         if detached_msg and sender_alias:
             raise ValueError("If detached_msg is specified, sender_alias must be None")
+        if a_forward_of and not detached_msg:
+            raise ValueError("If a_forward_of is specified, detached_msg must be specified as well")
         if not (materialized_msg or detached_msg) and not sender_alias:
             raise ValueError("sender_alias must be specified if neither materialized_msg nor detached_msg is given")
 
@@ -172,9 +173,21 @@ class MessagePromise(Broadcastable[IN, Token]):
         self.forum = forum
         self._sender_alias = sender_alias
         self._in_reply_to = in_reply_to
+        self._a_forward_of = a_forward_of
         self._materialized_msg = materialized_msg
         self._detached_msg = detached_msg
         self._metadata: Dict[str, Any] = {}
+
+    def __aiter__(self) -> AsyncIterator[Token]:
+        if self._a_forward_of:
+            return self._a_forward_of.__aiter__()
+        return super().__aiter__()
+
+    @property
+    def completed(self) -> bool:
+        if self._a_forward_of:
+            return self._a_forward_of.completed
+        return super().completed
 
     async def amaterialize(self) -> Message:
         """
@@ -186,18 +199,53 @@ class MessagePromise(Broadcastable[IN, Token]):
 
             if self._detached_msg:
                 # This is a detached message - a message that on one hand is complete, but on the other hand doesn't
-                # reference the previous message in the conversation yet. This is why we are cloning it here and
-                # adding the prev_msg_hash_key value to the clone.
-                self._materialized_msg = self._detached_msg.model_copy(update={"prev_msg_hash_key": prev_msg_hash_key})
+                # reference the previous message in the conversation yet (neither it references an original message,
+                # in case it's a forward). This is why we are cloning it here and adding the prev_msg_hash_key value
+                # to the clone (as well as original_msg_hash_key value if relevant).
+
+                if self._a_forward_of:
+                    original_msg = await self._a_forward_of.amaterialize()
+
+                    metadata_dict = original_msg.metadata.model_dump(exclude={"ac_model_"})
+                    # let's merge the metadata from the original message with the metadata from the detached message
+                    # (detached message metadata overrides the original message metadata in case of conflicts; also
+                    # keep in mind that it is a shallow merge - nested objects are not merged)
+                    metadata_dict.update(self._detached_msg.metadata.model_dump(exclude={"ac_model_"}))
+
+                    content = original_msg.content
+                    metadata = Freeform(**metadata_dict)
+                    extra_kwargs = {"original_msg_hash_key": original_msg.hash_key}
+                else:
+                    content = self._detached_msg.content
+                    metadata = self._detached_msg.metadata
+                    extra_kwargs = {}
+
+                message_cls = ForwardedMessage if self._a_forward_of else type(self._detached_msg)
+                self._materialized_msg = message_cls(
+                    **self._detached_msg.model_dump(
+                        exclude={"ac_model_", "content", "metadata", "prev_msg_hash_key", "original_msg_hash_key"}
+                    ),
+                    content=content,
+                    metadata=metadata,
+                    prev_msg_hash_key=prev_msg_hash_key,
+                    **extra_kwargs,
+                )
             else:
                 # It is a streamed message, so we need to assemble it from the tokens.
-                tokens = await self.aget_all()
+
+                if self._detached_msg:
+                    # this state should never be reached - if it is a "ForwardedMessagePromise" then it should not be
+                    # streamed (the original message promise that this message promise is forwarding can be streamed
+                    # but not this message promise)
+                    raise RuntimeError("If a_forward_of is specified, detached_msg must be specified as well")
+
                 self._materialized_msg = Message(
-                    content="".join([token.text for token in tokens]),
+                    content="".join([token.text async for token in self]),
                     sender_alias=self._sender_alias,
                     metadata=Freeform(**self._metadata),
                     prev_msg_hash_key=prev_msg_hash_key,
                 )
+
             await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
 
         return self._materialized_msg
@@ -208,6 +256,8 @@ class MessagePromise(Broadcastable[IN, Token]):
         if self._materialized_msg:
             return type(self._materialized_msg)
         if self._detached_msg:
+            if self._a_forward_of:
+                return ForwardedMessage
             return type(self._detached_msg)
         return Message
 
@@ -227,12 +277,35 @@ class MessagePromise(Broadcastable[IN, Token]):
                 while prev_msg:
                     if not issubclass(prev_msg.real_msg_class, AgentCall):
                         break
+                    # noinspection PyUnresolvedReferences
                     prev_msg = await prev_msg._aget_previous_message()  # pylint: disable=protected-access
 
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit
             self._prev_msg = prev_msg
         return self._prev_msg
+
+    async def aget_original_message(self, return_self_if_none: bool = True) -> Optional["MessagePromise"]:
+        """
+        Get the original message for this forwarded message. Return self or None if the original message is not found
+        (depending on whether return_self_if_none is True or False).
+        """
+        if not hasattr(self, "_original_msg"):
+            if self._materialized_msg:
+                if isinstance(self._materialized_msg, ForwardedMessage):
+                    original_msg = await self.forum.afind_message_promise(self._materialized_msg.original_msg_hash_key)
+                else:
+                    original_msg = None
+            else:
+                original_msg = self._a_forward_of
+
+            if return_self_if_none:
+                original_msg = original_msg or self
+
+            # pylint: disable=attribute-defined-outside-init
+            # noinspection PyAttributeOutsideInit
+            self._original_msg = original_msg
+        return self._original_msg
 
     async def aget_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
@@ -281,16 +354,29 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
 
     def send(self, content: str, sender_alias: Optional[str] = None, **metadata) -> None:
         """Send a message to the end of a sequence."""
-        # TODO Oleksandr: when the concept of ForwardedMessage is introduced, allow sending fully fledged messages as
-        #  responses
         if isinstance(content, BaseException):
             # TODO Oleksandr: replace with ErrorMessage when it is introduced
             super().send(content)
             return
 
-        msg_promise = self.forum.new_message_promise(
-            content=content, sender_alias=sender_alias, in_reply_to=self._in_reply_to, **metadata
-        )
+        if isinstance(content, MessagePromise):
+            # TODO Oleksandr: update method signature to support this (or create a separate method ?)
+            # TODO Oleksandr: turn this into a forum method akin to forum.anew_message_promise() ?
+            msg_promise = MessagePromise(
+                forum=self.forum,
+                in_reply_to=self._in_reply_to,
+                a_forward_of=content,
+                detached_msg=Message(
+                    content="",  # TODO Oleksandr: get rid of this hack
+                    sender_alias=self.forum.resolve_sender_alias(sender_alias),
+                    metadata=Freeform(**metadata),
+                ),
+            )
+        else:
+            msg_promise = self.forum.new_message_promise(
+                content=content, sender_alias=sender_alias, in_reply_to=self._in_reply_to, **metadata
+            )
+
         self._in_reply_to = msg_promise
         super().send(msg_promise)
 

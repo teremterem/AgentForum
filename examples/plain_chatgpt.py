@@ -23,8 +23,7 @@ async def first_openai_agent(request: MessagePromise, responses: MessageSequence
     first_response = await aopenai_chat_completion(
         forum=request.forum, prompt=full_chat, in_reply_to=full_chat[-1], **kwargs
     )
-    # TODO Oleksandr: !!! you broke streaming again !!! introduce the concept of ForwardedMessages !!!
-    responses.send((await first_response.amaterialize()).content)
+    responses.send(first_response)
 
     # second_response = await aopenai_chat_completion(
     #     forum=request.forum, prompt=full_chat, in_reply_to=first_response, **kwargs
