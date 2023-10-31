@@ -4,6 +4,7 @@ functionality to the models without modifying the models themselves.
 """
 import asyncio
 import contextvars
+from abc import abstractmethod, ABC
 from contextvars import ContextVar
 from typing import Dict, Any, Optional, List, Type, AsyncIterator
 
@@ -134,12 +135,12 @@ class AgentContext:
         self._previous_ctx_token = None
 
 
-class MessagePromise(Broadcastable[IN, Token]):
+class ObsoleteMessagePromise(Broadcastable[IN, Token]):
     # pylint: disable=too-many-arguments,too-many-instance-attributes
-    """A message that is streamed token by token instead of being returned all at once."""
-
+    """
     # TODO Oleksandr: split all the logic in this class into three subclasses:
     #  StreamedMsgPromise, DetachedMsgPromise and MaterializedMsgPromise
+    """
 
     def __init__(
         self,
@@ -307,10 +308,74 @@ class MessagePromise(Broadcastable[IN, Token]):
             self._original_msg = original_msg
         return self._original_msg
 
+
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+
+
+class MessagePromise(Broadcastable[IN, Token], ABC):
+    def __init__(self, forum: Forum, materialized_msg: Optional[Message] = None, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.forum = forum
+        self._materialized_msg = materialized_msg
+
+    @property
+    def real_msg_class(self) -> Type[Message]:
+        """Return the type of the real message that this promise represents."""
+        if self._materialized_msg:
+            return type(self._materialized_msg)
+        return self._foresee_real_msg_class()
+
+    async def amaterialize(self) -> Message:
+        """
+        Get the full message. This method will "await" until all the tokens are received (or whatever else needs to be
+        waited for before the actual message can be constructed and stored in the storage) and then return the message.
+        """
+        if not self._materialized_msg:
+            self._materialized_msg = await self._amaterialize()
+            await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
+
+        return self._materialized_msg
+
+    async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+        """Get the previous message in this conversation branch."""
+        if not hasattr(self, "_prev_msg"):
+            prev_msg = await self._aget_previous_message()
+
+            if skip_agent_calls:
+                while prev_msg:
+                    if not issubclass(prev_msg.real_msg_class, AgentCall):
+                        break
+                    # noinspection PyUnresolvedReferences
+                    prev_msg = await prev_msg._aget_previous_message()  # pylint: disable=protected-access
+
+            # pylint: disable=attribute-defined-outside-init
+            # noinspection PyAttributeOutsideInit
+            self._prev_msg = prev_msg
+        return self._prev_msg
+
     async def aget_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List["MessagePromise"]:
-        """Get the full chat history for this message."""
+        """Get the full chat history of the conversation branch up to this message."""
         # TODO Oleksandr: introduce a limit on the number of messages to fetch
         msg = self
         result = [msg] if include_this_message else []
@@ -323,7 +388,8 @@ class MessagePromise(Broadcastable[IN, Token]):
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List[Message]:
         """
-        Get the full chat history of this message, but return a list Message objects instead of MessagePromise objects.
+        Get the full chat history of the conversation branch up to this message, but return a list of Message objects
+        instead of MessagePromise objects.
         """
         return [
             await msg.amaterialize()
@@ -331,6 +397,190 @@ class MessagePromise(Broadcastable[IN, Token]):
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         ]
+
+    async def aget_original_message(self, return_self_if_none: bool = True) -> Optional["MessagePromise"]:
+        """
+        Get the original message for this forwarded message. Return self or None if the original message is not found
+        (depending on whether return_self_if_none is True or False).
+        """
+        if not hasattr(self, "_original_msg"):
+            original_msg = await self._aget_original_message()
+            if return_self_if_none:
+                original_msg = original_msg or self
+
+            # pylint: disable=attribute-defined-outside-init
+            # noinspection PyAttributeOutsideInit
+            self._original_msg = original_msg
+        return self._original_msg
+
+    # noinspection PyMethodMayBeStatic
+    def _foresee_real_msg_class(self) -> Type[Message]:
+        """This method foresees what the real message type will be when it is "materialized"."""
+        return Message
+
+    @abstractmethod
+    async def _amaterialize(self) -> Message:
+        """Non-cached part of amaterialize()."""
+
+    @abstractmethod
+    async def _aget_previous_message(self) -> Optional["MessagePromise"]:
+        """Non-cached part of aget_previous_message()."""
+
+    async def _aget_original_message(self) -> Optional["MessagePromise"]:
+        """Non-cached part of aget_original_message()."""
+        return None
+
+
+class StreamedMsgPromise(MessagePromise):
+    """A message that is streamed token by token instead of being returned all at once."""
+
+    def __init__(
+        self,
+        forum: Forum,
+        sender_alias: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        in_reply_to: Optional[MessagePromise] = None,
+    ) -> None:
+        super().__init__(forum=forum)
+        self._sender_alias = sender_alias
+        self._metadata = dict(metadata or {})
+        self._in_reply_to = in_reply_to
+
+    async def _amaterialize(self) -> Message:
+        return Message(
+            content="".join([token.text async for token in self]),
+            sender_alias=self._sender_alias,
+            metadata=Freeform(**self._metadata),
+            prev_msg_hash_key=(await self._in_reply_to.amaterialize()).hash_key if self._in_reply_to else None,
+        )
+
+    async def _aget_previous_message(self) -> Optional["MessagePromise"]:
+        return self._in_reply_to
+
+
+class DetachedMsgPromise(MessagePromise):
+    """
+    This is a detached message promise. A detached is on one hand is complete, but on the other hand doesn't reference
+    the previous message in the conversation yet (neither it references its original message, in case it's a forward).
+    This is why in_reply_to and a_forward_of are not specified as standalone properties in the promise constructor -
+    those relation will become part of the underlying Message upon its "materialization".
+    """
+
+    def __init__(
+        self,
+        forum: Forum,
+        detached_msg: Message,
+        in_reply_to: Optional["MessagePromise"] = None,
+        a_forward_of: Optional["MessagePromise"] = None,
+    ) -> None:
+        super().__init__(forum=forum, items_so_far=[Token(text=detached_msg.content)], completed=True)
+        self.forum = forum
+        self._detached_msg = detached_msg
+        self._in_reply_to = in_reply_to
+        self._a_forward_of = a_forward_of
+
+    def __aiter__(self) -> AsyncIterator[Token]:
+        if self._a_forward_of:
+            return self._a_forward_of.__aiter__()
+        return super().__aiter__()
+
+    @property
+    def completed(self) -> bool:
+        if self._a_forward_of:
+            return self._a_forward_of.completed
+        return super().completed
+
+    async def _amaterialize(self) -> Message:
+        """
+        Get the full message. This method will "await" until all the tokens are received and then return the complete
+        message.
+        """
+        prev_msg_hash_key = (await self._in_reply_to.amaterialize()).hash_key if self._in_reply_to else None
+
+        if self._a_forward_of:
+            original_msg = await self._a_forward_of.amaterialize()
+
+            metadata_dict = original_msg.metadata.model_dump(exclude={"ac_model_"})
+            # let's merge the metadata from the original message with the metadata from the detached message
+            # (detached message metadata overrides the original message metadata in case of conflicts; also
+            # keep in mind that it is a shallow merge - nested objects are not merged)
+            metadata_dict.update(self._detached_msg.metadata.model_dump(exclude={"ac_model_"}))
+
+            content = original_msg.content
+            metadata = Freeform(**metadata_dict)
+            extra_kwargs = {"original_msg_hash_key": original_msg.hash_key}
+        else:
+            content = self._detached_msg.content
+            metadata = self._detached_msg.metadata
+            extra_kwargs = {}
+
+        self._materialized_msg = self.real_msg_class(
+            **self._detached_msg.model_dump(
+                exclude={"ac_model_", "content", "metadata", "prev_msg_hash_key", "original_msg_hash_key"}
+            ),
+            content=content,
+            metadata=metadata,
+            prev_msg_hash_key=prev_msg_hash_key,
+            **extra_kwargs,
+        )
+
+        return self._materialized_msg
+
+    def _foresee_real_msg_class(self) -> Type[Message]:
+        if self._a_forward_of:
+            return ForwardedMessage
+        return type(self._detached_msg)
+
+    async def _aget_previous_message(self) -> Optional["MessagePromise"]:
+        if self._materialized_msg:
+            if self._materialized_msg.prev_msg_hash_key:
+                return await self.forum.afind_message_promise(self._materialized_msg.prev_msg_hash_key)
+            return None
+        return self._in_reply_to  # this is the source of truth in case of detached and streamed messages
+
+    async def aget_original_message(self, return_self_if_none: bool = True) -> Optional["MessagePromise"]:
+        """
+        Get the original message for this forwarded message. Return self or None if the original message is not found
+        (depending on whether return_self_if_none is True or False).
+        """
+        if not hasattr(self, "_original_msg"):
+            if self._materialized_msg:
+                if isinstance(self._materialized_msg, ForwardedMessage):
+                    original_msg = await self.forum.afind_message_promise(self._materialized_msg.original_msg_hash_key)
+                else:
+                    original_msg = None
+            else:
+                original_msg = self._a_forward_of
+
+            if return_self_if_none:
+                original_msg = original_msg or self
+
+            # pylint: disable=attribute-defined-outside-init
+            # noinspection PyAttributeOutsideInit
+            self._original_msg = original_msg
+        return self._original_msg
+
+
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+# TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
 
 
 class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
