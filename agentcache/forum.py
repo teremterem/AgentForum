@@ -4,7 +4,6 @@ functionality to the models without modifying the models themselves.
 """
 import asyncio
 import contextvars
-from abc import abstractmethod, ABC
 from contextvars import ContextVar
 from typing import Dict, Any, Optional, List, Type, AsyncIterator
 
@@ -47,7 +46,7 @@ class Forum(BaseModel):
         Create a new, detached message promise in the forum. "Detached message promise" means that this message
         promise is a reply to another message promise that may or may not be "materialized" yet.
         """
-        return MessagePromise(
+        return DetachedMsgPromise(
             forum=self,
             in_reply_to=in_reply_to,
             detached_msg=Message(
@@ -81,7 +80,7 @@ class Agent:
 
     def call(self, request: "MessagePromise", sender_alias: Optional[str] = None, **kwargs) -> "MessageSequence":
         """Call the agent."""
-        agent_call = MessagePromise(
+        agent_call = DetachedMsgPromise(
             forum=self.forum,
             in_reply_to=request,
             detached_msg=AgentCall(
@@ -135,9 +134,26 @@ class AgentContext:
         self._previous_ctx_token = None
 
 
-class MessagePromise(Broadcastable[IN, Token], ABC):
-    def __init__(self, forum: Forum, materialized_msg: Optional[Message] = None, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+class MessagePromise(Broadcastable[IN, Token]):
+    """A promise to materialize a message."""
+
+    def __init__(
+        self, forum: Forum, materialized_msg: Optional[Message] = None, materialized_msg_content: Optional[str] = None
+    ) -> None:
+        """
+        TODO Oleksandr: better docstring ?
+        NOTE: The `materialized_msg_content` parameter is used to initialize the MessagePromise with content from a
+        "detached" message (see DetachedMsgPromise class).
+        """
+        if materialized_msg:
+            # if there is a materialized message, then override whatever was passed in as materialized_msg_content -
+            # materialized_msg.content is the source of truth
+            materialized_msg_content = materialized_msg.content
+
+        super().__init__(
+            items_so_far=None if materialized_msg_content is None else [Token(text=materialized_msg_content)],
+            completed=materialized_msg_content is not None,
+        )
         self.forum = forum
         self._materialized_msg = materialized_msg
 
@@ -222,9 +238,9 @@ class MessagePromise(Broadcastable[IN, Token], ABC):
         """This method foresees what the real message type will be when it is "materialized"."""
         return Message
 
-    @abstractmethod
     async def _amaterialize(self) -> Message:
         """Non-cached part of amaterialize()."""
+        raise NotImplementedError
 
     async def _aget_previous_message(self) -> Optional["MessagePromise"]:
         """Non-cached part of aget_previous_message()."""
@@ -272,10 +288,10 @@ class StreamedMsgPromise(MessagePromise):
 
 class DetachedMsgPromise(MessagePromise):
     """
-    This is a detached message promise. A detached is on one hand is complete, but on the other hand doesn't reference
-    the previous message in the conversation yet (neither it references its original message, in case it's a forward).
-    This is why in_reply_to and a_forward_of are not specified as standalone properties in the promise constructor -
-    those relation will become part of the underlying Message upon its "materialization".
+    This is a detached message promise. A detached message is on one hand is complete, but on the other hand doesn't
+    reference the previous message in the conversation yet (neither it references its original message, in case it's
+    a forward). This is why in_reply_to and a_forward_of are not specified as standalone properties in the promise
+    constructor - those relation will become part of the underlying Message upon its "materialization".
     """
 
     def __init__(
@@ -285,7 +301,7 @@ class DetachedMsgPromise(MessagePromise):
         in_reply_to: Optional["MessagePromise"] = None,
         a_forward_of: Optional["MessagePromise"] = None,
     ) -> None:
-        super().__init__(forum=forum, items_so_far=[Token(text=detached_msg.content)], completed=True)
+        super().__init__(forum=forum, materialized_msg_content=detached_msg.content)
         self.forum = forum
         self._detached_msg = detached_msg
         self._in_reply_to = in_reply_to
@@ -379,7 +395,7 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
         if isinstance(content, MessagePromise):
             # TODO Oleksandr: update method signature to support this (or create a separate method ?)
             # TODO Oleksandr: turn this into a forum method akin to forum.anew_message_promise() ?
-            msg_promise = MessagePromise(
+            msg_promise = DetachedMsgPromise(
                 forum=self.forum,
                 in_reply_to=self._in_reply_to,
                 a_forward_of=content,
