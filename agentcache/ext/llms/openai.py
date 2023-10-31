@@ -3,7 +3,7 @@ import asyncio
 from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
-from agentcache.forum import MessagePromise, Forum
+from agentcache.forum import MessagePromise, Forum, StreamedMsgPromise
 from agentcache.models import Token, Message
 from agentcache.utils import Sentinel
 
@@ -64,7 +64,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     )
 
 
-class _OpenAIStreamedMessage(MessagePromise[Dict[str, Any]]):
+class _OpenAIStreamedMessage(StreamedMsgPromise):
     """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
     def __init__(self, *args, **kwargs):
