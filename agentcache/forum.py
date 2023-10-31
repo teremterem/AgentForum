@@ -240,7 +240,10 @@ class MessagePromise(Broadcastable[IN, Token]):
 
     async def _amaterialize(self) -> Message:
         """Non-cached part of amaterialize()."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "Either create a MessagePromise that is materialized from the start or use a subclass that implements "
+            "this method."
+        )
 
     async def _aget_previous_message(self) -> Optional["MessagePromise"]:
         """Non-cached part of aget_previous_message()."""
