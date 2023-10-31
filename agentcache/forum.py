@@ -305,7 +305,7 @@ class MessagePromise(Broadcastable[IN, Token]):
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit
             self._original_msg = original_msg
-        return self._prev_msg
+        return self._original_msg
 
     async def aget_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
