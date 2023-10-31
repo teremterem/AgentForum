@@ -532,33 +532,10 @@ class DetachedMsgPromise(MessagePromise):
         return type(self._detached_msg)
 
     async def _aget_previous_message(self) -> Optional["MessagePromise"]:
-        if self._materialized_msg:
-            if self._materialized_msg.prev_msg_hash_key:
-                return await self.forum.afind_message_promise(self._materialized_msg.prev_msg_hash_key)
-            return None
-        return self._in_reply_to  # this is the source of truth in case of detached and streamed messages
+        return self._in_reply_to
 
-    async def aget_original_message(self, return_self_if_none: bool = True) -> Optional["MessagePromise"]:
-        """
-        Get the original message for this forwarded message. Return self or None if the original message is not found
-        (depending on whether return_self_if_none is True or False).
-        """
-        if not hasattr(self, "_original_msg"):
-            if self._materialized_msg:
-                if isinstance(self._materialized_msg, ForwardedMessage):
-                    original_msg = await self.forum.afind_message_promise(self._materialized_msg.original_msg_hash_key)
-                else:
-                    original_msg = None
-            else:
-                original_msg = self._a_forward_of
-
-            if return_self_if_none:
-                original_msg = original_msg or self
-
-            # pylint: disable=attribute-defined-outside-init
-            # noinspection PyAttributeOutsideInit
-            self._original_msg = original_msg
-        return self._original_msg
+    async def _aget_original_message(self) -> Optional["MessagePromise"]:
+        return self._a_forward_of
 
 
 # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
