@@ -60,11 +60,11 @@ class Forum(BaseModel):
     def resolve_sender_alias(sender_alias: Optional[str]) -> str:
         """
         Resolve the sender alias to use in a message. If sender_alias is not None, it is returned. Otherwise, the
-        current AgentContext is used to get the agent alias, and if there is no current AgentContext, then
+        current InteractionContext is used to get the agent alias, and if there is no current InteractionContext, then
         DEFAULT_AGENT_ALIAS (which translates to "USER") is used.
         """
         if not sender_alias:
-            agent_context = AgentContext.get_current_context()
+            agent_context = InteractionContext.get_current_context()
             if agent_context:
                 sender_alias = agent_context.agent_alias
         return sender_alias or DEFAULT_AGENT_ALIAS
@@ -97,34 +97,34 @@ class Agent:
         with responses:
             try:
                 request = await agent_call.aget_previous_message()
-                with AgentContext(agent_alias=self.agent_alias):
+                with InteractionContext(agent_alias=self.agent_alias):
                     await self._func(request, responses, **kwargs)
             except BaseException as exc:  # pylint: disable=broad-exception-caught
                 # catch all exceptions, including KeyboardInterrupt
                 responses.send(exc)  # TODO Oleksandr: introduce ErrorMessage
 
 
-class AgentContext:
+class InteractionContext:
     """
     A context within which an agent is called. This is needed for things like looking up a sender alias for a message
     that is being created by the agent, so it can be populated in the message automatically (and other similar things).
     """
 
-    _current_context: ContextVar[Optional["AgentContext"]] = ContextVar("_current_context", default=None)
+    _current_context: ContextVar[Optional["InteractionContext"]] = ContextVar("_current_context", default=None)
 
     def __init__(self, agent_alias: str):
         self.agent_alias = agent_alias
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
     @classmethod
-    def get_current_context(cls) -> Optional["AgentContext"]:
-        """Get the current AgentContext object."""
+    def get_current_context(cls) -> Optional["InteractionContext"]:
+        """Get the current InteractionContext object."""
         return cls._current_context.get()
 
-    def __enter__(self) -> "AgentContext":
+    def __enter__(self) -> "InteractionContext":
         """Set this context as the current context."""
         if self._previous_ctx_token:
-            raise RuntimeError("AgentContext is not reentrant")
+            raise RuntimeError("InteractionContext is not reentrant")
         self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
         return self
 
