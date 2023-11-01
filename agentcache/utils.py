@@ -73,7 +73,7 @@ class Broadcastable(Generic[IN, OUT]):
                 pass
         return self.items_so_far
 
-    def send(self, item: IN) -> None:
+    def send(self, item: Union[IN, BaseException]) -> None:
         """Send an item to the container."""
         # TODO Oleksandr: should sending be allowed only in the context of a "with" block ?
         if self.send_closed:

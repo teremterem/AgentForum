@@ -5,13 +5,13 @@ functionality to the models without modifying the models themselves.
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Dict, Any, Optional, List, Type, AsyncIterator, Union
+from typing import Dict, Any, Optional, List, Type, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict
 
 from agentcache.models import Message, Freeform, Token, AgentCall, ForwardedMessage
 from agentcache.storage import ImmutableStorage
-from agentcache.typing import IN, AgentFunction
+from agentcache.typing import IN, AgentFunction, MessageType
 from agentcache.utils import Broadcastable
 
 DEFAULT_AGENT_ALIAS = "USER"
@@ -122,9 +122,7 @@ class InteractionContext:
         self._latest_message = latest_message
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
-    def respond(
-        self, content: Union[str, "MessagePromise", BaseException], sender_alias: Optional[str] = None, **metadata
-    ) -> None:
+    def respond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
         """Send a message to the end of a sequence."""
         if isinstance(content, BaseException):
             self._responses.send(content)  # TODO Oleksandr: introduce the concept of ErrorMessage
