@@ -44,7 +44,7 @@ class Forum(BaseModel):
     ) -> "MessagePromise":
         """
         Create a new, detached message promise in the forum. "Detached message promise" means that this message
-        promise is a reply to another message promise that may or may not be "materialized" yet.
+        promise may be a reply to another message promise that may or may not be "materialized" yet.
         """
         return DetachedMsgPromise(
             forum=self,
@@ -128,23 +128,50 @@ class InteractionContext:
             self._responses.send(content)  # TODO Oleksandr: introduce the concept of ErrorMessage
             return
 
-        if isinstance(content, MessagePromise):
-            # TODO Oleksandr: update method signature to support this (or create a separate method ?)
-            # TODO Oleksandr: turn this into a forum method akin to forum.anew_message_promise() ?
+        # TODO Oleksandr: move all this inside forum.new_message_promise()
+        if isinstance(content, str):
+            msg_promise = DetachedMsgPromise(
+                forum=self.forum,
+                in_reply_to=self._latest_message,
+                a_forward_of=None,
+                detached_msg=Message(
+                    content=content,
+                    sender_alias=self.forum.resolve_sender_alias(sender_alias),
+                    metadata=Freeform(**metadata),
+                ),
+            )
+        elif isinstance(content, Message):
+            msg_promise = DetachedMsgPromise(
+                forum=self.forum,
+                in_reply_to=self._latest_message,
+                a_forward_of=MessagePromise(forum=self.forum, materialized_msg=content),
+                detached_msg=Message(
+                    content="",  # this is a hack (the content will actually be taken from the forwarded message)
+                    sender_alias=self.forum.resolve_sender_alias(sender_alias),
+                    metadata=Freeform(**metadata),
+                ),
+            )
+        elif isinstance(content, MessagePromise):
             msg_promise = DetachedMsgPromise(
                 forum=self.forum,
                 in_reply_to=self._latest_message,
                 a_forward_of=content,
                 detached_msg=Message(
-                    content="",  # TODO Oleksandr: get rid of this hack
+                    content="",  # this is a hack (the content will actually be taken from the forwarded message)
                     sender_alias=self.forum.resolve_sender_alias(sender_alias),
                     metadata=Freeform(**metadata),
                 ),
             )
         else:
-            msg_promise = self.forum.new_message_promise(
-                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message, **metadata
-            )
+            if hasattr(content, "__iter__"):
+                for item in content:
+                    self.respond(item, sender_alias=sender_alias, **metadata)
+            elif hasattr(content, "__aiter__"):
+                # TODO Oleksanr: introduce a custom exception for this case
+                raise ValueError("Use `await ctx.arespond(...)` for async iterables")
+            else:
+                raise ValueError(f"Unexpected message content type: {type(content)}")
+            return
 
         self._latest_message = msg_promise
         self._responses.send(msg_promise)
