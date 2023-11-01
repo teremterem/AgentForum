@@ -74,10 +74,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent1(request: MessagePromise, ctx: InteractionContext) -> None:
-        async for msg in _agent2.call(request):
-            ctx.respond(msg)
-        # TODO Oleksandr: replace the above with something like this, when ForwardedMessages are supported:
-        #  responses.send(_agent2.call(request))
+        await ctx.arespond(_agent2.call(request))
         ctx.respond("agent1 also says hello")
 
     @forum.agent

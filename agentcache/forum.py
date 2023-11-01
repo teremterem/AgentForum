@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from agentcache.models import Message, Freeform, Token, AgentCall, ForwardedMessage
 from agentcache.storage import ImmutableStorage
-from agentcache.typing import IN, AgentFunction, MessageType
+from agentcache.typing import IN, AgentFunction, MessageType, SingleMessageType
 from agentcache.utils import Broadcastable
 
 DEFAULT_AGENT_ALIAS = "USER"
@@ -37,7 +37,7 @@ class Forum(BaseModel):
 
     def new_message_promise(
         self,
-        content: str,
+        content: Optional[SingleMessageType] = None,
         sender_alias: Optional[str] = None,
         in_reply_to: Optional["MessagePromise"] = None,
         **metadata,
@@ -46,9 +46,24 @@ class Forum(BaseModel):
         Create a new, detached message promise in the forum. "Detached message promise" means that this message
         promise may be a reply to another message promise that may or may not be "materialized" yet.
         """
+        if isinstance(content, str):
+            a_forward_of = None
+        elif isinstance(content, Message):
+            a_forward_of = MessagePromise(forum=self.forum, materialized_msg=content)
+            # TODO Oleksandr: should we store the materialized_msg ?
+            #  (the promise will not store it since it is already "materialized")
+            #  or do we trust that something else already stored it ?
+            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
+        elif isinstance(content, MessagePromise):
+            a_forward_of = content
+            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
+        else:
+            raise ValueError(f"Unexpected message content type: {type(content)}")
+
         return DetachedMsgPromise(
             forum=self,
             in_reply_to=in_reply_to,
+            a_forward_of=a_forward_of,
             detached_msg=Message(
                 content=content,
                 sender_alias=self.resolve_sender_alias(sender_alias),
@@ -123,52 +138,47 @@ class InteractionContext:
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
     def respond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
-        """Send a message to the end of a sequence."""
+        """Respond with a message or a sequence of messages."""
         if isinstance(content, BaseException):
-            self._responses.send(content)  # TODO Oleksandr: introduce the concept of ErrorMessage
+            # TODO Oleksandr: introduce the concept of ErrorMessage and move this if into Forum.new_message_promise()
+            self._responses.send(content)
             return
 
-        # TODO Oleksandr: move all this inside forum.new_message_promise()
-        if isinstance(content, str):
-            msg_promise = DetachedMsgPromise(
-                forum=self.forum,
-                in_reply_to=self._latest_message,
-                a_forward_of=None,
-                detached_msg=Message(
-                    content=content,
-                    sender_alias=self.forum.resolve_sender_alias(sender_alias),
-                    metadata=Freeform(**metadata),
-                ),
-            )
-        elif isinstance(content, Message):
-            msg_promise = DetachedMsgPromise(
-                forum=self.forum,
-                in_reply_to=self._latest_message,
-                a_forward_of=MessagePromise(forum=self.forum, materialized_msg=content),
-                detached_msg=Message(
-                    content="",  # this is a hack (the content will actually be taken from the forwarded message)
-                    sender_alias=self.forum.resolve_sender_alias(sender_alias),
-                    metadata=Freeform(**metadata),
-                ),
-            )
-        elif isinstance(content, MessagePromise):
-            msg_promise = DetachedMsgPromise(
-                forum=self.forum,
-                in_reply_to=self._latest_message,
-                a_forward_of=content,
-                detached_msg=Message(
-                    content="",  # this is a hack (the content will actually be taken from the forwarded message)
-                    sender_alias=self.forum.resolve_sender_alias(sender_alias),
-                    metadata=Freeform(**metadata),
-                ),
+        if isinstance(content, (str, Message, MessagePromise)):
+            msg_promise = self.forum.new_message_promise(
+                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message
             )
         else:
             if hasattr(content, "__iter__"):
                 for item in content:
                     self.respond(item, sender_alias=sender_alias, **metadata)
             elif hasattr(content, "__aiter__"):
-                # TODO Oleksanr: introduce a custom exception for this case
                 raise ValueError("Use `await ctx.arespond(...)` for async iterables")
+            else:
+                raise ValueError(f"Unexpected message content type: {type(content)}")
+            return
+
+        self._latest_message = msg_promise
+        self._responses.send(msg_promise)
+
+    async def arespond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
+        """Respond with a message or a sequence of messages (async version)."""
+        if isinstance(content, BaseException):
+            # TODO Oleksandr: introduce the concept of ErrorMessage and move this if into Forum.new_message_promise()
+            self._responses.send(content)
+            return
+
+        if isinstance(content, (str, Message, MessagePromise)):
+            msg_promise = self.forum.new_message_promise(
+                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message
+            )
+        else:
+            if hasattr(content, "__iter__"):
+                for item in content:
+                    self.respond(item, sender_alias=sender_alias, **metadata)
+            elif hasattr(content, "__aiter__"):
+                async for item in content:
+                    self.respond(item, sender_alias=sender_alias, **metadata)
             else:
                 raise ValueError(f"Unexpected message content type: {type(content)}")
             return
