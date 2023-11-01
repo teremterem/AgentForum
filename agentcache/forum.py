@@ -5,7 +5,7 @@ functionality to the models without modifying the models themselves.
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Dict, Any, Optional, List, Type, AsyncIterator
+from typing import Dict, Any, Optional, List, Type, AsyncIterator, Union
 
 from pydantic import BaseModel, ConfigDict
 
@@ -64,9 +64,9 @@ class Forum(BaseModel):
         DEFAULT_AGENT_ALIAS (which translates to "USER") is used.
         """
         if not sender_alias:
-            agent_context = InteractionContext.get_current_context()
-            if agent_context:
-                sender_alias = agent_context.agent_alias
+            ctx = InteractionContext.get_current_context()
+            if ctx:
+                sender_alias = ctx.this_agent.agent_alias
         return sender_alias or DEFAULT_AGENT_ALIAS
 
 
@@ -95,13 +95,14 @@ class Agent:
 
     async def _acall_agent_func(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
         with responses:
+            ctx = InteractionContext(forum=self.forum, agent=self, responses=responses, latest_message=agent_call)
             try:
                 request = await agent_call.aget_previous_message()
-                with InteractionContext(agent_alias=self.agent_alias):
-                    await self._func(request, responses, **kwargs)
+                with ctx:
+                    await self._func(request, ctx, **kwargs)
             except BaseException as exc:  # pylint: disable=broad-exception-caught
                 # catch all exceptions, including KeyboardInterrupt
-                responses.send(exc)  # TODO Oleksandr: introduce ErrorMessage
+                ctx.respond(exc)
 
 
 class InteractionContext:
@@ -112,9 +113,43 @@ class InteractionContext:
 
     _current_context: ContextVar[Optional["InteractionContext"]] = ContextVar("_current_context", default=None)
 
-    def __init__(self, agent_alias: str):
-        self.agent_alias = agent_alias
+    def __init__(
+        self, forum: Forum, agent: Agent, responses: "MessageSequence", latest_message: Optional["MessagePromise"]
+    ) -> None:
+        self.forum = forum
+        self.this_agent = agent
+        self._responses = responses
+        self._latest_message = latest_message
         self._previous_ctx_token: Optional[contextvars.Token] = None
+
+    def respond(
+        self, content: Union[str, "MessagePromise", BaseException], sender_alias: Optional[str] = None, **metadata
+    ) -> None:
+        """Send a message to the end of a sequence."""
+        if isinstance(content, BaseException):
+            self._responses.send(content)  # TODO Oleksandr: introduce the concept of ErrorMessage
+            return
+
+        if isinstance(content, MessagePromise):
+            # TODO Oleksandr: update method signature to support this (or create a separate method ?)
+            # TODO Oleksandr: turn this into a forum method akin to forum.anew_message_promise() ?
+            msg_promise = DetachedMsgPromise(
+                forum=self.forum,
+                in_reply_to=self._latest_message,
+                a_forward_of=content,
+                detached_msg=Message(
+                    content="",  # TODO Oleksandr: get rid of this hack
+                    sender_alias=self.forum.resolve_sender_alias(sender_alias),
+                    metadata=Freeform(**metadata),
+                ),
+            )
+        else:
+            msg_promise = self.forum.new_message_promise(
+                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message, **metadata
+            )
+
+        self._latest_message = msg_promise
+        self._responses.send(msg_promise)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -255,6 +290,7 @@ class MessagePromise(Broadcastable[IN, Token]):
     async def _aget_original_message(self) -> Optional["MessagePromise"]:
         """Non-cached part of aget_original_message()."""
         if isinstance(self.real_msg_class, ForwardedMessage):
+            # noinspection PyUnresolvedReferences
             return await self.forum.afind_message_promise(self.amaterialize().original_msg_hash_key)
         return None
 
@@ -369,7 +405,7 @@ class DetachedMsgPromise(MessagePromise):
         return self._a_forward_of
 
 
-class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
+class MessageSequence(Broadcastable[Union[MessagePromise, BaseException], MessagePromise]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
@@ -387,34 +423,6 @@ class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
         super().__init__()
         self.forum = forum
         self._in_reply_to = in_reply_to
-
-    def send(self, content: str, sender_alias: Optional[str] = None, **metadata) -> None:
-        """Send a message to the end of a sequence."""
-        if isinstance(content, BaseException):
-            # TODO Oleksandr: replace with ErrorMessage when it is introduced
-            super().send(content)
-            return
-
-        if isinstance(content, MessagePromise):
-            # TODO Oleksandr: update method signature to support this (or create a separate method ?)
-            # TODO Oleksandr: turn this into a forum method akin to forum.anew_message_promise() ?
-            msg_promise = DetachedMsgPromise(
-                forum=self.forum,
-                in_reply_to=self._in_reply_to,
-                a_forward_of=content,
-                detached_msg=Message(
-                    content="",  # TODO Oleksandr: get rid of this hack
-                    sender_alias=self.forum.resolve_sender_alias(sender_alias),
-                    metadata=Freeform(**metadata),
-                ),
-            )
-        else:
-            msg_promise = self.forum.new_message_promise(
-                content=content, sender_alias=sender_alias, in_reply_to=self._in_reply_to, **metadata
-            )
-
-        self._in_reply_to = msg_promise
-        super().send(msg_promise)
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[MessagePromise]:
         """Get the last message in the sequence."""

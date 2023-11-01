@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 
 import pytest
 
-from agentcache.forum import Forum, MessagePromise, MessageSequence
+from agentcache.forum import Forum, MessagePromise, MessageSequence, InteractionContext
 
 
 @pytest.mark.asyncio
@@ -19,7 +19,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _assistant(request: MessagePromise, responses: MessageSequence) -> None:
+    async def _assistant(request: MessagePromise, ctx: InteractionContext) -> None:
         api_response = await _reminder_api.call(request).aget_concluding_message()
         if (await api_response.amaterialize()).content.startswith("api error:"):
             # TODO Oleksandr: implement actual ErrorMessage class
@@ -39,19 +39,19 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             ],
         )
 
-        responses.send(api_response)
+        ctx.respond(api_response)
 
     @forum.agent
-    async def _reminder_api(request: MessagePromise, responses: MessageSequence) -> None:
+    async def _reminder_api(request: MessagePromise, ctx: InteractionContext) -> None:
         if (await request.amaterialize()).sender_alias == "_critic":
-            responses.send("success: reminder set")
+            ctx.respond("success: reminder set")
         else:
-            responses.send("api error: invalid date format")
+            ctx.respond("api error: invalid date format")
 
     @forum.agent
-    async def _critic(_: MessagePromise, responses: MessageSequence) -> None:
+    async def _critic(_: MessagePromise, ctx: InteractionContext) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
-        responses.send("try swapping the month and day")
+        ctx.respond("try swapping the month and day")
 
     assistant_responses = _assistant.call(forum.new_message_promise("set a reminder for me for tomorrow at 10am"))
 
@@ -73,17 +73,17 @@ async def test_two_nested_agents(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _agent1(request: MessagePromise, responses: MessageSequence) -> None:
+    async def _agent1(request: MessagePromise, ctx: InteractionContext) -> None:
         async for msg in _agent2.call(request):
-            responses.send(msg)
+            ctx.respond(msg)
         # TODO Oleksandr: replace the above with something like this, when ForwardedMessages are supported:
         #  responses.send(_agent2.call(request))
-        responses.send("agent1 also says hello")
+        ctx.respond("agent1 also says hello")
 
     @forum.agent
-    async def _agent2(_: MessagePromise, responses: MessageSequence) -> None:
-        responses.send("agent2 says hello")
-        responses.send("agent2 says hello again")
+    async def _agent2(_: MessagePromise, ctx: InteractionContext) -> None:
+        ctx.respond("agent2 says hello")
+        ctx.respond("agent2 says hello again")
 
     responses1 = _agent1.call(forum.new_message_promise("user says hello"))
 
