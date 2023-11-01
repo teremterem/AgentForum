@@ -405,7 +405,7 @@ class DetachedMsgPromise(MessagePromise):
         return self._a_forward_of
 
 
-class MessageSequence(Broadcastable[Union[MessagePromise, BaseException], MessagePromise]):
+class MessageSequence(Broadcastable[MessagePromise, MessagePromise]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the

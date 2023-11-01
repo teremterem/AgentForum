@@ -71,7 +71,7 @@ class _OpenAIStreamedMessage(StreamedMsgPromise):
         super().__init__(*args, **kwargs)
         self._tokens_raw: List[Dict[str, Any]] = []
 
-    async def _aget_item_from_queue(self) -> Union[Dict[str, Any], Sentinel]:
+    async def _aget_item_from_queue(self) -> Union[Dict[str, Any], Sentinel, BaseException]:
         while True:
             token_raw = await self._queue.get()
             if isinstance(token_raw, Sentinel):

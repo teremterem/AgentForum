@@ -104,14 +104,13 @@ class Broadcastable(Generic[IN, OUT]):
     async def _aget_and_convert_item(self) -> Union[OUT, Sentinel]:
         item = await self._aget_item_from_queue()
         if isinstance(item, BaseException):
-            # TODO Oleksandr: expect ErrorMessage instead
-            # TODO Oleksandr: define this in the subclass instead
+            # TODO Oleksandr: make it work together with the future concept of ErrorMessage somehow
             raise item
         if not isinstance(item, Sentinel):
             item = self._convert_item(item)
         return item
 
-    async def _aget_item_from_queue(self) -> Union[IN, Sentinel]:
+    async def _aget_item_from_queue(self) -> Union[IN, Sentinel, BaseException]:
         return await self._queue.get()
 
     # noinspection PyMethodMayBeStatic
