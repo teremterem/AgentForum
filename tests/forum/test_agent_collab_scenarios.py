@@ -30,13 +30,13 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         await aassert_conversation(
             api_response,
             [
-                ("message", "USER", "set a reminder for me for tomorrow at 10am"),
-                ("call", "_assistant", "_reminder_api"),
-                ("message", "_reminder_api", "api error: invalid date format"),
-                ("call", "_assistant", "_critic"),
-                ("message", "_critic", "try swapping the month and day"),
-                ("call", "_assistant", "_reminder_api"),
-                ("message", "_reminder_api", "success: reminder set"),
+                ("message", "USER", "USER", "set a reminder for me for tomorrow at 10am"),
+                ("call", "_assistant", "_assistant", "_reminder_api"),
+                ("message", "_reminder_api", "_reminder_api", "api error: invalid date format"),
+                ("call", "_assistant", "_assistant", "_critic"),
+                ("message", "_critic", "_critic", "try swapping the month and day"),
+                ("call", "_assistant", "_assistant", "_reminder_api"),
+                ("message", "_reminder_api", "_reminder_api", "success: reminder set"),
             ],
         )
 
@@ -59,9 +59,9 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     await aassert_conversation(
         assistant_responses,
         [
-            ("message", "USER", "set a reminder for me for tomorrow at 10am"),
-            ("call", "USER", "_assistant"),
-            ("forward", "_assistant", "success: reminder set"),
+            ("message", "USER", "USER", "set a reminder for me for tomorrow at 10am"),
+            ("call", "USER", "USER", "_assistant"),
+            ("forward", "_assistant", "_reminder_api", "success: reminder set"),
         ],
     )
 
@@ -88,18 +88,17 @@ async def test_two_nested_agents(forum: Forum) -> None:
     await aassert_conversation(
         responses1,
         [
-            ("message", "USER", "user says hello"),
-            ("call", "USER", "_agent1"),
-            # TODO Oleksandr: assert that the "original sender" is "_agent2" in the following two messages
-            ("forward", "_agent1", "agent2 says hello"),
-            ("forward", "_agent1", "agent2 says hello again"),
-            ("message", "_agent1", "agent1 also says hello"),
+            ("message", "USER", "USER", "user says hello"),
+            ("call", "USER", "USER", "_agent1"),
+            ("forward", "_agent1", "_agent2", "agent2 says hello"),
+            ("forward", "_agent1", "_agent2", "agent2 says hello again"),
+            ("message", "_agent1", "_agent1", "agent1 also says hello"),
         ],
     )
 
 
 async def aassert_conversation(
-    response: Union[MessagePromise, MessageSequence], expected_conversation: List[Tuple[str, str, str]]
+    response: Union[MessagePromise, MessageSequence], expected_conversation: List[Tuple[str, str, str, str]]
 ) -> None:
     """
     Assert that the conversation recorded in the given responses matches the expected conversation. This function
@@ -107,7 +106,7 @@ async def aassert_conversation(
     """
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
     actual_conversation = [
-        (msg.ac_model_, msg.sender_alias, msg.content)
+        (msg.ac_model_, msg.sender_alias, msg.get_original_msg().sender_alias, msg.content)
         for msg in await concluding_msg.amaterialize_history(skip_agent_calls=False)
     ]
     assert actual_conversation == expected_conversation

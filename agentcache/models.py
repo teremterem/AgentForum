@@ -2,7 +2,7 @@
 import hashlib
 from typing import Dict, Any, Literal, Type, Tuple, Optional
 
-from pydantic import BaseModel, model_validator, ConfigDict
+from pydantic import BaseModel, model_validator, ConfigDict, PrivateAttr
 
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
@@ -89,12 +89,31 @@ class Message(Immutable):
     metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
 
+    _original_msg: Optional["Message"] = PrivateAttr(default=None)
+
+    def get_original_msg(self, return_self_if_none: bool = True) -> "Message":
+        """Get the original message that this message is a forward of."""
+        if not self._original_msg and return_self_if_none:
+            return self
+        return self._original_msg
+
 
 class ForwardedMessage(Message):
     """A subtype of Message that represents a message forwarded by an agent."""
 
     ac_model_: Literal["message"] = "forward"
     original_msg_hash_key: str
+
+    def get_original_msg(self, return_self_if_none: bool = True) -> "Message":
+        """Get the original message that this message is a forward of."""
+        if not self._original_msg:
+            raise ValueError("original_msg property was not initialized")
+        if self._original_msg.hash_key != self.original_msg_hash_key:
+            raise ValueError(
+                f"original_msg_hash_key does not match the hash_key of the original message: "
+                f"{self.original_msg_hash_key} != {self._original_msg.hash_key}"
+            )
+        return self._original_msg
 
 
 class AgentCall(Message):

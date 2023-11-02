@@ -237,6 +237,7 @@ class DetachedMsgPromise(MessagePromise):
         message.
         """
         prev_msg_hash_key = (await self._in_reply_to.amaterialize()).hash_key if self._in_reply_to else None
+        original_msg = None
 
         if self._a_forward_of:
             original_msg = await self._a_forward_of.amaterialize()
@@ -265,6 +266,7 @@ class DetachedMsgPromise(MessagePromise):
             **extra_kwargs,
         )
 
+        self._materialized_msg._original_msg = original_msg  # pylint: disable=protected-access
         return self._materialized_msg
 
     def _foresee_real_msg_class(self) -> Type[Message]:
