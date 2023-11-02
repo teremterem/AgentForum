@@ -3,7 +3,8 @@ from typing import List, Tuple, Union
 
 import pytest
 
-from agentcache.forum import Forum, MessagePromise, MessageSequence
+from agentcache.forum import Forum, InteractionContext
+from agentcache.promises import MessagePromise, MessageSequence
 
 
 @pytest.mark.asyncio
@@ -19,7 +20,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _assistant(request: MessagePromise, responses: MessageSequence) -> None:
+    async def _assistant(request: MessagePromise, ctx: InteractionContext) -> None:
         api_response = await _reminder_api.call(request).aget_concluding_message()
         if (await api_response.amaterialize()).content.startswith("api error:"):
             # TODO Oleksandr: implement actual ErrorMessage class
@@ -29,38 +30,38 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         await aassert_conversation(
             api_response,
             [
-                ("message", "USER", "set a reminder for me for tomorrow at 10am"),
-                ("call", "_assistant", "_reminder_api"),
-                ("message", "_reminder_api", "api error: invalid date format"),
-                ("call", "_assistant", "_critic"),
-                ("message", "_critic", "try swapping the month and day"),
-                ("call", "_assistant", "_reminder_api"),
-                ("message", "_reminder_api", "success: reminder set"),
+                ("message", "USER", "USER", "set a reminder for me for tomorrow at 10am"),
+                ("call", "_assistant", "_assistant", "_reminder_api"),
+                ("message", "_reminder_api", "_reminder_api", "api error: invalid date format"),
+                ("call", "_assistant", "_assistant", "_critic"),
+                ("message", "_critic", "_critic", "try swapping the month and day"),
+                ("call", "_assistant", "_assistant", "_reminder_api"),
+                ("message", "_reminder_api", "_reminder_api", "success: reminder set"),
             ],
         )
 
-        responses.send(api_response)
+        ctx.respond(api_response)
 
     @forum.agent
-    async def _reminder_api(request: MessagePromise, responses: MessageSequence) -> None:
+    async def _reminder_api(request: MessagePromise, ctx: InteractionContext) -> None:
         if (await request.amaterialize()).sender_alias == "_critic":
-            responses.send("success: reminder set")
+            ctx.respond("success: reminder set")
         else:
-            responses.send("api error: invalid date format")
+            ctx.respond("api error: invalid date format")
 
     @forum.agent
-    async def _critic(_: MessagePromise, responses: MessageSequence) -> None:
+    async def _critic(_: MessagePromise, ctx: InteractionContext) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
-        responses.send("try swapping the month and day")
+        ctx.respond("try swapping the month and day")
 
     assistant_responses = _assistant.call(forum.new_message_promise("set a reminder for me for tomorrow at 10am"))
 
     await aassert_conversation(
         assistant_responses,
         [
-            ("message", "USER", "set a reminder for me for tomorrow at 10am"),
-            ("call", "USER", "_assistant"),
-            ("forward", "_assistant", "success: reminder set"),
+            ("message", "USER", "USER", "set a reminder for me for tomorrow at 10am"),
+            ("call", "USER", "USER", "_assistant"),
+            ("forward", "_assistant", "_reminder_api", "success: reminder set"),
         ],
     )
 
@@ -73,35 +74,31 @@ async def test_two_nested_agents(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _agent1(request: MessagePromise, responses: MessageSequence) -> None:
-        async for msg in _agent2.call(request):
-            responses.send(msg)
-        # TODO Oleksandr: replace the above with something like this, when ForwardedMessages are supported:
-        #  responses.send(_agent2.call(request))
-        responses.send("agent1 also says hello")
+    async def _agent1(request: MessagePromise, ctx: InteractionContext) -> None:
+        await ctx.arespond(_agent2.call(request))
+        ctx.respond("agent1 also says hello")
 
     @forum.agent
-    async def _agent2(_: MessagePromise, responses: MessageSequence) -> None:
-        responses.send("agent2 says hello")
-        responses.send("agent2 says hello again")
+    async def _agent2(_: MessagePromise, ctx: InteractionContext) -> None:
+        ctx.respond("agent2 says hello")
+        ctx.respond("agent2 says hello again")
 
     responses1 = _agent1.call(forum.new_message_promise("user says hello"))
 
     await aassert_conversation(
         responses1,
         [
-            ("message", "USER", "user says hello"),
-            ("call", "USER", "_agent1"),
-            # TODO Oleksandr: assert that the "original sender" is "_agent2" in the following two messages
-            ("forward", "_agent1", "agent2 says hello"),
-            ("forward", "_agent1", "agent2 says hello again"),
-            ("message", "_agent1", "agent1 also says hello"),
+            ("message", "USER", "USER", "user says hello"),
+            ("call", "USER", "USER", "_agent1"),
+            ("forward", "_agent1", "_agent2", "agent2 says hello"),
+            ("forward", "_agent1", "_agent2", "agent2 says hello again"),
+            ("message", "_agent1", "_agent1", "agent1 also says hello"),
         ],
     )
 
 
 async def aassert_conversation(
-    response: Union[MessagePromise, MessageSequence], expected_conversation: List[Tuple[str, str, str]]
+    response: Union[MessagePromise, MessageSequence], expected_conversation: List[Tuple[str, str, str, str]]
 ) -> None:
     """
     Assert that the conversation recorded in the given responses matches the expected conversation. This function
@@ -109,7 +106,7 @@ async def aassert_conversation(
     """
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
     actual_conversation = [
-        (msg.ac_model_, msg.sender_alias, msg.content)
+        (msg.ac_model_, msg.sender_alias, msg.get_original_msg().sender_alias, msg.content)
         for msg in await concluding_msg.amaterialize_history(skip_agent_calls=False)
     ]
     assert actual_conversation == expected_conversation

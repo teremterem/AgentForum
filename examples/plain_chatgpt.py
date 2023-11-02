@@ -8,14 +8,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from agentcache.ext.llms.openai import aopenai_chat_completion
-from agentcache.forum import MessagePromise, Forum, MessageSequence
+from agentcache.forum import Forum, InteractionContext
+from agentcache.promises import MessagePromise
 from agentcache.storage import InMemoryStorage
 
 forum = Forum(immutable_storage=InMemoryStorage())
 
 
 @forum.agent
-async def first_openai_agent(request: MessagePromise, responses: MessageSequence, **kwargs) -> None:
+async def first_openai_agent(request: MessagePromise, ctx: InteractionContext, **kwargs) -> None:
     """The first agent that uses OpenAI ChatGPT. It sends the full chat history to the OpenAI API."""
     full_chat = await request.aget_history()
 
@@ -23,16 +24,16 @@ async def first_openai_agent(request: MessagePromise, responses: MessageSequence
     first_response = await aopenai_chat_completion(
         forum=request.forum, prompt=full_chat, in_reply_to=full_chat[-1], **kwargs
     )
-    responses.send(first_response)
+    ctx.respond(first_response)
 
     # second_response = await aopenai_chat_completion(
     #     forum=request.forum, prompt=full_chat, in_reply_to=first_response, **kwargs
     # )
-    # responses.send(second_response)
+    # ctx.respond(second_response)
 
 
 @forum.agent
-async def user_proxy_agent(request: MessagePromise, response: MessageSequence) -> None:
+async def user_proxy_agent(request: MessagePromise, ctx: InteractionContext) -> None:
     """An agent that acts as a proxy between the user and other agents."""
     print("\nGPT: ", end="", flush=True)
     async for token in request:
@@ -41,7 +42,7 @@ async def user_proxy_agent(request: MessagePromise, response: MessageSequence) -
     user_input = input("\nYOU: ")
     if user_input == "exit":
         raise KeyboardInterrupt
-    response.send(user_input)
+    ctx.respond(user_input)
 
 
 async def main() -> None:

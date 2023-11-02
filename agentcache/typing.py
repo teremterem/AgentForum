@@ -1,13 +1,19 @@
 """Typing definitions for AgentCache."""
 import typing
-from typing import TypeVar, Callable, Awaitable
+from typing import TypeVar, Callable, Awaitable, Union, Iterable, Any, AsyncIterable
 
 if typing.TYPE_CHECKING:
-    from agentcache.forum import MessagePromise, MessageSequence
+    from agentcache.forum import InteractionContext
+    from agentcache.promises import MessagePromise
+    from agentcache.models import Message
 
-    AgentFunction = Callable[[MessagePromise, MessageSequence, ...], Awaitable[None]]
+    SingleMessageType = Union[str, Message, MessagePromise, BaseException]
+    AgentFunction = Callable[[MessagePromise, InteractionContext, ...], Awaitable[None]]
 else:
+    SingleMessageType = Union[Any]
     AgentFunction = Callable
+
+MessageType = Union[SingleMessageType, Iterable[SingleMessageType], AsyncIterable[SingleMessageType]]
 
 IN = TypeVar("IN")
 OUT = TypeVar("OUT")
