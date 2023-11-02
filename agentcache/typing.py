@@ -3,7 +3,8 @@ import typing
 from typing import TypeVar, Callable, Awaitable, Union, Iterable, Any, AsyncIterable
 
 if typing.TYPE_CHECKING:
-    from agentcache.forum import MessagePromise, InteractionContext
+    from agentcache.forum import InteractionContext
+    from agentcache.promises import MessagePromise
     from agentcache.models import Message
 
     SingleMessageType = Union[str, Message, MessagePromise, BaseException]

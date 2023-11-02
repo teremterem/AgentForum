@@ -3,7 +3,8 @@ from typing import List, Tuple, Union
 
 import pytest
 
-from agentcache.forum import Forum, MessagePromise, MessageSequence, InteractionContext
+from agentcache.forum import Forum, InteractionContext
+from agentcache.promises import MessagePromise, MessageSequence
 
 
 @pytest.mark.asyncio

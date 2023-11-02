@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from agentcache.ext.llms.openai import aopenai_chat_completion
-from agentcache.forum import MessagePromise, Forum, InteractionContext
+from agentcache.forum import Forum, InteractionContext
+from agentcache.promises import MessagePromise
 from agentcache.storage import InMemoryStorage
 
 forum = Forum(immutable_storage=InMemoryStorage())

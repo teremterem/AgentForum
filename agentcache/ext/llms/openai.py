@@ -3,7 +3,8 @@ import asyncio
 from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
-from agentcache.forum import MessagePromise, Forum, StreamedMsgPromise
+from agentcache.forum import Forum
+from agentcache.promises import MessagePromise, StreamedMsgPromise
 from agentcache.models import Token, Message
 from agentcache.utils import Sentinel
 
