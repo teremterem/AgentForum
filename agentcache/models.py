@@ -20,6 +20,11 @@ class Immutable(BaseModel):
     def hash_key(self) -> str:
         """Get the hash key for this object. It is a hash of the JSON representation of the object."""
         if not hasattr(self, "_hash_key"):
+            # TODO Oleksandr: use
+            #   json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True)
+            #  instead of
+            #   self.model_dump_json()
+            #  to ensure that the hash key is independent of the order of the fields in the JSON representation ?
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit
             self._hash_key = hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
