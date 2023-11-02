@@ -113,9 +113,9 @@ class ForwardedMessage(Message):
         ForwardedMessage not to have an original message.
         """
         if not self._original_msg:
-            raise ValueError("original_msg property was not initialized")
+            raise RuntimeError("original_msg property was not initialized")
         if self._original_msg.hash_key != self.original_msg_hash_key:
-            raise ValueError(
+            raise RuntimeError(
                 f"original_msg_hash_key does not match the hash_key of the original message: "
                 f"{self.original_msg_hash_key} != {self._original_msg.hash_key}"
             )
