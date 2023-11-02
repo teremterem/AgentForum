@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from agentcache.models import Immutable, Freeform, Message
+from agentcache.models import Immutable, Freeform, Message, ForwardedMessage
 
 
 class SampleImmutable(Immutable):
@@ -81,6 +81,25 @@ def test_message_hash_key() -> None:
     expected_hash_key = hashlib.sha256(
         '{"ac_model_":"message","content":"test","sender_alias":"user","metadata":'
         '{"ac_model_":"freeform"},"prev_msg_hash_key":null}'.encode("utf-8")
+    ).hexdigest()
+    assert message.hash_key == expected_hash_key
+
+
+def test_forwarded_message_hash_key() -> None:
+    """
+    Assert that ForwardedMessage._original_msg is not serialized when calculating the hash_key of a ForwardedMessage
+    (only ForwardedMessage.original_msg_hash_key is).
+    """
+    original_msg = Message(content="message that is being forwarded", sender_alias="user")
+
+    message = ForwardedMessage(content="test", sender_alias="user", original_msg_hash_key=original_msg.hash_key)
+    message._original_msg = original_msg  # pylint: disable=protected-access
+
+    # print(message.model_dump_json())
+    expected_hash_key = hashlib.sha256(
+        '{"ac_model_":"forward","content":"test","sender_alias":"user","metadata":'
+        '{"ac_model_":"freeform"},"prev_msg_hash_key":null,'
+        '"original_msg_hash_key":"06a3098ed3b5742998ae0528a68b3f11c61ff7403e6c7378de7da5e72ffd13aa"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 

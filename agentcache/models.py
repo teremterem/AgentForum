@@ -2,7 +2,7 @@
 import hashlib
 from typing import Dict, Any, Literal, Type, Tuple, Optional
 
-from pydantic import BaseModel, model_validator, ConfigDict, PrivateAttr
+from pydantic import BaseModel, model_validator, ConfigDict
 
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
@@ -20,6 +20,11 @@ class Immutable(BaseModel):
     def hash_key(self) -> str:
         """Get the hash key for this object. It is a hash of the JSON representation of the object."""
         if not hasattr(self, "_hash_key"):
+            # TODO Oleksandr: use
+            #   json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True)
+            #  instead of
+            #   self.model_dump_json()
+            #  to ensure that the hash key is independent of the order of the fields in the JSON representation ?
             # pylint: disable=attribute-defined-outside-init
             # noinspection PyAttributeOutsideInit
             self._hash_key = hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
@@ -89,13 +94,13 @@ class Message(Immutable):
     metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
 
-    _original_msg: Optional["Message"] = PrivateAttr(default=None)
-
-    def get_original_msg(self, return_self_if_none: bool = True) -> "Message":
-        """Get the original message that this message is a forward of."""
-        if not self._original_msg and return_self_if_none:
-            return self
-        return self._original_msg
+    def get_original_msg(self, return_self_if_none: bool = True) -> Optional["Message"]:
+        """
+        Get the original message that this message is a forward of. Because this is not a ForwardedMessage, it always
+        returns either self or None, depending on return_self_if_none parameter (this implementation is overridden in
+        ForwardedMessage).
+        """
+        return self if return_self_if_none else None
 
 
 class ForwardedMessage(Message):
@@ -104,12 +109,18 @@ class ForwardedMessage(Message):
     ac_model_: Literal["message"] = "forward"
     original_msg_hash_key: str
 
-    def get_original_msg(self, return_self_if_none: bool = True) -> "Message":
-        """Get the original message that this message is a forward of."""
+    _original_msg: Optional["Message"] = None
+
+    def get_original_msg(self, return_self_if_none: bool = True) -> Optional[Message]:
+        """
+        Get the original message that this message is a forward of. In the implementation found here in
+        ForwardedMessage class the value of return_self_if_none parameter is irrelevant - it is illegal for
+        ForwardedMessage not to have an original message.
+        """
         if not self._original_msg:
-            raise ValueError("original_msg property was not initialized")
+            raise RuntimeError("original_msg property was not initialized")
         if self._original_msg.hash_key != self.original_msg_hash_key:
-            raise ValueError(
+            raise RuntimeError(
                 f"original_msg_hash_key does not match the hash_key of the original message: "
                 f"{self.original_msg_hash_key} != {self._original_msg.hash_key}"
             )

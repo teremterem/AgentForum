@@ -65,7 +65,7 @@ class Forum(BaseModel):
             forum=self,
             in_reply_to=in_reply_to,
             a_forward_of=a_forward_of,
-            detached_msg=Message(
+            detached_msg=Message(  # TODO Oleksandr: introduce a concept of PartialMessage to make this cleaner ?
                 content=content,
                 sender_alias=self.resolve_sender_alias(sender_alias),
                 metadata=Freeform(**metadata),
@@ -134,6 +134,7 @@ class InteractionContext:
     ) -> None:
         self.forum = forum
         self.this_agent = agent
+        # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
         self._responses = responses
         self._latest_message = latest_message
         self._previous_ctx_token: Optional[contextvars.Token] = None

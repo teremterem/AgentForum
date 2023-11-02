@@ -1,9 +1,10 @@
 """Test different agent collaboration scenarios."""
-from typing import List, Tuple, Union
+from typing import List, Union, Dict, Any
 
 import pytest
 
 from agentcache.forum import Forum, InteractionContext
+from agentcache.models import Message
 from agentcache.promises import MessagePromise, MessageSequence
 
 
@@ -27,18 +28,43 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             correction = await _critic.call(api_response).aget_concluding_message()
             api_response = await _reminder_api.call(correction).aget_concluding_message()
 
-        await aassert_conversation(
-            api_response,
-            [
-                ("message", "USER", "USER", "set a reminder for me for tomorrow at 10am"),
-                ("call", "_assistant", "_assistant", "_reminder_api"),
-                ("message", "_reminder_api", "_reminder_api", "api error: invalid date format"),
-                ("call", "_assistant", "_assistant", "_critic"),
-                ("message", "_critic", "_critic", "try swapping the month and day"),
-                ("call", "_assistant", "_assistant", "_reminder_api"),
-                ("message", "_reminder_api", "_reminder_api", "success: reminder set"),
-            ],
-        )
+        assert await present_actual_conversation(api_response) == [
+            {
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "set a reminder for me for tomorrow at 10am",
+            },
+            {
+                "ac_model_": "call",
+                "sender_alias": "_assistant",
+                "content": "_reminder_api",
+            },
+            {
+                "ac_model_": "message",
+                "sender_alias": "_reminder_api",
+                "content": "api error: invalid date format",
+            },
+            {
+                "ac_model_": "call",
+                "sender_alias": "_assistant",
+                "content": "_critic",
+            },
+            {
+                "ac_model_": "message",
+                "sender_alias": "_critic",
+                "content": "try swapping the month and day",
+            },
+            {
+                "ac_model_": "call",
+                "sender_alias": "_assistant",
+                "content": "_reminder_api",
+            },
+            {
+                "ac_model_": "message",
+                "sender_alias": "_reminder_api",
+                "content": "success: reminder set",
+            },
+        ]
 
         ctx.respond(api_response)
 
@@ -56,14 +82,27 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     assistant_responses = _assistant.call(forum.new_message_promise("set a reminder for me for tomorrow at 10am"))
 
-    await aassert_conversation(
-        assistant_responses,
-        [
-            ("message", "USER", "USER", "set a reminder for me for tomorrow at 10am"),
-            ("call", "USER", "USER", "_assistant"),
-            ("forward", "_assistant", "_reminder_api", "success: reminder set"),
-        ],
-    )
+    assert await present_actual_conversation(assistant_responses) == [
+        {
+            "ac_model_": "message",
+            "sender_alias": "USER",
+            "content": "set a reminder for me for tomorrow at 10am",
+        },
+        {
+            "ac_model_": "call",
+            "sender_alias": "USER",
+            "content": "_assistant",
+        },
+        {
+            "ac_model_": "forward",
+            "sender_alias": "_assistant",
+            "original_msg": {
+                "ac_model_": "message",
+                "sender_alias": "_reminder_api",
+                "content": "success: reminder set",
+            },
+        },
+    ]
 
 
 @pytest.mark.asyncio
@@ -85,28 +124,62 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     responses1 = _agent1.call(forum.new_message_promise("user says hello"))
 
-    await aassert_conversation(
-        responses1,
-        [
-            ("message", "USER", "USER", "user says hello"),
-            ("call", "USER", "USER", "_agent1"),
-            ("forward", "_agent1", "_agent2", "agent2 says hello"),
-            ("forward", "_agent1", "_agent2", "agent2 says hello again"),
-            ("message", "_agent1", "_agent1", "agent1 also says hello"),
-        ],
-    )
-
-
-async def aassert_conversation(
-    response: Union[MessagePromise, MessageSequence], expected_conversation: List[Tuple[str, str, str, str]]
-) -> None:
-    """
-    Assert that the conversation recorded in the given responses matches the expected conversation. This function
-    tests the full chat history, including messages that preceded the current `responses` MessageSequence.
-    """
-    concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
-    actual_conversation = [
-        (msg.ac_model_, msg.sender_alias, msg.get_original_msg().sender_alias, msg.content)
-        for msg in await concluding_msg.amaterialize_history(skip_agent_calls=False)
+    assert await present_actual_conversation(responses1) == [
+        {
+            "ac_model_": "message",
+            "sender_alias": "USER",
+            "content": "user says hello",
+        },
+        {
+            "ac_model_": "call",
+            "sender_alias": "USER",
+            "content": "_agent1",
+        },
+        {
+            "ac_model_": "forward",
+            "sender_alias": "_agent1",
+            "original_msg": {
+                "ac_model_": "message",
+                "sender_alias": "_agent2",
+                "content": "agent2 says hello",
+            },
+        },
+        {
+            "ac_model_": "forward",
+            "sender_alias": "_agent1",
+            "original_msg": {
+                "ac_model_": "message",
+                "sender_alias": "_agent2",
+                "content": "agent2 says hello again",
+            },
+        },
+        {
+            "ac_model_": "message",
+            "sender_alias": "_agent1",
+            "content": "agent1 also says hello",
+        },
     ]
-    assert actual_conversation == expected_conversation
+
+
+async def present_actual_conversation(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
+    """Present the actual conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
+
+    def _get_msg_dict(msg: Message) -> Dict[str, Any]:
+        msg_dict = msg.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key"})
+        if msg_dict["metadata"] == {"ac_model_": "freeform"}:
+            # metadata is empty - remove it to reduce verbosity
+            del msg_dict["metadata"]
+        return msg_dict
+
+    concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
+    actual_conversation = []
+    for msg in await concluding_msg.amaterialize_history(skip_agent_calls=False):
+        msg_dict = _get_msg_dict(msg)
+        original_msg = msg.get_original_msg(return_self_if_none=False)
+        if original_msg:
+            msg_dict["original_msg"] = _get_msg_dict(original_msg)
+            assert msg_dict["content"] == msg_dict["original_msg"]["content"]
+            del msg_dict["content"]
+        actual_conversation.append(msg_dict)
+
+    return actual_conversation
