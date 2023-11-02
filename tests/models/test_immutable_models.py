@@ -95,7 +95,7 @@ def test_forwarded_message_hash_key() -> None:
     message = ForwardedMessage(content="test", sender_alias="user", original_msg_hash_key=original_msg.hash_key)
     message._original_msg = original_msg  # pylint: disable=protected-access
 
-    print(message.model_dump_json())
+    # print(message.model_dump_json())
     expected_hash_key = hashlib.sha256(
         '{"ac_model_":"forward","content":"test","sender_alias":"user","metadata":'
         '{"ac_model_":"freeform"},"prev_msg_hash_key":null,'
