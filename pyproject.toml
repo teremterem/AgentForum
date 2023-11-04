@@ -20,12 +20,11 @@ jupyterlab = "*"
 notebook = "*"
 openai = "*"
 pre-commit = "*"
+promptlayer = "*"
 pylint = "*"
+pytest = "*"
+pytest-asyncio = "*"
 python-dotenv = "*"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.4.2"
-pytest-asyncio = "^0.21.1"
 
 [build-system]
 requires = ["poetry-core"]

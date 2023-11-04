@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import promptlayer
+
 from agentcache.ext.llms.openai import aopenai_chat_completion
 from agentcache.forum import Forum, InteractionContext
 from agentcache.promises import MessagePromise
@@ -22,12 +24,12 @@ async def first_openai_agent(request: MessagePromise, ctx: InteractionContext, *
 
     # TODO Oleksandr: try "slipping" PromptLayer in
     first_response = await aopenai_chat_completion(
-        forum=request.forum, prompt=full_chat, in_reply_to=full_chat[-1], **kwargs
+        forum=request.forum, prompt=full_chat, in_reply_to=full_chat[-1], openai_module=promptlayer.openai, **kwargs
     )
     ctx.respond(first_response)
 
     # second_response = await aopenai_chat_completion(
-    #     forum=request.forum, prompt=full_chat, in_reply_to=first_response, **kwargs
+    #     forum=request.forum, prompt=full_chat, in_reply_to=first_response, openai_module=promptlayer.openai, **kwargs
     # )
     # ctx.respond(second_response)
 

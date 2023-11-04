@@ -11,7 +11,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 from agentcache.models import Message, Freeform, AgentCall
-from agentcache.promises import MessagePromise, DetachedMsgPromise, MessageSequence
+from agentcache.promises import MessagePromise, DetachedMsgPromise, MessageSequence, DetachedAgentCallPromise
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import AgentFunction, MessageType, SingleMessageType
 
@@ -65,7 +65,7 @@ class Forum(BaseModel):
             forum=self,
             in_reply_to=in_reply_to,
             a_forward_of=a_forward_of,
-            detached_msg=Message(  # TODO Oleksandr: introduce a concept of PartialMessage to make this cleaner ?
+            detached_msg=Message(
                 content=content,
                 sender_alias=self.resolve_sender_alias(sender_alias),
                 metadata=Freeform(**metadata),
@@ -96,16 +96,16 @@ class Agent:
 
     def call(self, request: "MessagePromise", sender_alias: Optional[str] = None, **kwargs) -> "MessageSequence":
         """Call the agent."""
-        agent_call = DetachedMsgPromise(
+        agent_call = DetachedAgentCallPromise(
             forum=self.forum,
-            in_reply_to=request,
-            detached_msg=AgentCall(
+            message_sequence=MessageSequence(items_so_far=[request], completed=True),
+            detached_agent_call=AgentCall(
                 content=self.agent_alias,  # the recipient of the call is this agent
                 sender_alias=self.forum.resolve_sender_alias(sender_alias),
                 metadata=Freeform(**kwargs),
             ),
         )
-        responses = MessageSequence(self.forum, in_reply_to=agent_call)
+        responses = MessageSequence()
         asyncio.create_task(self._acall_agent_func(agent_call=agent_call, responses=responses, **kwargs))
         return responses
 

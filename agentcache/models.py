@@ -1,5 +1,6 @@
 """Data models."""
 import hashlib
+from functools import cached_property
 from typing import Dict, Any, Literal, Type, Tuple, Optional
 
 from pydantic import BaseModel, model_validator, ConfigDict
@@ -16,19 +17,15 @@ class Immutable(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     ac_model_: str  # AgentCache model name
 
-    @property
+    @cached_property
     def hash_key(self) -> str:
         """Get the hash key for this object. It is a hash of the JSON representation of the object."""
-        if not hasattr(self, "_hash_key"):
-            # TODO Oleksandr: use
-            #   json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True)
-            #  instead of
-            #   self.model_dump_json()
-            #  to ensure that the hash key is independent of the order of the fields in the JSON representation ?
-            # pylint: disable=attribute-defined-outside-init
-            # noinspection PyAttributeOutsideInit
-            self._hash_key = hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
-        return self._hash_key
+        # TODO Oleksandr: use
+        #   json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True)
+        #  instead of
+        #   self.model_dump_json()
+        #  to ensure that the hash key is independent of the order of the fields in the JSON representation ?
+        return hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
 
     # noinspection PyNestedDecorators
     @model_validator(mode="before")
@@ -68,14 +65,10 @@ class Freeform(Immutable):
     model_config = ConfigDict(extra="allow")
     ac_model_: Literal["freeform"] = "freeform"
 
-    @property
+    @cached_property
     def as_kwargs(self) -> Dict[str, Any]:
         """Get the fields of the object as a dictionary of keyword arguments."""
-        if not hasattr(self, "_as_kwargs"):
-            # pylint: disable=attribute-defined-outside-init
-            # noinspection PyAttributeOutsideInit
-            self._as_kwargs = self.model_dump(exclude={"ac_model_"})
-        return self._as_kwargs
+        return self.model_dump(exclude={"ac_model_"})
 
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
@@ -131,6 +124,7 @@ class AgentCall(Message):
     """A subtype of Message that represents a call to an agent."""
 
     ac_model_: Literal["call"] = "call"
+    msg_seq_start_hash_key: Optional[str] = None
 
     @property
     def receiver_alias(self) -> str:
