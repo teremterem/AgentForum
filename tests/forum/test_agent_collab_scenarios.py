@@ -4,7 +4,7 @@ from typing import List, Union, Dict, Any
 import pytest
 
 from agentcache.forum import Forum, InteractionContext
-from agentcache.models import Message
+from agentcache.models import Message, AgentCall
 from agentcache.promises import MessagePromise, MessageSequence
 
 
@@ -28,7 +28,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             correction = await _critic.call(api_response).aget_concluding_message()
             api_response = await _reminder_api.call(correction).aget_concluding_message()
 
-        assert await present_actual_conversation(api_response) == [
+        assert await represent_conversation_with_dicts(api_response) == [
             {
                 "ac_model_": "message",
                 "sender_alias": "USER",
@@ -38,6 +38,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 "ac_model_": "call",
                 "sender_alias": "_assistant",
                 "content": "_reminder_api",
+                "messages_in_request": 1,
             },
             {
                 "ac_model_": "message",
@@ -48,6 +49,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 "ac_model_": "call",
                 "sender_alias": "_assistant",
                 "content": "_critic",
+                "messages_in_request": 1,
             },
             {
                 "ac_model_": "message",
@@ -58,6 +60,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 "ac_model_": "call",
                 "sender_alias": "_assistant",
                 "content": "_reminder_api",
+                "messages_in_request": 1,
             },
             {
                 "ac_model_": "message",
@@ -82,7 +85,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     assistant_responses = _assistant.call(forum.new_message_promise("set a reminder for me for tomorrow at 10am"))
 
-    assert await present_actual_conversation(assistant_responses) == [
+    assert await represent_conversation_with_dicts(assistant_responses) == [
         {
             "ac_model_": "message",
             "sender_alias": "USER",
@@ -92,6 +95,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             "ac_model_": "call",
             "sender_alias": "USER",
             "content": "_assistant",
+            "messages_in_request": 1,
         },
         {
             "ac_model_": "forward",
@@ -124,7 +128,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     responses1 = _agent1.call(forum.new_message_promise("user says hello"))
 
-    assert await present_actual_conversation(responses1) == [
+    assert await represent_conversation_with_dicts(responses1) == [
         {
             "ac_model_": "message",
             "sender_alias": "USER",
@@ -134,6 +138,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
             "ac_model_": "call",
             "sender_alias": "USER",
             "content": "_agent1",
+            "messages_in_request": 1,
         },
         {
             "ac_model_": "forward",
@@ -161,25 +166,38 @@ async def test_two_nested_agents(forum: Forum) -> None:
     ]
 
 
-async def present_actual_conversation(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
-    """Present the actual conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
+async def represent_conversation_with_dicts(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
+    """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
     def _get_msg_dict(msg: Message) -> Dict[str, Any]:
-        msg_dict = msg.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key"})
+        msg_dict = msg.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"})
         if msg_dict["metadata"] == {"ac_model_": "freeform"}:
             # metadata is empty - remove it to reduce verbosity
             del msg_dict["metadata"]
         return msg_dict
 
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
-    actual_conversation = []
-    for msg in await concluding_msg.amaterialize_history(skip_agent_calls=False):
+    conversation = await concluding_msg.amaterialize_history(skip_agent_calls=False)
+
+    conversation_dicts = []
+    for idx, msg in enumerate(conversation):
         msg_dict = _get_msg_dict(msg)
+
         original_msg = msg.get_original_msg(return_self_if_none=False)
         if original_msg:
             msg_dict["original_msg"] = _get_msg_dict(original_msg)
             assert msg_dict["content"] == msg_dict["original_msg"]["content"]
             del msg_dict["content"]
-        actual_conversation.append(msg_dict)
 
-    return actual_conversation
+        if isinstance(msg, AgentCall):
+            messages_in_request = 0
+            if msg.msg_seq_start_hash_key:
+                for prev_idx in range(idx - 1, -1, -1):
+                    if conversation[prev_idx].hash_key == msg.msg_seq_start_hash_key:
+                        messages_in_request = idx - prev_idx
+                        break
+            msg_dict["messages_in_request"] = messages_in_request
+
+        conversation_dicts.append(msg_dict)
+
+    return conversation_dicts

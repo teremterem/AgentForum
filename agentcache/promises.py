@@ -20,15 +20,6 @@ class MessageSequence(Broadcastable["MessagePromise", "MessagePromise"]):
     # TODO Oleksandr: throw an error if the sequence is being iterated over within the same agent that is producing it
     #  to prevent deadlocks
 
-    def __init__(
-        self,
-        forum: "Forum",
-        in_reply_to: Optional["MessagePromise"] = None,
-    ) -> None:
-        super().__init__()
-        self.forum = forum
-        self._in_reply_to = in_reply_to
-
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message in the sequence."""
         concluding_message = None
@@ -316,9 +307,8 @@ class DetachedAgentCallPromise(MessagePromise):
 
         self._materialized_msg = self.real_msg_class(
             **self._detached_agent_call.model_dump(
-                exclude={"ac_model_", "content", "metadata", "prev_msg_hash_key", "request_start_hash_key"}
+                exclude={"ac_model_", "metadata", "prev_msg_hash_key", "msg_seq_start_hash_key"}
             ),
-            content=self._detached_agent_call.content,
             metadata=self._detached_agent_call.metadata,
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent calls get attached to the end of the message sequence
             msg_seq_start_hash_key=msg_seq_start_hash_key,
