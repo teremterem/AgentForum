@@ -55,7 +55,7 @@ class Broadcastable(Generic[IN, OUT]):
     iterate over them. It is not a generator, it is a container that can be iterated over multiple times.
 
     - If `send_closed` is True, then it is not possible to send new items to the container anymore.
-    - If `completed` is True, then all the items are already in the `items_so_far` list and the internal async queue
+    - If `completed` is True, then all the items are already in the `_items_so_far` list and the internal async queue
       has been disposed (all the items were already sent to the container AND at least one consumer already consumed
       them all).
     """
@@ -71,11 +71,11 @@ class Broadcastable(Generic[IN, OUT]):
 
         self.send_closed: bool = completed
 
-        self.items_so_far: List[OUT] = []
+        self._items_so_far: List[OUT] = []
         if items_so_far:
-            self.items_so_far = list(items_so_far)
+            self._items_so_far = list(items_so_far)
         elif items_so_far_raw:
-            self.items_so_far = [self._convert_item(item_raw) for item_raw in items_so_far_raw or ()]
+            self._items_so_far = [self._convert_item(item_raw) for item_raw in items_so_far_raw or ()]
 
         self._queue = None if completed else asyncio.Queue()
         self._lock = asyncio.Lock()
@@ -98,15 +98,6 @@ class Broadcastable(Generic[IN, OUT]):
         them all.
         """
         return not self._queue
-
-    async def aget_all(self) -> List[OUT]:
-        """
-        Get all the items in the container. This will block until all the items are available and sending is closed.
-        """
-        if not self.completed:
-            async for _ in self:
-                pass
-        return self.items_so_far
 
     def send(self, item: Union[IN, BaseException]) -> None:
         """Send an item to the container."""
@@ -133,7 +124,7 @@ class Broadcastable(Generic[IN, OUT]):
             # TODO Oleksandr: at this point full Message should be built and stored (MessagePromise subclass)
             raise StopAsyncIteration
 
-        self.items_so_far.append(item)
+        self._items_so_far.append(item)
         return item
 
     async def _aget_and_convert_item(self) -> Union[OUT, Sentinel]:
@@ -159,14 +150,14 @@ class Broadcastable(Generic[IN, OUT]):
             self._index = 0
 
         async def __anext__(self) -> OUT:
-            if self._index < len(self._broadcastable.items_so_far):
-                item = self._broadcastable.items_so_far[self._index]
+            if self._index < len(self._broadcastable._items_so_far):
+                item = self._broadcastable._items_so_far[self._index]
             elif self._broadcastable.completed:
                 raise StopAsyncIteration
             else:
                 async with self._broadcastable._lock:
-                    if self._index < len(self._broadcastable.items_so_far):
-                        item = self._broadcastable.items_so_far[self._index]
+                    if self._index < len(self._broadcastable._items_so_far):
+                        item = self._broadcastable._items_so_far[self._index]
                     else:
                         item = await self._broadcastable._await_for_next_item()
 

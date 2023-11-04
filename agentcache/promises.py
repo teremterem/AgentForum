@@ -31,17 +31,23 @@ class MessageSequence(Broadcastable["MessagePromise", "MessagePromise"]):
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message in the sequence."""
-        messages = await self.aget_all()
-        if messages:
-            return messages[-1]
-        if raise_if_none:
+        concluding_message = None
+        async for concluding_message in self:
+            pass
+        if not concluding_message and raise_if_none:
             # TODO Oleksandr: introduce a custom exception for this case
             raise ValueError("MessageSequence is empty")
-        return None
+        return concluding_message
 
     async def amaterialize_concluding_message(self, raise_if_none: bool = True) -> Message:
-        """Get the last message in the sequence, but return a Message object instead of MessagePromise."""
+        """Get the last message in the sequence, but return a Message object instead of a MessagePromise object."""
         return await (await self.aget_concluding_message(raise_if_none=raise_if_none)).amaterialize()
+
+    async def amaterialize_all(self) -> List["Message"]:
+        """
+        Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
+        """
+        return [await msg.amaterialize() async for msg in self]
 
 
 class MessagePromise(Broadcastable[IN, Token]):
@@ -283,21 +289,30 @@ class DetachedMsgPromise(MessagePromise):
 
 
 class DetachedAgentCallPromise(MessagePromise):
+    """
+    DetachedAgentCallPromise is a subtype of MessagePromise that represents a promise that can be materialized into
+    an AgentCall which, in turn, is a subtype of Message that represents a call to an agent.
+    """
+
     def __init__(
         self,
         forum: "Forum",
-        requests: MessageSequence,  # TODO Oleksandr: requests or request ?
+        message_sequence: MessageSequence,
         detached_agent_call: AgentCall,
     ) -> None:
         super().__init__(forum=forum, materialized_msg_content=detached_agent_call.content)
         self.forum = forum
-        self._requests = requests
+        self._message_sequence = message_sequence
         self._detached_agent_call = detached_agent_call
 
     async def _amaterialize_impl(self) -> Message:
-        # TODO Oleksandr: introduce MessageSequence.amaterialize_all()
-        prev_msg = await self._requests.amaterialize_concluding_message(raise_if_none=False)
-        prev_msg_hash_key = prev_msg.hash_key if prev_msg else None
+        messages = await self._message_sequence.amaterialize_all()
+        if messages:
+            msg_seq_start_hash_key = messages[0].hash_key
+            msg_seq_end_hash_key = messages[-1].hash_key
+        else:
+            msg_seq_start_hash_key = None
+            msg_seq_end_hash_key = None
 
         self._materialized_msg = self.real_msg_class(
             **self._detached_agent_call.model_dump(
@@ -305,8 +320,8 @@ class DetachedAgentCallPromise(MessagePromise):
             ),
             content=self._detached_agent_call.content,
             metadata=self._detached_agent_call.metadata,
-            # TODO Oleksandr: request_start_hash_key
-            prev_msg_hash_key=prev_msg_hash_key,
+            prev_msg_hash_key=msg_seq_end_hash_key,  # agent calls get attached to the end of the message sequence
+            msg_seq_start_hash_key=msg_seq_start_hash_key,
         )
 
         return self._materialized_msg
@@ -315,5 +330,5 @@ class DetachedAgentCallPromise(MessagePromise):
         return type(self._detached_agent_call)
 
     async def _aget_previous_message_impl(self) -> Optional[MessagePromise]:
-        # TODO Oleksandr
-        return self._in_reply_to
+        msg_promises = [msg_promise async for msg_promise in self._message_sequence]
+        return msg_promises[-1] if msg_promises else None

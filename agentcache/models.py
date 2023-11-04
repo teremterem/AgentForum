@@ -124,6 +124,7 @@ class AgentCall(Message):
     """A subtype of Message that represents a call to an agent."""
 
     ac_model_: Literal["call"] = "call"
+    msg_seq_start_hash_key: Optional[str] = None
 
     @property
     def receiver_alias(self) -> str:
