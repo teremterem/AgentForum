@@ -40,10 +40,11 @@ async def first_openai_agent(request: MessagePromise, ctx: InteractionContext, *
 @forum.agent
 async def user_proxy_agent(request: MessagePromise, ctx: InteractionContext) -> None:
     """An agent that acts as a proxy between the user and other agents."""
-    print("\nGPT: ", end="", flush=True)
+    print("\n\033[1m\033[36mGPT: ", end="", flush=True)
     async for token in request:
         print(token.text, end="", flush=True)
-    print()
+    print("\033[0m")
+
     user_input = input("\nYOU: ")
     if user_input == "exit":
         raise KeyboardInterrupt
