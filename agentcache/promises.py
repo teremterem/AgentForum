@@ -17,9 +17,6 @@ class MessageSequence(Broadcastable["MessagePromise", "MessagePromise"]):
     sequence is independent of the speed at which consumers iterate over them.
     """
 
-    # TODO Oleksandr: throw an error if the sequence is being iterated over within the same agent that is producing it
-    #  to prevent deadlocks
-
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message in the sequence."""
         concluding_message = None

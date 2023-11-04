@@ -1,6 +1,9 @@
 # pylint: disable=wrong-import-position
 """Chat with OpenAI ChatGPT using the AgentCache library."""
 import asyncio
+
+# noinspection PyUnresolvedReferences
+import readline  # pylint: disable=unused-import
 from typing import Optional
 
 from dotenv import load_dotenv

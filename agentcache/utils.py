@@ -60,6 +60,9 @@ class Broadcastable(Generic[IN, OUT]):
       them all).
     """
 
+    # TODO Oleksandr: throw an error if the sequence is being iterated over within the same context that is producing
+    #  it to prevent deadlocks
+
     def __init__(
         self,
         items_so_far: Optional[Iterable[OUT]] = None,
@@ -101,6 +104,7 @@ class Broadcastable(Generic[IN, OUT]):
 
     def send(self, item: Union[IN, BaseException]) -> None:
         """Send an item to the container."""
+        # TODO Oleksandr: hide this method from those who consume from Broadcastable
         # TODO Oleksandr: should sending be allowed only in the context of a "with" block ?
         if self.send_closed:
             raise SendClosedError("Cannot send items to a closed Broadcastable.")
