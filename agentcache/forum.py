@@ -143,7 +143,8 @@ class InteractionContext:
         """Respond with a message or a sequence of messages."""
         if isinstance(content, BaseException):
             # TODO Oleksandr: introduce the concept of ErrorMessage and move this if into Forum.new_message_promise()
-            self._responses.send(content)
+            # noinspection PyProtectedMember
+            self._responses._send(content)  # pylint: disable=protected-access
             return
 
         if isinstance(content, (str, Message, MessagePromise)):
@@ -161,13 +162,15 @@ class InteractionContext:
             return
 
         self._latest_message = msg_promise
-        self._responses.send(msg_promise)
+        # noinspection PyProtectedMember
+        self._responses._send(msg_promise)  # pylint: disable=protected-access
 
     async def arespond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages (async version)."""
         if isinstance(content, BaseException):
             # TODO Oleksandr: introduce the concept of ErrorMessage and move this if into Forum.new_message_promise()
-            self._responses.send(content)
+            # noinspection PyProtectedMember
+            self._responses._send(content)  # pylint: disable=protected-access
             return
 
         if isinstance(content, (str, Message, MessagePromise)):
@@ -186,7 +189,8 @@ class InteractionContext:
             return
 
         self._latest_message = msg_promise
-        self._responses.send(msg_promise)
+        # noinspection PyProtectedMember
+        self._responses._send(msg_promise)  # pylint: disable=protected-access
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:

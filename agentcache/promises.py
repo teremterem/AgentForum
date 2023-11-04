@@ -76,7 +76,7 @@ class MessagePromise(Broadcastable[IN, Token]):
         Get the full message. This method will "await" until all the tokens are received (or whatever else needs to be
         waited for before the actual message can be constructed and stored in the storage) and then return the message.
         """
-        if not self._materialized_msg:
+        if not self._materialized_msg:  # TODO Oleksandr: apply asyncio.Lock
             self._materialized_msg = await self._amaterialize_impl()
             await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
 

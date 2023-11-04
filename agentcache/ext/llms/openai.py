@@ -53,7 +53,10 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
             #  how to convert it into an ErrorMessage at this point ?
             with message_promise:
                 async for token_raw in response:
-                    message_promise.send(token_raw)
+                    # noinspection PyProtectedMember
+                    message_promise._send(token_raw)  # pylint: disable=protected-access
+            # # TODO Oleksandr: do we need the following ?
+            # await message_promise.amaterialize()  # let's save the message in the storage
 
         asyncio.create_task(_send_tokens())
         return message_promise
