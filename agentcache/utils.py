@@ -11,6 +11,41 @@ class Sentinel:
 
 
 END_OF_QUEUE = Sentinel()
+NO_VALUE = Sentinel()
+
+
+def cached_method(func):
+    """
+    A decorator for a cached method. The method that is being decorated is not meant to accept any
+    arguments. The result of the method is cached and returned on subsequent calls.
+    """
+
+    def _cached_method(self):
+        attribute_name = f"_cached_method__{func.__name__}"
+        value = getattr(self, attribute_name, NO_VALUE)
+        if value is NO_VALUE:
+            value = func(self)
+            setattr(self, attribute_name, value)
+        return value
+
+    return _cached_method
+
+
+def async_cached_method(func):
+    """
+    A decorator for a cached method (async version). The method that is being decorated is not meant to accept any
+    arguments. The result of the method is cached and returned on subsequent calls.
+    """
+
+    async def _acached_method(self):
+        attribute_name = f"_cached_method__{func.__name__}"
+        value = getattr(self, attribute_name, NO_VALUE)
+        if value is NO_VALUE:
+            value = await func(self)
+            setattr(self, attribute_name, value)
+        return value
+
+    return _acached_method
 
 
 class Broadcastable(Generic[IN, OUT]):
