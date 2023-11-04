@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import promptlayer
+import promptlayer  # TODO Oleksandr: make this optional
 
 from agentcache.ext.llms.openai import aopenai_chat_completion
 from agentcache.forum import Forum, InteractionContext
@@ -25,7 +25,6 @@ async def first_openai_agent(request: MessagePromise, ctx: InteractionContext, *
     """The first agent that uses OpenAI ChatGPT. It sends the full chat history to the OpenAI API."""
     full_chat = await request.aget_history()
 
-    # TODO Oleksandr: try "slipping" PromptLayer in
     first_response = await aopenai_chat_completion(
         forum=request.forum, prompt=full_chat, in_reply_to=full_chat[-1], openai_module=promptlayer.openai, **kwargs
     )
