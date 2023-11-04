@@ -65,7 +65,7 @@ class Forum(BaseModel):
             forum=self,
             in_reply_to=in_reply_to,
             a_forward_of=a_forward_of,
-            detached_msg=Message(  # TODO Oleksandr: introduce a concept of PartialMessage to make this cleaner ?
+            detached_msg=Message(
                 content=content,
                 sender_alias=self.resolve_sender_alias(sender_alias),
                 metadata=Freeform(**metadata),

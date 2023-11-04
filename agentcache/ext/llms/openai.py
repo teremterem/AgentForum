@@ -4,8 +4,8 @@ from typing import List, Dict, Any, Set, Union, Optional
 
 from agentcache.errors import AgentCacheError
 from agentcache.forum import Forum
-from agentcache.promises import MessagePromise, StreamedMsgPromise
 from agentcache.models import Token, Message
+from agentcache.promises import MessagePromise, StreamedMsgPromise
 from agentcache.utils import Sentinel
 
 
@@ -14,12 +14,16 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
     sender_alias: Optional[str] = None,
     in_reply_to: Optional[MessagePromise] = None,
+    openai_module: Optional[Any] = None,
     stream: bool = False,
     n: int = 1,
     **kwargs,
 ) -> MessagePromise:
     """Chat with OpenAI models. Returns a message or a stream of tokens."""
-    import openai  # pylint: disable=import-outside-toplevel
+    if not openai_module:
+        import openai  # pylint: disable=import-outside-toplevel
+
+        openai_module = openai
 
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
@@ -34,7 +38,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
         for msg in messages
     ]
     # pprint(message_dicts)
-    response = await openai.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
+    response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
         message_promise = _OpenAIStreamedMessage(
