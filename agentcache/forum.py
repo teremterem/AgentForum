@@ -158,7 +158,7 @@ class InteractionContext:
 
         if isinstance(content, (str, Message, MessagePromise)):
             msg_promise = self.forum.new_message_promise(
-                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message
+                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message, **metadata
             )
         else:
             if hasattr(content, "__iter__"):
@@ -184,7 +184,7 @@ class InteractionContext:
 
         if isinstance(content, (str, Message, MessagePromise)):
             msg_promise = self.forum.new_message_promise(
-                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message
+                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message, **metadata
             )
         else:
             if hasattr(content, "__iter__"):
@@ -220,5 +220,4 @@ class InteractionContext:
 
 
 class AgentCall:
-    # TODO Oleksandr
-    pass
+    """TODO Oleksandr"""
