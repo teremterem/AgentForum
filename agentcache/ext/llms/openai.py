@@ -38,7 +38,6 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
         for msg in messages
     ]
     # pprint(message_dicts)
-    response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=stream, **kwargs)
 
     if stream:
         message_promise = _OpenAIStreamedMessage(
@@ -51,15 +50,20 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
         async def _send_tokens() -> None:
             # TODO Oleksandr: what if an exception occurs in this coroutine ?
             #  how to convert it into an ErrorMessage at this point ?
+            response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=True, **kwargs)
             with message_promise:
                 async for token_raw in response:
-                    message_promise.send(token_raw)
+                    # noinspection PyProtectedMember
+                    message_promise._send(token_raw)  # pylint: disable=protected-access
+            # # TODO Oleksandr: do we need the following ?
+            # await message_promise.amaterialize()  # let's save the message in the storage
 
         asyncio.create_task(_send_tokens())
         return message_promise
 
     # TODO Oleksandr: cover this case with a unit test ?
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
+    response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=False, **kwargs)
     return forum.new_message_promise(
         content=response["choices"][0]["message"]["content"],
         # TODO Oleksandr: is this a bad place for sender alias resolution ?

@@ -120,7 +120,7 @@ class ForwardedMessage(Message):
         return self._original_msg
 
 
-class AgentCall(Message):
+class AgentCallMsg(Message):
     """A subtype of Message that represents a call to an agent."""
 
     ac_model_: Literal["call"] = "call"

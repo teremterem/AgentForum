@@ -37,7 +37,7 @@ def async_cached_method(func):
     arguments. The result of the method is cached and returned on subsequent calls.
     """
 
-    async def _acached_method(self):
+    async def _acached_method(self):  # TODO Oleksandr: apply asyncio.Lock
         attribute_name = f"_cached_method__{func.__name__}"
         value = getattr(self, attribute_name, NO_VALUE)
         if value is NO_VALUE:
@@ -60,6 +60,10 @@ class Broadcastable(Generic[IN, OUT]):
       them all).
     """
 
+    # TODO Oleksandr: split this class into two: one for the producer and one for the consumer
+    # TODO Oleksandr: throw an error if the sequence is being iterated over within the same context that is producing
+    #  it to prevent deadlocks
+
     def __init__(
         self,
         items_so_far: Optional[Iterable[OUT]] = None,
@@ -69,13 +73,14 @@ class Broadcastable(Generic[IN, OUT]):
         if items_so_far and items_so_far_raw:
             raise ValueError("Only one of `items_so_far` and `items_so_far_raw` should be provided.")
 
-        self.send_closed: bool = completed
+        self._send_closed: bool = completed
 
-        self._items_so_far: List[OUT] = []
         if items_so_far:
-            self._items_so_far = list(items_so_far)
+            self._items_so_far: List[OUT] = list(items_so_far)
         elif items_so_far_raw:
-            self._items_so_far = [self._convert_item(item_raw) for item_raw in items_so_far_raw or ()]
+            self._items_so_far: List[OUT] = [self._convert_item(item_raw) for item_raw in items_so_far_raw or ()]
+        else:
+            self._items_so_far: List[OUT] = []
 
         self._queue = None if completed else asyncio.Queue()
         self._lock = asyncio.Lock()
@@ -89,7 +94,7 @@ class Broadcastable(Generic[IN, OUT]):
     def __exit__(
         self, exc_type: Optional[Exception], exc_val: Optional[Exception], exc_tb: Optional[Exception]
     ) -> None:
-        self.close()
+        self._close()
 
     @property
     def completed(self) -> bool:
@@ -99,17 +104,16 @@ class Broadcastable(Generic[IN, OUT]):
         """
         return not self._queue
 
-    def send(self, item: Union[IN, BaseException]) -> None:
+    def _send(self, item: Union[IN, BaseException]) -> None:
         """Send an item to the container."""
-        # TODO Oleksandr: should sending be allowed only in the context of a "with" block ?
-        if self.send_closed:
+        if self._send_closed:
             raise SendClosedError("Cannot send items to a closed Broadcastable.")
         self._queue.put_nowait(item)
 
-    def close(self) -> None:
+    def _close(self) -> None:
         """Close the container for sending. Has no effect if the container is already closed."""
-        if not self.send_closed:
-            self.send_closed = True
+        if not self._send_closed:
+            self._send_closed = True
             self._queue.put_nowait(END_OF_QUEUE)
 
     async def _await_for_next_item(self) -> OUT:
@@ -119,7 +123,7 @@ class Broadcastable(Generic[IN, OUT]):
         item = await self._aget_and_convert_item()
 
         if item is END_OF_QUEUE:
-            self.send_closed = True
+            self._send_closed = True
             self._queue = None
             # TODO Oleksandr: at this point full Message should be built and stored (MessagePromise subclass)
             raise StopAsyncIteration
