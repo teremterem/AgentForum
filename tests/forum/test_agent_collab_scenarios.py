@@ -84,7 +84,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         ctx.respond("try swapping the month and day")
 
     assistant_responses = _assistant.get_responses(
-        forum.new_message_promise("set a reminder for me for tomorrow at 10am")
+        forum._new_message_promise("set a reminder for me for tomorrow at 10am")  # pylint: disable=protected-access
     )
 
     assert await represent_conversation_with_dicts(assistant_responses) == [
@@ -128,7 +128,9 @@ async def test_two_nested_agents(forum: Forum) -> None:
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
-    responses1 = _agent1.get_responses(forum.new_message_promise("user says hello"))
+    responses1 = _agent1.get_responses(
+        forum._new_message_promise("user says hello")  # pylint: disable=protected-access
+    )
 
     assert await represent_conversation_with_dicts(responses1) == [
         {

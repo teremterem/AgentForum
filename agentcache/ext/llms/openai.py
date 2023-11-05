@@ -18,7 +18,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     stream: bool = False,
     n: int = 1,
     **kwargs,
-) -> MessagePromise:
+) -> MessagePromise:  # TODO Oleksandr: this function doesn't necessarily need to be async
     """Chat with OpenAI models. Returns a message or a stream of tokens."""
     if not openai_module:
         import openai  # pylint: disable=import-outside-toplevel
@@ -64,7 +64,8 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     # TODO Oleksandr: cover this case with a unit test ?
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
     response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=False, **kwargs)
-    return forum.new_message_promise(
+    # noinspection PyProtectedMember
+    return forum._new_message_promise(  # pylint: disable=protected-access
         content=response["choices"][0]["message"]["content"],
         # TODO Oleksandr: is this a bad place for sender alias resolution ?
         sender_alias=forum.resolve_sender_alias(sender_alias),

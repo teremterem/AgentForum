@@ -36,7 +36,7 @@ class Forum(BaseModel):
             raise ValueError(f"Expected a Message, got a {type(message)}")
         return MessagePromise(forum=self, materialized_msg=message)
 
-    def new_message_promise(
+    def _new_message_promise(
         self,
         content: Optional[SingleMessageType] = None,
         sender_alias: Optional[str] = None,
@@ -101,14 +101,14 @@ class Agent:
         # TODO Oleksandr: refactor this method to use AgentCall under the hood
         agent_call_msg_promise = DetachedAgentCallMsgPromise(
             forum=self.forum,
-            message_sequence=MessageSequence(items_so_far=[request], completed=True),
+            message_sequence=MessageSequence(self.forum, items_so_far=[request], completed=True),
             detached_agent_call_msg=AgentCallMsg(
                 content=self.agent_alias,  # the recipient of the call is this agent
                 sender_alias=self.forum.resolve_sender_alias(sender_alias),
                 metadata=Freeform(**kwargs),
             ),
         )
-        responses = MessageSequence()
+        responses = MessageSequence(self.forum, in_reply_to=agent_call_msg_promise)
         asyncio.create_task(
             self._acall_agent_func(agent_call_msg_promise=agent_call_msg_promise, responses=responses, **kwargs)
         )
@@ -118,9 +118,7 @@ class Agent:
         self, agent_call_msg_promise: "MessagePromise", responses: "MessageSequence", **kwargs
     ) -> None:
         with responses:
-            ctx = InteractionContext(
-                forum=self.forum, agent=self, responses=responses, latest_message=agent_call_msg_promise
-            )
+            ctx = InteractionContext(forum=self.forum, agent=self, responses=responses)
             try:
                 request = await agent_call_msg_promise.aget_previous_message()
                 with ctx:
@@ -138,68 +136,24 @@ class InteractionContext:
 
     _current_context: ContextVar[Optional["InteractionContext"]] = ContextVar("_current_context", default=None)
 
-    def __init__(
-        self, forum: Forum, agent: Agent, responses: "MessageSequence", latest_message: Optional["MessagePromise"]
-    ) -> None:
+    def __init__(self, forum: Forum, agent: Agent, responses: "MessageSequence") -> None:
         self.forum = forum
         self.this_agent = agent
         # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
         self._responses = responses
-        self._latest_message = latest_message
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
     def respond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages."""
-        if isinstance(content, BaseException):
-            # TODO Oleksandr: introduce the concept of ErrorMessage and move this if into Forum.new_message_promise()
-            # noinspection PyProtectedMember
-            self._responses._send(content)  # pylint: disable=protected-access
-            return
-
-        if isinstance(content, (str, Message, MessagePromise)):
-            msg_promise = self.forum.new_message_promise(
-                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message, **metadata
-            )
-        else:
-            if hasattr(content, "__iter__"):
-                for item in content:
-                    self.respond(item, sender_alias=sender_alias, **metadata)
-            elif hasattr(content, "__aiter__"):
-                raise ValueError("Use `await ctx.arespond(...)` for async iterables")
-            else:
-                raise ValueError(f"Unexpected message content type: {type(content)}")
-            return
-
-        self._latest_message = msg_promise
+        # pylint: disable=protected-access
         # noinspection PyProtectedMember
-        self._responses._send(msg_promise)  # pylint: disable=protected-access
+        self._responses._send_msg(content, sender_alias=sender_alias, **metadata)
 
     async def arespond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages (async version)."""
-        if isinstance(content, BaseException):
-            # TODO Oleksandr: introduce the concept of ErrorMessage and move this if into Forum.new_message_promise()
-            # noinspection PyProtectedMember
-            self._responses._send(content)  # pylint: disable=protected-access
-            return
-
-        if isinstance(content, (str, Message, MessagePromise)):
-            msg_promise = self.forum.new_message_promise(
-                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message, **metadata
-            )
-        else:
-            if hasattr(content, "__iter__"):
-                for item in content:
-                    self.respond(item, sender_alias=sender_alias, **metadata)
-            elif hasattr(content, "__aiter__"):
-                async for item in content:
-                    self.respond(item, sender_alias=sender_alias, **metadata)
-            else:
-                raise ValueError(f"Unexpected message content type: {type(content)}")
-            return
-
-        self._latest_message = msg_promise
+        # pylint: disable=protected-access
         # noinspection PyProtectedMember
-        self._responses._send(msg_promise)  # pylint: disable=protected-access
+        await self._responses._asend_msg(content, sender_alias=sender_alias, **metadata)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:

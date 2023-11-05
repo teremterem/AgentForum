@@ -2,8 +2,9 @@
 import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator
 
+from agentcache.errors import AsyncNeededError
 from agentcache.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform
-from agentcache.typing import IN
+from agentcache.typing import IN, MessageType
 from agentcache.utils import Broadcastable, async_cached_method
 
 if typing.TYPE_CHECKING:
@@ -16,6 +17,11 @@ class MessageSequence(Broadcastable["MessagePromise", "MessagePromise"]):
     Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
     sequence is independent of the speed at which consumers iterate over them.
     """
+
+    def __init__(self, forum: "Forum", *args, in_reply_to: Optional["MessagePromise"] = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.forum = forum
+        self._latest_message = in_reply_to
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message in the sequence."""
@@ -36,6 +42,38 @@ class MessageSequence(Broadcastable["MessagePromise", "MessagePromise"]):
         Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
         """
         return [await msg.amaterialize() async for msg in self]
+
+    def _send_msg(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
+        if isinstance(content, BaseException):
+            # TODO Oleksandr: introduce the concept of ErrorMessage and move this if into Forum._new_message_promise()
+            self._send(content)
+
+        elif isinstance(content, (str, Message, MessagePromise)):
+            # noinspection PyProtectedMember
+            msg_promise = self.forum._new_message_promise(  # pylint: disable=protected-access
+                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message, **metadata
+            )
+            self._latest_message = msg_promise
+            self._send(msg_promise)
+
+        else:
+            if hasattr(content, "__iter__"):
+                for item in content:
+                    self._send_msg(item, sender_alias=sender_alias, **metadata)
+            elif hasattr(content, "__aiter__"):
+                raise AsyncNeededError("For async data you need to use the async version of this method")
+            else:
+                raise ValueError(f"Unexpected message content type: {type(content)}")
+
+    async def _asend_msg(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
+        try:
+            self._send_msg(content, sender_alias=sender_alias, **metadata)
+        except AsyncNeededError:
+            # this only happens when `content` is not of any simple MessageType subtypes and doesn't implement
+            # `__iter__` but does implement `__aiter__` (see the implementation of _send_msg() above)
+            # TODO Oleksandr: asyncio.Lock ?
+            async for item in content:
+                self._send_msg(item, sender_alias=sender_alias, **metadata)
 
 
 class MessagePromise(Broadcastable[IN, Token]):

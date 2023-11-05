@@ -60,7 +60,6 @@ class Broadcastable(Generic[IN, OUT]):
       them all).
     """
 
-    # TODO Oleksandr: split this class into two: one for the producer and one for the consumer
     # TODO Oleksandr: throw an error if the sequence is being iterated over within the same context that is producing
     #  it to prevent deadlocks
 

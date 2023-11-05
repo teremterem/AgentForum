@@ -52,7 +52,8 @@ async def user_proxy_agent(request: MessagePromise, ctx: InteractionContext) -> 
 
 async def main() -> None:
     """The chat loop."""
-    latest_message: Optional[MessagePromise] = forum.new_message_promise(
+    # noinspection PyProtectedMember
+    latest_message: Optional[MessagePromise] = forum._new_message_promise(  # pylint: disable=protected-access
         content="Hi, how are you doing?",
         sender_alias=first_openai_agent.agent_alias,
         openai_role="assistant",
