@@ -2,7 +2,7 @@
 import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator
 
-from agentcache.models import Token, Message, AgentCall, ForwardedMessage, Freeform
+from agentcache.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform
 from agentcache.typing import IN
 from agentcache.utils import Broadcastable, async_cached_method
 
@@ -88,7 +88,7 @@ class MessagePromise(Broadcastable[IN, Token]):
 
         if skip_agent_calls:
             while prev_msg:
-                if not issubclass(prev_msg.real_msg_class, AgentCall):
+                if not issubclass(prev_msg.real_msg_class, AgentCallMsg):
                     break
                 # noinspection PyUnresolvedReferences
                 prev_msg = await prev_msg._aget_previous_message_cached()  # pylint: disable=protected-access
@@ -276,22 +276,22 @@ class DetachedMsgPromise(MessagePromise):
         return self._a_forward_of
 
 
-class DetachedAgentCallPromise(MessagePromise):
+class DetachedAgentCallMsgPromise(MessagePromise):
     """
-    DetachedAgentCallPromise is a subtype of MessagePromise that represents a promise that can be materialized into
-    an AgentCall which, in turn, is a subtype of Message that represents a call to an agent.
+    DetachedAgentCallMsgPromise is a subtype of MessagePromise that represents a promise that can be materialized into
+    an AgentCallMsg which, in turn, is a subtype of Message that represents a call to an agent.
     """
 
     def __init__(
         self,
         forum: "Forum",
         message_sequence: MessageSequence,
-        detached_agent_call: AgentCall,
+        detached_agent_call_msg: AgentCallMsg,
     ) -> None:
-        super().__init__(forum=forum, materialized_msg_content=detached_agent_call.content)
+        super().__init__(forum=forum, materialized_msg_content=detached_agent_call_msg.content)
         self.forum = forum
         self._message_sequence = message_sequence
-        self._detached_agent_call = detached_agent_call
+        self._detached_agent_call_msg = detached_agent_call_msg
 
     async def _amaterialize_impl(self) -> Message:
         messages = await self._message_sequence.amaterialize_all()
@@ -303,10 +303,10 @@ class DetachedAgentCallPromise(MessagePromise):
             msg_seq_end_hash_key = None
 
         self._materialized_msg = self.real_msg_class(
-            **self._detached_agent_call.model_dump(
+            **self._detached_agent_call_msg.model_dump(
                 exclude={"ac_model_", "metadata", "prev_msg_hash_key", "msg_seq_start_hash_key"}
             ),
-            metadata=self._detached_agent_call.metadata,
+            metadata=self._detached_agent_call_msg.metadata,
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent calls get attached to the end of the message sequence
             msg_seq_start_hash_key=msg_seq_start_hash_key,
         )
@@ -314,7 +314,7 @@ class DetachedAgentCallPromise(MessagePromise):
         return self._materialized_msg
 
     def _foresee_real_msg_class(self) -> Type[Message]:
-        return type(self._detached_agent_call)
+        return type(self._detached_agent_call_msg)
 
     async def _aget_previous_message_impl(self) -> Optional[MessagePromise]:
         msg_promises = [msg_promise async for msg_promise in self._message_sequence]

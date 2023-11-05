@@ -10,8 +10,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from agentcache.models import Message, Freeform, AgentCall
-from agentcache.promises import MessagePromise, DetachedMsgPromise, MessageSequence, DetachedAgentCallPromise
+from agentcache.models import Message, Freeform, AgentCallMsg
+from agentcache.promises import MessagePromise, DetachedMsgPromise, MessageSequence, DetachedAgentCallMsgPromise
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import AgentFunction, MessageType, SingleMessageType
 
@@ -96,24 +96,30 @@ class Agent:
 
     def call(self, request: "MessagePromise", sender_alias: Optional[str] = None, **kwargs) -> "MessageSequence":
         """Call the agent."""
-        agent_call = DetachedAgentCallPromise(
+        agent_call_msg_promise = DetachedAgentCallMsgPromise(
             forum=self.forum,
             message_sequence=MessageSequence(items_so_far=[request], completed=True),
-            detached_agent_call=AgentCall(
+            detached_agent_call_msg=AgentCallMsg(
                 content=self.agent_alias,  # the recipient of the call is this agent
                 sender_alias=self.forum.resolve_sender_alias(sender_alias),
                 metadata=Freeform(**kwargs),
             ),
         )
         responses = MessageSequence()
-        asyncio.create_task(self._acall_agent_func(agent_call=agent_call, responses=responses, **kwargs))
+        asyncio.create_task(
+            self._acall_agent_func(agent_call_msg_promise=agent_call_msg_promise, responses=responses, **kwargs)
+        )
         return responses
 
-    async def _acall_agent_func(self, agent_call: "MessagePromise", responses: "MessageSequence", **kwargs) -> None:
+    async def _acall_agent_func(
+        self, agent_call_msg_promise: "MessagePromise", responses: "MessageSequence", **kwargs
+    ) -> None:
         with responses:
-            ctx = InteractionContext(forum=self.forum, agent=self, responses=responses, latest_message=agent_call)
+            ctx = InteractionContext(
+                forum=self.forum, agent=self, responses=responses, latest_message=agent_call_msg_promise
+            )
             try:
-                request = await agent_call.aget_previous_message()
+                request = await agent_call_msg_promise.aget_previous_message()
                 with ctx:
                     await self._func(request, ctx, **kwargs)
             except BaseException as exc:  # pylint: disable=broad-exception-caught

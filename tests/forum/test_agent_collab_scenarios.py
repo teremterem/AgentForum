@@ -4,7 +4,7 @@ from typing import List, Union, Dict, Any
 import pytest
 
 from agentcache.forum import Forum, InteractionContext
-from agentcache.models import Message, AgentCall
+from agentcache.models import Message, AgentCallMsg
 from agentcache.promises import MessagePromise, MessageSequence
 
 
@@ -189,7 +189,7 @@ async def represent_conversation_with_dicts(response: Union[MessagePromise, Mess
             assert msg_dict["content"] == msg_dict["original_msg"]["content"]
             del msg_dict["content"]
 
-        if isinstance(msg, AgentCall):
+        if isinstance(msg, AgentCallMsg):
             messages_in_request = 0
             if msg.msg_seq_start_hash_key:
                 for prev_idx in range(idx - 1, -1, -1):
