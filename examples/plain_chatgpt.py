@@ -64,8 +64,10 @@ async def main() -> None:
 
             assistant_responses = first_openai_agent.call(
                 latest_message,
-                model="gpt-3.5-turbo-0613",
+                # model="gpt-3.5-turbo-0613",
+                model="gpt-3.5-turbo",
                 # model="gpt-4-0613",
+                # model="gpt-4",
                 stream=True,
             )
             latest_message = await assistant_responses.aget_concluding_message()
