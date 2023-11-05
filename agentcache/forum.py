@@ -94,8 +94,11 @@ class Agent:
         self.agent_alias = func.__name__
         self._func = func
 
-    def call(self, request: "MessagePromise", sender_alias: Optional[str] = None, **kwargs) -> "MessageSequence":
+    def get_responses(
+        self, request: "MessagePromise", sender_alias: Optional[str] = None, **kwargs
+    ) -> "MessageSequence":
         """Call the agent."""
+        # TODO Oleksandr: refactor this method to use AgentCall under the hood
         agent_call_msg_promise = DetachedAgentCallMsgPromise(
             forum=self.forum,
             message_sequence=MessageSequence(items_so_far=[request], completed=True),
@@ -214,3 +217,8 @@ class InteractionContext:
         """Restore the context that was current before this one."""
         self._current_context.reset(self._previous_ctx_token)
         self._previous_ctx_token = None
+
+
+class AgentCall:
+    # TODO Oleksandr
+    pass

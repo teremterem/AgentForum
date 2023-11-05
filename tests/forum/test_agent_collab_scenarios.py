@@ -22,11 +22,11 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     @forum.agent
     async def _assistant(request: MessagePromise, ctx: InteractionContext) -> None:
-        api_response = await _reminder_api.call(request).aget_concluding_message()
+        api_response = await _reminder_api.get_responses(request).aget_concluding_message()
         if (await api_response.amaterialize()).content.startswith("api error:"):
             # TODO Oleksandr: implement actual ErrorMessage class
-            correction = await _critic.call(api_response).aget_concluding_message()
-            api_response = await _reminder_api.call(correction).aget_concluding_message()
+            correction = await _critic.get_responses(api_response).aget_concluding_message()
+            api_response = await _reminder_api.get_responses(correction).aget_concluding_message()
 
         assert await represent_conversation_with_dicts(api_response) == [
             {
@@ -83,7 +83,9 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
         ctx.respond("try swapping the month and day")
 
-    assistant_responses = _assistant.call(forum.new_message_promise("set a reminder for me for tomorrow at 10am"))
+    assistant_responses = _assistant.get_responses(
+        forum.new_message_promise("set a reminder for me for tomorrow at 10am")
+    )
 
     assert await represent_conversation_with_dicts(assistant_responses) == [
         {
@@ -118,7 +120,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent1(request: MessagePromise, ctx: InteractionContext) -> None:
-        await ctx.arespond(_agent2.call(request))
+        await ctx.arespond(_agent2.get_responses(request))
         ctx.respond("agent1 also says hello")
 
     @forum.agent
@@ -126,7 +128,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
-    responses1 = _agent1.call(forum.new_message_promise("user says hello"))
+    responses1 = _agent1.get_responses(forum.new_message_promise("user says hello"))
 
     assert await represent_conversation_with_dicts(responses1) == [
         {

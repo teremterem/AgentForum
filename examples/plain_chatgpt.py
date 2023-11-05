@@ -59,10 +59,10 @@ async def main() -> None:
     )
     try:
         while True:
-            user_responses = user_proxy_agent.call(latest_message)
+            user_responses = user_proxy_agent.get_responses(latest_message)
             latest_message = await user_responses.aget_concluding_message()
 
-            assistant_responses = first_openai_agent.call(
+            assistant_responses = first_openai_agent.get_responses(
                 latest_message,
                 # model="gpt-3.5-turbo-0613",
                 model="gpt-3.5-turbo",
