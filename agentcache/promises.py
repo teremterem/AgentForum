@@ -77,6 +77,7 @@ class MessageSequence(Broadcastable["MessagePromise", "MessagePromise"]):
 
 
 class MessagePromise(Broadcastable[IN, Token]):
+    # pylint: disable=protected-access
     """A promise to materialize a message."""
 
     def __init__(
@@ -128,8 +129,7 @@ class MessagePromise(Broadcastable[IN, Token]):
             while prev_msg:
                 if not issubclass(prev_msg.real_msg_class, AgentCallMsg):
                     break
-                # noinspection PyUnresolvedReferences
-                prev_msg = await prev_msg._aget_previous_message_cached()  # pylint: disable=protected-access
+                prev_msg = await prev_msg._aget_previous_message_cached()
 
         return prev_msg
 
@@ -232,6 +232,7 @@ class StreamedMsgPromise(MessagePromise):
 
 
 class DetachedMsgPromise(MessagePromise):
+    # pylint: disable=protected-access
     """
     This is a detached message promise. A detached message is on one hand is complete, but on the other hand doesn't
     reference the previous message in the conversation yet (neither it references its original message, in case it's
@@ -299,7 +300,7 @@ class DetachedMsgPromise(MessagePromise):
         )
 
         if original_msg:
-            self._materialized_msg._original_msg = original_msg  # pylint: disable=protected-access
+            self._materialized_msg._original_msg = original_msg
         return self._materialized_msg
 
     def _foresee_real_msg_class(self) -> Type[Message]:

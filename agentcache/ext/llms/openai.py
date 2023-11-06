@@ -9,7 +9,8 @@ from agentcache.promises import MessagePromise, StreamedMsgPromise
 from agentcache.utils import Sentinel
 
 
-async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
+# noinspection PyProtectedMember
+async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protected-access
     forum: Forum,
     prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
     sender_alias: Optional[str] = None,
@@ -50,11 +51,10 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
         async def _send_tokens() -> None:
             # TODO Oleksandr: what if an exception occurs in this coroutine ?
             #  how to convert it into an ErrorMessage at this point ?
-            response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=True, **kwargs)
+            response_ = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=True, **kwargs)
             with message_promise:
-                async for token_raw in response:
-                    # noinspection PyProtectedMember
-                    message_promise._send(token_raw)  # pylint: disable=protected-access
+                async for token_raw in response_:
+                    message_promise._send(token_raw)
             # # TODO Oleksandr: do we need the following ?
             # await message_promise.amaterialize()  # let's save the message in the storage
 
@@ -64,8 +64,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     # TODO Oleksandr: cover this case with a unit test ?
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
     response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=False, **kwargs)
-    # noinspection PyProtectedMember
-    return forum._new_message_promise(  # pylint: disable=protected-access
+    return forum._new_message_promise(
         content=response["choices"][0]["message"]["content"],
         # TODO Oleksandr: is this a bad place for sender alias resolution ?
         sender_alias=forum.resolve_sender_alias(sender_alias),

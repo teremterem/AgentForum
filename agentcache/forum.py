@@ -1,3 +1,4 @@
+# pylint: disable=protected-access
 """
 The Forum class is the main entry point for the agentcache library. It is used to create a forum, register agents in
 it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ImmutableStorage
@@ -6,7 +7,7 @@ for that).
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, ConfigDict
 
@@ -86,6 +87,7 @@ class Forum(BaseModel):
         return sender_alias or DEFAULT_AGENT_ALIAS
 
 
+# noinspection PyProtectedMember
 class Agent:
     """A wrapper for an agent function that allows calling the agent."""
 
@@ -94,40 +96,61 @@ class Agent:
         self.agent_alias = func.__name__
         self._func = func
 
-    def get_responses(
-        self, request: "MessagePromise", sender_alias: Optional[str] = None, **kwargs
+    def quick_call(
+        self,
+        content: Optional[MessageType],
+        sender_alias: Optional[str] = None,
+        in_reply_to: Optional["MessagePromise"] = None,
+        **function_kwargs,
     ) -> "MessageSequence":
-        """Call the agent."""
-        # TODO Oleksandr: refactor this method to use AgentCall under the hood
-        agent_call_msg_promise = DetachedAgentCallMsgPromise(
+        agent_call = self.call(sender_alias=sender_alias, in_reply_to=in_reply_to, **function_kwargs)
+        if content is not None:
+            agent_call.send_request(content, sender_alias=sender_alias)
+        return agent_call.finish()
+
+    async def aquick_call(
+        self,
+        content: Optional[MessageType],
+        sender_alias: Optional[str] = None,
+        in_reply_to: Optional["MessagePromise"] = None,
+        **function_kwargs,
+    ) -> "MessageSequence":
+        agent_call = self.call(sender_alias=sender_alias, in_reply_to=in_reply_to, **function_kwargs)
+        if content is not None:
+            await agent_call.asend_request(content, sender_alias=sender_alias)
+        return agent_call.finish()
+
+    def call(
+        self, sender_alias: Optional[str] = None, in_reply_to: Optional["MessagePromise"] = None, **function_kwargs
+    ) -> "AgentCall":
+        agent_call = AgentCall(
             forum=self.forum,
-            message_sequence=MessageSequence(self.forum, items_so_far=[request], completed=True),
-            detached_agent_call_msg=AgentCallMsg(
-                content=self.agent_alias,  # the recipient of the call is this agent
-                sender_alias=self.forum.resolve_sender_alias(sender_alias),
-                metadata=Freeform(**kwargs),
-            ),
+            receiving_agent=self,
+            sender_alias=sender_alias,
+            in_reply_to=in_reply_to,
+            **function_kwargs,
         )
-        responses = MessageSequence(self.forum, in_reply_to=agent_call_msg_promise)
-        asyncio.create_task(
-            self._acall_agent_func(agent_call_msg_promise=agent_call_msg_promise, responses=responses, **kwargs)
-        )
-        return responses
 
-    async def _acall_agent_func(
-        self, agent_call_msg_promise: "MessagePromise", responses: "MessageSequence", **kwargs
-    ) -> None:
-        with responses:
-            ctx = InteractionContext(forum=self.forum, agent=self, responses=responses)
-            try:
-                request = await agent_call_msg_promise.aget_previous_message()
-                with ctx:
-                    await self._func(request, ctx, **kwargs)
-            except BaseException as exc:  # pylint: disable=broad-exception-caught
-                # catch all exceptions, including KeyboardInterrupt
-                ctx.respond(exc)
+        parent_ctx = InteractionContext.get_current_context()
+        # TODO Oleksandr: get rid of this if by making Forum a context manager too and making sure all the
+        #  "seed" agent calls are done within the context of the forum ?
+        if parent_ctx:
+            parent_ctx._child_agent_calls.append(agent_call)
+
+        asyncio.create_task(self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs))
+        return agent_call
+
+    async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
+        with agent_call._responses:
+            with InteractionContext(forum=self.forum, agent=self, responses=agent_call._responses) as ctx:
+                try:
+                    await self._func(agent_call._requests, ctx, **function_kwargs)
+                except BaseException as exc:  # pylint: disable=broad-exception-caught
+                    # catch all exceptions, including KeyboardInterrupt
+                    ctx.respond(exc)
 
 
+# noinspection PyProtectedMember
 class InteractionContext:
     """
     A context within which an agent is called. This is needed for things like looking up a sender alias for a message
@@ -141,18 +164,15 @@ class InteractionContext:
         self.this_agent = agent
         # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
         self._responses = responses
+        self._child_agent_calls: List[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
     def respond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages."""
-        # pylint: disable=protected-access
-        # noinspection PyProtectedMember
         self._responses._send_msg(content, sender_alias=sender_alias, **metadata)
 
     async def arespond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages (async version)."""
-        # pylint: disable=protected-access
-        # noinspection PyProtectedMember
         await self._responses._asend_msg(content, sender_alias=sender_alias, **metadata)
 
     @classmethod
@@ -169,9 +189,46 @@ class InteractionContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Restore the context that was current before this one."""
+        for child_agent_call in self._child_agent_calls:
+            # just in case any of the child agent calls weren't explicitly finished, finish them now
+            child_agent_call.finish()
         self._current_context.reset(self._previous_ctx_token)
         self._previous_ctx_token = None
 
 
+# noinspection PyProtectedMember
 class AgentCall:
-    """TODO Oleksandr"""
+    def __init__(
+        self,
+        forum: Forum,
+        receiving_agent: Agent,
+        sender_alias: Optional[str] = None,
+        in_reply_to: Optional["MessagePromise"] = None,
+        **kwargs,
+    ) -> None:
+        self.forum = forum
+        self.receiving_agent = receiving_agent
+
+        self._requests = MessageSequence(self.forum, in_reply_to=in_reply_to)
+        agent_call_msg_promise = DetachedAgentCallMsgPromise(
+            forum=self.forum,
+            message_sequence=self._requests,
+            detached_agent_call_msg=AgentCallMsg(
+                content=self.receiving_agent.agent_alias,
+                sender_alias=self.forum.resolve_sender_alias(sender_alias),
+                metadata=Freeform(**kwargs),
+            ),
+        )
+        self._responses = MessageSequence(self.forum, in_reply_to=agent_call_msg_promise)
+
+    def send_request(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> "AgentCall":
+        self._requests._send_msg(content, sender_alias=sender_alias, **metadata)
+        return self
+
+    async def asend_request(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> "AgentCall":
+        await self._requests._asend_msg(content, sender_alias=sender_alias, **metadata)
+        return self
+
+    def finish(self) -> "MessageSequence":
+        self._requests._close()
+        return self._responses
