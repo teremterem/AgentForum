@@ -5,16 +5,16 @@ from typing import Optional, Type, List, Dict, Any, AsyncIterator
 from agentcache.errors import AsyncNeededError
 from agentcache.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform
 from agentcache.typing import IN, MessageType
-from agentcache.utils import Broadcastable, async_cached_method
+from agentcache.utils import AsyncStreamable, async_cached_method
 
 if typing.TYPE_CHECKING:
     from agentcache.forum import Forum
 
 
-class MessageSequence(Broadcastable["MessagePromise", "MessagePromise"]):
+class MessageSequence(AsyncStreamable["MessagePromise", "MessagePromise"]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
-    Broadcastable and relies on an internal async queue, the speed at which messages are produced and sent to the
+    AsyncStreamable and relies on an internal async queue, the speed at which messages are produced and sent to the
     sequence is independent of the speed at which consumers iterate over them.
     """
 
@@ -76,7 +76,7 @@ class MessageSequence(Broadcastable["MessagePromise", "MessagePromise"]):
                 self._send_msg(item, sender_alias=sender_alias, **metadata)
 
 
-class MessagePromise(Broadcastable[IN, Token]):
+class MessagePromise(AsyncStreamable[IN, Token]):
     # pylint: disable=protected-access
     """A promise to materialize a message."""
 

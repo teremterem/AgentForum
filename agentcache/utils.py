@@ -48,7 +48,7 @@ def async_cached_method(func):
     return _acached_method
 
 
-class Broadcastable(Generic[IN, OUT]):
+class AsyncStreamable(Generic[IN, OUT]):
     """
     A container of items that can be iterated over asynchronously. The support of multiple concurrent consumers is
     seamless. The speed at which items can be sent to the container is independent of the speed at which consumers
@@ -87,7 +87,7 @@ class Broadcastable(Generic[IN, OUT]):
     def __aiter__(self) -> AsyncIterator[OUT]:
         return self._AsyncIterator(self)
 
-    def __enter__(self) -> "Broadcastable":
+    def __enter__(self) -> "AsyncStreamable":
         return self
 
     def __exit__(
@@ -98,7 +98,7 @@ class Broadcastable(Generic[IN, OUT]):
     @property
     def completed(self) -> bool:
         """
-        Return True if all the items have been sent to this Broadcastable and at least one consumer already consumed
+        Return True if all the items have been sent to this AsyncStreamable and at least one consumer already consumed
         them all.
         """
         return not self._queue
@@ -106,7 +106,7 @@ class Broadcastable(Generic[IN, OUT]):
     def _send(self, item: Union[IN, BaseException]) -> None:
         """Send an item to the container."""
         if self._send_closed:
-            raise SendClosedError("Cannot send items to a closed Broadcastable.")
+            raise SendClosedError("Cannot send items to a closed AsyncStreamable.")
         self._queue.put_nowait(item)
 
     def _close(self) -> None:
@@ -148,21 +148,21 @@ class Broadcastable(Generic[IN, OUT]):
         return item
 
     class _AsyncIterator(AsyncIterator[OUT]):
-        def __init__(self, broadcastable: "Broadcastable") -> None:
-            self._broadcastable = broadcastable
+        def __init__(self, async_streamable: "AsyncStreamable") -> None:
+            self._async_streamable = async_streamable
             self._index = 0
 
         async def __anext__(self) -> OUT:
-            if self._index < len(self._broadcastable._items_so_far):
-                item = self._broadcastable._items_so_far[self._index]
-            elif self._broadcastable.completed:
+            if self._index < len(self._async_streamable._items_so_far):
+                item = self._async_streamable._items_so_far[self._index]
+            elif self._async_streamable.completed:
                 raise StopAsyncIteration
             else:
-                async with self._broadcastable._lock:
-                    if self._index < len(self._broadcastable._items_so_far):
-                        item = self._broadcastable._items_so_far[self._index]
+                async with self._async_streamable._lock:
+                    if self._index < len(self._async_streamable._items_so_far):
+                        item = self._async_streamable._items_so_far[self._index]
                     else:
-                        item = await self._broadcastable._await_for_next_item()
+                        item = await self._async_streamable._await_for_next_item()
 
             self._index += 1
             return item
