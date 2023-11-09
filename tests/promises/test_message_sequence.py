@@ -51,8 +51,8 @@ async def test_nested_message_sequences(forum: Forum) -> None:
 @pytest.mark.asyncio
 async def test_error_in_message_sequence(forum: Forum) -> None:
     """
-    Verify that an error in a message sequence comes out on the other end, but that the messages before the error
-    are still processed.
+    Verify that an error in a NESTED message sequence comes out on the other end of the OUTER sequence, but that the
+    messages before the error are still processed.
     """
     level1_sequence = MessageSequence(forum)
     level1_producer = MessageSequence._MessageProducer(level1_sequence)
