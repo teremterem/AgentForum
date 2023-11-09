@@ -41,6 +41,7 @@ async def test_nested_message_sequences(forum: Forum) -> None:
         "message 6",
     ]
     # assert that each message in the sequence is linked to the previous one
+    assert actual_messages[0].prev_msg_hash_key is None
     for msg1, msg2 in zip(actual_messages, actual_messages[1:]):
         assert msg1.hash_key == msg2.prev_msg_hash_key
 
