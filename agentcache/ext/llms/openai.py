@@ -14,7 +14,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
     forum: Forum,
     prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
     sender_alias: Optional[str] = None,
-    in_reply_to: Optional[MessagePromise] = None,
+    branch_from: Optional[MessagePromise] = None,
     openai_module: Optional[Any] = None,
     stream: bool = False,
     n: int = 1,
@@ -45,7 +45,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
             forum=forum,
             # TODO Oleksandr: is this a bad place for sender alias resolution ? where to move it ?
             sender_alias=forum.resolve_sender_alias(sender_alias),
-            in_reply_to=in_reply_to,
+            branch_from=branch_from,
         )
 
         async def _send_tokens() -> None:
@@ -68,7 +68,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
         content=response["choices"][0]["message"]["content"],
         # TODO Oleksandr: is this a bad place for sender alias resolution ?
         sender_alias=forum.resolve_sender_alias(sender_alias),
-        in_reply_to=in_reply_to,
+        branch_from=branch_from,
         **_build_openai_metadata_dict(response),
     )
 
@@ -81,6 +81,7 @@ class _OpenAIStreamedMessage(StreamedMsgPromise):
         self._tokens_raw: List[Dict[str, Any]] = []
 
     async def _aget_item_from_queue(self) -> Union[Dict[str, Any], Sentinel, BaseException]:
+        # TODO TODO TODO TODO TODO
         while True:
             token_raw = await self._queue.get()
             if isinstance(token_raw, Sentinel):

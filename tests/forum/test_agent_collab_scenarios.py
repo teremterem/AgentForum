@@ -24,11 +24,11 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     async def _assistant(requests: MessageSequence, ctx: InteractionContext) -> None:
         api_responses = await _reminder_api.aquick_call(requests)
         if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
-            # TODO Oleksandr: these "in_reply_to" parameters are very counter-intuitive - decide on a better
+            # TODO Oleksandr: these "branch_from" parameters are very counter-intuitive - decide on a better
             #  message forwarding mechanism (that would also allow for agent call caching)
             # TODO Oleksandr: implement actual ErrorMessage class
             corrections = await _critic.aquick_call(
-                api_responses, in_reply_to=await requests.aget_concluding_message()
+                api_responses, branch_from=await requests.aget_concluding_message()
             )
 
             assert await arepresent_conversation_with_dicts(corrections) == [
@@ -60,7 +60,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             ]
 
             api_responses = await _reminder_api.aquick_call(
-                corrections, in_reply_to=await api_responses.aget_concluding_message()
+                corrections, branch_from=await api_responses.aget_concluding_message()
             )
 
         assert await arepresent_conversation_with_dicts(api_responses) == [

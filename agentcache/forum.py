@@ -41,7 +41,7 @@ class Forum(BaseModel):
         self,
         content: Optional[SingleMessageType] = None,
         sender_alias: Optional[str] = None,
-        in_reply_to: Optional["MessagePromise"] = None,
+        branch_from: Optional["MessagePromise"] = None,
         **metadata,
     ) -> "MessagePromise":
         """
@@ -49,23 +49,23 @@ class Forum(BaseModel):
         promise may be a reply to another message promise that may or may not be "materialized" yet.
         """
         if isinstance(content, str):
-            a_forward_of = None
+            forward_of = None
         elif isinstance(content, Message):
-            a_forward_of = MessagePromise(forum=self.forum, materialized_msg=content)
+            forward_of = MessagePromise(forum=self.forum, materialized_msg=content)
             # TODO Oleksandr: should we store the materialized_msg ?
             #  (the promise will not store it since it is already "materialized")
             #  or do we trust that something else already stored it ?
             content = ""  # this is a hack (the content will actually be taken from the forwarded message)
         elif isinstance(content, MessagePromise):
-            a_forward_of = content
+            forward_of = content
             content = ""  # this is a hack (the content will actually be taken from the forwarded message)
         else:
             raise ValueError(f"Unexpected message content type: {type(content)}")
 
         return DetachedMsgPromise(
             forum=self,
-            in_reply_to=in_reply_to,
-            a_forward_of=a_forward_of,
+            branch_from=branch_from,
+            forward_of=forward_of,
             detached_msg=Message(
                 content=content,
                 sender_alias=self.resolve_sender_alias(sender_alias),
@@ -100,10 +100,10 @@ class Agent:
         self,
         content: Optional[MessageType],
         sender_alias: Optional[str] = None,
-        in_reply_to: Optional["MessagePromise"] = None,
+        branch_from: Optional["MessagePromise"] = None,
         **function_kwargs,
     ) -> "MessageSequence":
-        agent_call = self.call(sender_alias=sender_alias, in_reply_to=in_reply_to, **function_kwargs)
+        agent_call = self.call(sender_alias=sender_alias, branch_from=branch_from, **function_kwargs)
         if content is not None:
             agent_call.send_request(content, sender_alias=sender_alias)
         return agent_call.finish()
@@ -112,22 +112,22 @@ class Agent:
         self,
         content: Optional[MessageType],
         sender_alias: Optional[str] = None,
-        in_reply_to: Optional["MessagePromise"] = None,
+        branch_from: Optional["MessagePromise"] = None,
         **function_kwargs,
     ) -> "MessageSequence":
-        agent_call = self.call(sender_alias=sender_alias, in_reply_to=in_reply_to, **function_kwargs)
+        agent_call = self.call(sender_alias=sender_alias, branch_from=branch_from, **function_kwargs)
         if content is not None:
             await agent_call.asend_request(content, sender_alias=sender_alias)
         return agent_call.finish()
 
     def call(
-        self, sender_alias: Optional[str] = None, in_reply_to: Optional["MessagePromise"] = None, **function_kwargs
+        self, sender_alias: Optional[str] = None, branch_from: Optional["MessagePromise"] = None, **function_kwargs
     ) -> "AgentCall":
         agent_call = AgentCall(
             forum=self.forum,
             receiving_agent=self,
             sender_alias=sender_alias,
-            in_reply_to=in_reply_to,
+            branch_from=branch_from,
             **function_kwargs,
         )
 
@@ -203,13 +203,13 @@ class AgentCall:
         forum: Forum,
         receiving_agent: Agent,
         sender_alias: Optional[str] = None,
-        in_reply_to: Optional["MessagePromise"] = None,
+        branch_from: Optional["MessagePromise"] = None,
         **kwargs,
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
 
-        self._requests = MessageSequence(self.forum, in_reply_to=in_reply_to)
+        self._requests = MessageSequence(self.forum, branch_from=branch_from)
         agent_call_msg_promise = DetachedAgentCallMsgPromise(
             forum=self.forum,
             message_sequence=self._requests,
@@ -219,7 +219,7 @@ class AgentCall:
                 metadata=Freeform(**kwargs),
             ),
         )
-        self._responses = MessageSequence(self.forum, in_reply_to=agent_call_msg_promise)
+        self._responses = MessageSequence(self.forum, branch_from=agent_call_msg_promise)
 
     def send_request(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> "AgentCall":
         self._requests._send_msg(content, sender_alias=sender_alias, **metadata)

@@ -18,10 +18,10 @@ class MessageSequence(AsyncStreamable["MessagePromise", "MessagePromise"]):
     sequence is independent of the speed at which consumers iterate over them.
     """
 
-    def __init__(self, forum: "Forum", *args, in_reply_to: Optional["MessagePromise"] = None, **kwargs) -> None:
+    def __init__(self, forum: "Forum", *args, branch_from: Optional["MessagePromise"] = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.forum = forum
-        self._latest_message = in_reply_to
+        self._latest_message = branch_from
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message in the sequence."""
@@ -51,7 +51,7 @@ class MessageSequence(AsyncStreamable["MessagePromise", "MessagePromise"]):
         elif isinstance(content, (str, Message, MessagePromise)):
             # noinspection PyProtectedMember
             msg_promise = self.forum._new_message_promise(  # pylint: disable=protected-access
-                content=content, sender_alias=sender_alias, in_reply_to=self._latest_message, **metadata
+                content=content, sender_alias=sender_alias, branch_from=self._latest_message, **metadata
             )
             self._latest_message = msg_promise
             self._send(msg_promise)
@@ -209,23 +209,23 @@ class StreamedMsgPromise(MessagePromise):
         forum: "Forum",
         sender_alias: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        in_reply_to: Optional[MessagePromise] = None,
+        branch_from: Optional[MessagePromise] = None,
     ) -> None:
         super().__init__(forum=forum)
         self._sender_alias = sender_alias
         self._metadata = dict(metadata or {})
-        self._in_reply_to = in_reply_to
+        self._branch_from = branch_from
 
     async def _amaterialize_impl(self) -> Message:
         return Message(
             content="".join([token.text async for token in self]),
             sender_alias=self._sender_alias,
             metadata=Freeform(**self._metadata),
-            prev_msg_hash_key=(await self._in_reply_to.amaterialize()).hash_key if self._in_reply_to else None,
+            prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
         )
 
     async def _aget_previous_message_impl(self) -> Optional["MessagePromise"]:
-        return self._in_reply_to
+        return self._branch_from
 
     async def _aget_original_message_impl(self) -> Optional["MessagePromise"]:
         return None
@@ -234,34 +234,34 @@ class StreamedMsgPromise(MessagePromise):
 class DetachedMsgPromise(MessagePromise):
     # pylint: disable=protected-access
     """
-    This is a detached message promise. A detached message is on one hand is complete, but on the other hand doesn't
+    This is a detached message promise. A detached message is on one hand complete, but on the other hand doesn't
     reference the previous message in the conversation yet (neither it references its original message, in case it's
-    a forward). This is why in_reply_to and a_forward_of are not specified as standalone properties in the promise
-    constructor - those relation will become part of the underlying Message upon its "materialization".
+    a forward). This is why branch_from and forward_of are specified as standalone properties in the promise
+    constructor - those relations will become part of the underlying Message upon its "materialization".
     """
 
     def __init__(
         self,
         forum: "Forum",
         detached_msg: Message,
-        in_reply_to: Optional[MessagePromise] = None,
-        a_forward_of: Optional[MessagePromise] = None,
+        branch_from: Optional[MessagePromise] = None,
+        forward_of: Optional[MessagePromise] = None,
     ) -> None:
         super().__init__(forum=forum, materialized_msg_content=detached_msg.content)
         self.forum = forum
         self._detached_msg = detached_msg
-        self._in_reply_to = in_reply_to
-        self._a_forward_of = a_forward_of
+        self._branch_from = branch_from
+        self._forward_of = forward_of
 
     def __aiter__(self) -> AsyncIterator[Token]:
-        if self._a_forward_of:
-            return self._a_forward_of.__aiter__()
+        if self._forward_of:
+            return self._forward_of.__aiter__()
         return super().__aiter__()
 
     @property
     def completed(self) -> bool:
-        if self._a_forward_of:
-            return self._a_forward_of.completed
+        if self._forward_of:
+            return self._forward_of.completed
         return super().completed
 
     async def _amaterialize_impl(self) -> Message:
@@ -269,11 +269,11 @@ class DetachedMsgPromise(MessagePromise):
         Get the full message. This method will "await" until all the tokens are received and then return the complete
         message.
         """
-        prev_msg_hash_key = (await self._in_reply_to.amaterialize()).hash_key if self._in_reply_to else None
+        prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key if self._branch_from else None
         original_msg = None
 
-        if self._a_forward_of:
-            original_msg = await self._a_forward_of.amaterialize()
+        if self._forward_of:
+            original_msg = await self._forward_of.amaterialize()
 
             metadata_dict = original_msg.metadata.model_dump(exclude={"ac_model_"})
             # let's merge the metadata from the original message with the metadata from the detached message
@@ -304,15 +304,15 @@ class DetachedMsgPromise(MessagePromise):
         return self._materialized_msg
 
     def _foresee_real_msg_class(self) -> Type[Message]:
-        if self._a_forward_of:
+        if self._forward_of:
             return ForwardedMessage
         return type(self._detached_msg)
 
     async def _aget_previous_message_impl(self) -> Optional[MessagePromise]:
-        return self._in_reply_to
+        return self._branch_from
 
     async def _aget_original_message_impl(self) -> Optional[MessagePromise]:
-        return self._a_forward_of
+        return self._forward_of
 
 
 class DetachedAgentCallMsgPromise(MessagePromise):

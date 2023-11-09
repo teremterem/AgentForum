@@ -1,8 +1,9 @@
 """Utility functions and classes for the AgentCache framework."""
 import asyncio
-from typing import Optional, Iterable, List, AsyncIterator, Generic, Union
+from types import TracebackType
+from typing import Optional, Iterable, List, AsyncIterator, Generic, Union, Type
 
-from agentcache.errors import SendClosedError
+from agentcache.errors import SendClosedError, AsyncIterationError
 from agentcache.typing import IN, OUT
 
 
@@ -50,102 +51,121 @@ def async_cached_method(func):
 
 class AsyncStreamable(Generic[IN, OUT]):
     """
-    A container of items that can be iterated over asynchronously. The support of multiple concurrent consumers is
+    A stream of items that can be iterated over asynchronously. The support of multiple concurrent consumers is
     seamless. The speed at which items can be sent to the container is independent of the speed at which consumers
     iterate over them. It is not a generator, it is a container that can be iterated over multiple times.
 
-    - If `send_closed` is True, then it is not possible to send new items to the container anymore.
-    - If `completed` is True, then all the items are already in the `_items_so_far` list and the internal async queue
-      has been disposed (all the items were already sent to the container AND at least one consumer already consumed
-      them all).
+    If `completed` is True, then iterating over this AsyncStreamable till the very end is not going to result in any
+    awaiting (all the items were already consumed at least once and are immediately available).
     """
-
-    # TODO Oleksandr: throw an error if the sequence is being iterated over within the same context that is producing
-    #  it to prevent deadlocks
 
     def __init__(
         self,
         items_so_far: Optional[Iterable[OUT]] = None,
-        items_so_far_raw: Optional[Iterable[IN]] = None,
         completed: bool = False,
     ) -> None:
-        if items_so_far and items_so_far_raw:
-            raise ValueError("Only one of `items_so_far` and `items_so_far_raw` should be provided.")
-
         self._send_closed: bool = completed
 
+        self._items_so_far: List[Union[OUT, BaseException]] = []
         if items_so_far:
-            self._items_so_far: List[OUT] = list(items_so_far)
-        elif items_so_far_raw:
-            self._items_so_far: List[OUT] = [self._convert_item(item_raw) for item_raw in items_so_far_raw or ()]
+            self._items_so_far = list(items_so_far)
+
+        if completed:
+            self._queue_in = None
+            self._queue_out = None
+            self._lock = None
         else:
-            self._items_so_far: List[OUT] = []
-
-        self._queue = None if completed else asyncio.Queue()
-        self._lock = asyncio.Lock()
-
-    def __aiter__(self) -> AsyncIterator[OUT]:
-        return self._AsyncIterator(self)
-
-    def __enter__(self) -> "AsyncStreamable":
-        return self
-
-    def __exit__(
-        self, exc_type: Optional[Exception], exc_val: Optional[Exception], exc_tb: Optional[Exception]
-    ) -> None:
-        self._close()
+            self._queue_in = asyncio.Queue()
+            self._queue_out = asyncio.Queue()
+            self._lock = asyncio.Lock()
+            asyncio.create_task(self._amove_items_from_in_to_out())
 
     @property
     def completed(self) -> bool:
         """
-        Return True if all the items have been sent to this AsyncStreamable and at least one consumer already consumed
-        them all.
+        Returns True if iterating over this AsyncStreamable till the very end is not going to result in any awaiting
+        (all the items were already consumed at least once and are immediately available).
         """
-        return not self._queue
+        return not self._queue_out
 
-    def _send(self, item: Union[IN, BaseException]) -> None:
-        """Send an item to the container."""
-        if self._send_closed:
-            raise SendClosedError("Cannot send items to a closed AsyncStreamable.")
-        self._queue.put_nowait(item)
+    def __aiter__(self) -> AsyncIterator[OUT]:
+        return self._AsyncIterator(self)
 
-    def _close(self) -> None:
-        """Close the container for sending. Has no effect if the container is already closed."""
-        if not self._send_closed:
-            self._send_closed = True
-            self._queue.put_nowait(END_OF_QUEUE)
+    # noinspection PyMethodMayBeStatic
+    async def _aconvert_incoming_item(self, incoming_item: IN) -> AsyncIterator[OUT]:
+        """
+        Convert a single incoming item into ZERO OR MORE outgoing items. The default implementation just yields the
+        incoming item as is. This method exists as a separate method in order to be overridden in subclasses if needed.
+        """
+        yield incoming_item
 
-    async def _await_for_next_item(self) -> OUT:
+    async def _amove_items_from_in_to_out(self) -> None:
+        while True:
+            async for item_out in self._aget_and_convert_incoming_item():
+                self._queue_out.put_nowait(item_out)
+                if item_out is END_OF_QUEUE or isinstance(item_out, BaseException):
+                    self._queue_in = None
+                    return
+
+    async def _aget_and_convert_incoming_item(self) -> AsyncIterator[Union[OUT, Sentinel, BaseException]]:
+        item_in = await self._queue_in.get()
+        if isinstance(item_in, (Sentinel, BaseException)):
+            yield item_in  # send item without conversion
+        else:
+            async for item_out in self._aconvert_incoming_item(item_in):
+                yield item_out
+
+    async def _anext_outgoing_item(self) -> OUT:
         if self.completed:
             raise StopAsyncIteration
 
-        item = await self._aget_and_convert_item()
+        item_out = await self._queue_out.get()
 
-        if item is END_OF_QUEUE:
-            self._send_closed = True
-            self._queue = None
-            # TODO Oleksandr: at this point full Message should be built and stored (MessagePromise subclass)
+        if item_out is END_OF_QUEUE:
+            self._queue_out = None
             raise StopAsyncIteration
 
-        self._items_so_far.append(item)
-        return item
+        if isinstance(item_out, BaseException):
+            self._queue_out = None
+            # don't raise, allow it to be put into _items_so_far - _AsyncIterator will raise it
 
-    async def _aget_and_convert_item(self) -> Union[OUT, Sentinel]:
-        item = await self._aget_item_from_queue()
-        if isinstance(item, BaseException):
-            # TODO Oleksandr: make it work together with the future concept of ErrorMessage somehow
-            raise item
-        if not isinstance(item, Sentinel):
-            item = self._convert_item(item)
-        return item
+        self._items_so_far.append(item_out)
+        return item_out
 
-    async def _aget_item_from_queue(self) -> Union[IN, Sentinel, BaseException]:
-        return await self._queue.get()
+    class Producer:  # pylint: disable=protected-access
+        """A context manager that allows sending items to AsyncStreamable."""
 
-    # noinspection PyMethodMayBeStatic
-    def _convert_item(self, item: IN) -> OUT:
-        """Convert an item from IN to OUT. Default implementation just returns the item as-is."""
-        return item
+        def __init__(self, async_streamable: "AsyncStreamable", suppress_exceptions: bool = False) -> None:
+            self._async_streamable = async_streamable
+            self._suppress_exceptions = suppress_exceptions
+
+        def send(self, item: Union[IN, BaseException]) -> None:
+            """Send an item to AsyncStreamable if it is still open (SendClosedError is raised otherwise)."""
+            if self._async_streamable._send_closed:
+                raise SendClosedError("Cannot send items to a closed AsyncStreamable.")
+            self._async_streamable._queue_out.put_nowait(item)
+
+        def close(self) -> None:
+            """Close AsyncStreamable for sending. Has no effect if the container is already closed."""
+            if not self._async_streamable._send_closed:
+                self._async_streamable._send_closed = True
+                self._async_streamable._queue_out.put_nowait(END_OF_QUEUE)
+
+        def __enter__(self) -> "AsyncStreamable.Producer":
+            return self
+
+        def __exit__(
+            self,
+            exc_type: Optional[Type[BaseException]],
+            exc_value: Optional[BaseException],
+            traceback: Optional[TracebackType],
+        ) -> Optional[bool]:
+            is_send_closed_error = isinstance(exc_value, SendClosedError)
+            if exc_value and not is_send_closed_error:
+                self.send(exc_value)
+            self.close()
+            # we are not suppressing SendClosedError even if self._suppress_exceptions is True
+            return self._suppress_exceptions and not is_send_closed_error
 
     class _AsyncIterator(AsyncIterator[OUT]):
         def __init__(self, async_streamable: "AsyncStreamable") -> None:
@@ -162,7 +182,10 @@ class AsyncStreamable(Generic[IN, OUT]):
                     if self._index < len(self._async_streamable._items_so_far):
                         item = self._async_streamable._items_so_far[self._index]
                     else:
-                        item = await self._async_streamable._await_for_next_item()
+                        item = await self._async_streamable._anext_outgoing_item()
+
+            if isinstance(item, BaseException):
+                raise AsyncIterationError(item) from item
 
             self._index += 1
             return item

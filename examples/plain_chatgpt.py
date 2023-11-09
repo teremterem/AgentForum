@@ -26,12 +26,12 @@ async def first_openai_agent(request: MessagePromise, ctx: InteractionContext, *
     full_chat = await request.aget_history()
 
     first_response = await aopenai_chat_completion(
-        forum=request.forum, prompt=full_chat, in_reply_to=full_chat[-1], openai_module=promptlayer.openai, **kwargs
+        forum=request.forum, prompt=full_chat, branch_from=full_chat[-1], openai_module=promptlayer.openai, **kwargs
     )
     ctx.respond(first_response)
 
     # second_response = await aopenai_chat_completion(
-    #     forum=request.forum, prompt=full_chat, in_reply_to=first_response, openai_module=promptlayer.openai, **kwargs
+    #     forum=request.forum, prompt=full_chat, branch_from=first_response, openai_module=promptlayer.openai, **kwargs
     # )
     # ctx.respond(second_response)
 
