@@ -39,8 +39,8 @@ class Forum(BaseModel):
 
     def _new_message_promise(
         self,
-        content: Optional[SingleMessageType] = None,
-        sender_alias: Optional[str] = None,
+        content: SingleMessageType,
+        sender_alias: str,
         branch_from: Optional["MessagePromise"] = None,
         **metadata,
     ) -> "MessagePromise":
@@ -68,23 +68,19 @@ class Forum(BaseModel):
             forward_of=forward_of,
             detached_msg=Message(
                 content=content,
-                sender_alias=self.resolve_sender_alias(sender_alias),
+                sender_alias=sender_alias,
                 metadata=Freeform(**metadata),
             ),
         )
 
-    @staticmethod
-    def resolve_sender_alias(sender_alias: Optional[str]) -> str:
+    # noinspection PyMethodMayBeStatic
+    def resolve_sender_alias(self, sender_alias: Optional[str] = None) -> str:
         """
         Resolve the sender alias to use in a message. If sender_alias is not None, it is returned. Otherwise, the
         current InteractionContext is used to get the agent alias, and if there is no current InteractionContext, then
         DEFAULT_AGENT_ALIAS (which translates to "USER") is used.
         """
-        if not sender_alias:
-            ctx = InteractionContext.get_current_context()
-            if ctx:
-                sender_alias = ctx.this_agent.agent_alias
-        return sender_alias or DEFAULT_AGENT_ALIAS
+        return InteractionContext.resolve_sender_alias(sender_alias)
 
 
 # noinspection PyProtectedMember
@@ -180,6 +176,19 @@ class InteractionContext:
         """Get the current InteractionContext object."""
         return cls._current_context.get()
 
+    @classmethod
+    def resolve_sender_alias(cls, sender_alias: Optional[str] = None) -> str:
+        """
+        Resolve the sender alias to use in a message. If sender_alias is not None, it is returned. Otherwise, the
+        current InteractionContext is used to get the agent alias, and if there is no current InteractionContext, then
+        DEFAULT_AGENT_ALIAS (which translates to "USER") is used.
+        """
+        if not sender_alias:
+            ctx = cls.get_current_context()
+            if ctx:
+                sender_alias = ctx.this_agent.agent_alias
+        return sender_alias or DEFAULT_AGENT_ALIAS
+
     def __enter__(self) -> "InteractionContext":
         """Set this context as the current context."""
         if self._previous_ctx_token:
@@ -215,7 +224,7 @@ class AgentCall:
             message_sequence=self._requests,
             detached_agent_call_msg=AgentCallMsg(
                 content=self.receiving_agent.agent_alias,
-                sender_alias=self.forum.resolve_sender_alias(sender_alias),
+                sender_alias=forum.resolve_sender_alias(sender_alias),
                 metadata=Freeform(**kwargs),
             ),
         )

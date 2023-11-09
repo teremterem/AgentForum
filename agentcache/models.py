@@ -5,6 +5,8 @@ from typing import Dict, Any, Literal, Type, Tuple, Optional
 
 from pydantic import BaseModel, model_validator, ConfigDict
 
+from agentcache.typing import MessageType
+
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
 
@@ -148,3 +150,15 @@ class Token(Immutable):
 
     ac_model_: Literal["token"] = "token"
     text: str
+
+
+class MessageParameters(BaseModel):
+    """
+    A set of parameters that can be converted into one or more messages or message promises.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    content: MessageType
+    sender_alias: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None

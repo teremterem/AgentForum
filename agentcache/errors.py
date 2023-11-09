@@ -13,12 +13,6 @@ class SendClosedError(AgentCacheError):
     """
 
 
-class AsyncNeededError(AgentCacheError):
-    """
-    Raised when a synchronous method is called on an asynchronous object.
-    """
-
-
 class AsyncIterationError(AgentCacheError):
     """
     Raised when an error is encountered during iteration over an AsyncIterable.

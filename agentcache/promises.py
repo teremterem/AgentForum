@@ -1,9 +1,8 @@
 """This module contains wrappers for the pydantic models that turn those models into asynchronous promises."""
 import typing
-from typing import Optional, Type, List, Dict, Any, AsyncIterator
+from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
-from agentcache.errors import AsyncNeededError
-from agentcache.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform
+from agentcache.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
 from agentcache.typing import IN, MessageType
 from agentcache.utils import AsyncStreamable, async_cached_method
 
@@ -11,17 +10,25 @@ if typing.TYPE_CHECKING:
     from agentcache.forum import Forum
 
 
-class MessageSequence(AsyncStreamable["MessagePromise", "MessagePromise"]):
+class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     AsyncStreamable and relies on an internal async queue, the speed at which messages are produced and sent to the
     sequence is independent of the speed at which consumers iterate over them.
     """
 
-    def __init__(self, forum: "Forum", *args, branch_from: Optional["MessagePromise"] = None, **kwargs) -> None:
+    def __init__(
+        self,
+        forum: "Forum",
+        *args,
+        branch_from: Optional["MessagePromise"] = None,
+        default_sender_alias: Optional[str] = None,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.forum = forum
         self._latest_message = branch_from
+        self._default_sender_alias = forum.resolve_sender_alias(default_sender_alias)
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message in the sequence."""
@@ -43,37 +50,60 @@ class MessageSequence(AsyncStreamable["MessagePromise", "MessagePromise"]):
         """
         return [await msg.amaterialize() async for msg in self]
 
-    def _send_msg(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
-        if isinstance(content, BaseException):
-            # TODO Oleksandr: introduce the concept of ErrorMessage and move this if into Forum._new_message_promise()
-            self._send(content)
+    async def _aconvert_incoming_item(
+        self, incoming_item: MessageParameters
+    ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
+        sender_alias = incoming_item.sender_alias or self._default_sender_alias
 
-        elif isinstance(content, (str, Message, MessagePromise)):
+        if isinstance(incoming_item.content, BaseException):
+            # TODO Oleksandr: introduce the concept of ErrorMessage
+            yield incoming_item.content
+
+        elif isinstance(incoming_item.content, (str, Message, MessagePromise)):
             # noinspection PyProtectedMember
             msg_promise = self.forum._new_message_promise(  # pylint: disable=protected-access
-                content=content, sender_alias=sender_alias, branch_from=self._latest_message, **metadata
+                content=incoming_item.content,
+                sender_alias=sender_alias,
+                branch_from=self._latest_message,
+                **incoming_item.metadata,
             )
             self._latest_message = msg_promise
-            self._send(msg_promise)
+            yield msg_promise
 
         else:
-            if hasattr(content, "__iter__"):
-                for item in content:
-                    self._send_msg(item, sender_alias=sender_alias, **metadata)
-            elif hasattr(content, "__aiter__"):
-                raise AsyncNeededError("For async data you need to use the async version of this method")
+            if hasattr(incoming_item.content, "__iter__"):
+                for msg in incoming_item.content:
+                    async for msg_promise in self._aconvert_incoming_item(
+                        MessageParameters(
+                            content=msg,
+                            sender_alias=sender_alias,
+                            metadata=incoming_item.metadata,
+                        )
+                    ):
+                        self._latest_message = msg_promise
+                        yield msg_promise
+            elif hasattr(incoming_item.content, "__aiter__"):
+                async for msg in incoming_item.content:
+                    async for msg_promise in self._aconvert_incoming_item(
+                        MessageParameters(
+                            content=msg,
+                            sender_alias=sender_alias,
+                            metadata=incoming_item.metadata,
+                        )
+                    ):
+                        self._latest_message = msg_promise
+                        yield msg_promise
             else:
-                raise ValueError(f"Unexpected message content type: {type(content)}")
+                raise ValueError(f"Unexpected message content type: {type(incoming_item.content)}")
 
-    async def _asend_msg(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
-        try:
-            self._send_msg(content, sender_alias=sender_alias, **metadata)
-        except AsyncNeededError:
-            # this only happens when `content` is not of any simple MessageType subtypes and doesn't implement
-            # `__iter__` but does implement `__aiter__` (see the implementation of _send_msg() above)
-            # TODO Oleksandr: asyncio.Lock ?
-            async for item in content:
-                self._send_msg(item, sender_alias=sender_alias, **metadata)
+    class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
+        """A context manager that allows sending messages to MessageSequence."""
+
+        def send_msg(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
+            """Send a message or messages to the sequence this producer is attached to."""
+            if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
+                content = tuple(content)
+            self.send(MessageParameters(content=content, sender_alias=sender_alias, metadata=metadata))
 
 
 class MessagePromise(AsyncStreamable[IN, Token]):

@@ -92,7 +92,7 @@ class AsyncStreamable(Generic[IN, OUT]):
         return self._AsyncIterator(self)
 
     # noinspection PyMethodMayBeStatic
-    async def _aconvert_incoming_item(self, incoming_item: IN) -> AsyncIterator[OUT]:
+    async def _aconvert_incoming_item(self, incoming_item: IN) -> AsyncIterator[Union[OUT, BaseException]]:
         """
         Convert a single incoming item into ZERO OR MORE outgoing items. The default implementation just yields the
         incoming item as is. This method exists as a separate method in order to be overridden in subclasses if needed.
@@ -132,7 +132,7 @@ class AsyncStreamable(Generic[IN, OUT]):
         self._items_so_far.append(item_out)
         return item_out
 
-    class Producer:  # pylint: disable=protected-access
+    class _Producer:  # pylint: disable=protected-access
         """A context manager that allows sending items to AsyncStreamable."""
 
         def __init__(self, async_streamable: "AsyncStreamable", suppress_exceptions: bool = False) -> None:
@@ -143,15 +143,15 @@ class AsyncStreamable(Generic[IN, OUT]):
             """Send an item to AsyncStreamable if it is still open (SendClosedError is raised otherwise)."""
             if self._async_streamable._send_closed:
                 raise SendClosedError("Cannot send items to a closed AsyncStreamable.")
-            self._async_streamable._queue_out.put_nowait(item)
+            self._async_streamable._queue_in.put_nowait(item)
 
         def close(self) -> None:
             """Close AsyncStreamable for sending. Has no effect if the container is already closed."""
             if not self._async_streamable._send_closed:
                 self._async_streamable._send_closed = True
-                self._async_streamable._queue_out.put_nowait(END_OF_QUEUE)
+                self._async_streamable._queue_in.put_nowait(END_OF_QUEUE)
 
-        def __enter__(self) -> "AsyncStreamable.Producer":
+        def __enter__(self) -> "AsyncStreamable._Producer":
             return self
 
         def __exit__(
