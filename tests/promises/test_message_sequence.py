@@ -9,28 +9,40 @@ from agentcache.promises import MessageSequence
 @pytest.mark.asyncio
 async def test_nested_message_sequences(forum: Forum) -> None:
     """Verify that message ordering in nested message sequences is preserved."""
-    outer_sequence = MessageSequence(forum)
-    outer_producer = MessageSequence._MessageProducer(outer_sequence)
-    inner_sequence = MessageSequence(forum)
-    inner_producer = MessageSequence._MessageProducer(inner_sequence)
+    level1_sequence = MessageSequence(forum)
+    level1_producer = MessageSequence._MessageProducer(level1_sequence)
+    level2_sequence = MessageSequence(forum)
+    level2_producer = MessageSequence._MessageProducer(level2_sequence)
+    level3_sequence = MessageSequence(forum)
+    level3_producer = MessageSequence._MessageProducer(level3_sequence)
 
-    with outer_producer:
-        outer_producer.send_msg("outer message 1")
-        outer_producer.send_msg(inner_sequence)
-        outer_producer.send_msg("outer message 4")
+    with level3_producer:
+        level3_producer.send_msg("message 3")
+        level3_producer.send_msg("message 4")
 
-    with inner_producer:
-        inner_producer.send_msg("inner message 2")
-        # TODO Oleksandr: try the third level of nesting
-        inner_producer.send_msg("inner message 3")
+    with level1_producer:
+        level1_producer.send_msg("message 1")
+        level1_producer.send_msg(level2_sequence)
+        level1_producer.send_msg("message 6")
 
-    actual_sequence = [msg.content for msg in await outer_sequence.amaterialize_all()]
-    assert actual_sequence == [
-        "outer message 1",
-        "inner message 2",
-        "inner message 3",
-        "outer message 4",
+    with level2_producer:
+        level2_producer.send_msg("message 2")
+        level2_producer.send_msg(level3_sequence)
+        level2_producer.send_msg("message 5")
+
+    actual_messages = await level1_sequence.amaterialize_all()
+    actual_texts = [msg.content for msg in actual_messages]
+    assert actual_texts == [
+        "message 1",
+        "message 2",
+        "message 3",
+        "message 4",
+        "message 5",
+        "message 6",
     ]
+    # assert that each message in the sequence is linked to the previous one
+    for msg1, msg2 in zip(actual_messages, actual_messages[1:]):
+        assert msg1.hash_key == msg2.prev_msg_hash_key
 
 
 # TODO Oleksandr: test sending exceptions into sequences
