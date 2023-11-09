@@ -319,7 +319,7 @@ class DetachedMsgPromise(MessagePromise):
             metadata = self._detached_msg.metadata
             extra_kwargs = {}
 
-        self._materialized_msg = self.real_msg_class(
+        materialized_msg = self.real_msg_class(
             **self._detached_msg.model_dump(
                 exclude={"ac_model_", "content", "metadata", "prev_msg_hash_key", "original_msg_hash_key"}
             ),
@@ -330,8 +330,8 @@ class DetachedMsgPromise(MessagePromise):
         )
 
         if original_msg:
-            self._materialized_msg._original_msg = original_msg
-        return self._materialized_msg
+            materialized_msg._original_msg = original_msg
+        return materialized_msg
 
     def _foresee_real_msg_class(self) -> Type[Message]:
         if self._forward_of:
@@ -371,7 +371,7 @@ class DetachedAgentCallMsgPromise(MessagePromise):
             msg_seq_start_hash_key = None
             msg_seq_end_hash_key = None
 
-        self._materialized_msg = self.real_msg_class(
+        return self.real_msg_class(
             **self._detached_agent_call_msg.model_dump(
                 exclude={"ac_model_", "metadata", "prev_msg_hash_key", "msg_seq_start_hash_key"}
             ),
@@ -379,8 +379,6 @@ class DetachedAgentCallMsgPromise(MessagePromise):
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent calls get attached to the end of the message sequence
             msg_seq_start_hash_key=msg_seq_start_hash_key,
         )
-
-        return self._materialized_msg
 
     def _foresee_real_msg_class(self) -> Type[Message]:
         return type(self._detached_agent_call_msg)

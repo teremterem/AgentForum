@@ -3,7 +3,7 @@ import asyncio
 from types import TracebackType
 from typing import Optional, Iterable, List, AsyncIterator, Generic, Union, Type
 
-from agentcache.errors import SendClosedError, AsyncIterationError
+from agentcache.errors import SendClosedError
 from agentcache.typing import IN, OUT
 
 
@@ -103,14 +103,14 @@ class AsyncStreamable(Generic[IN, OUT]):
         while True:
             async for item_out in self._aget_and_convert_incoming_item():
                 self._queue_out.put_nowait(item_out)
-                if item_out is END_OF_QUEUE or isinstance(item_out, BaseException):
+                if item_out is END_OF_QUEUE:
                     self._queue_in = None
                     return
 
     async def _aget_and_convert_incoming_item(self) -> AsyncIterator[Union[OUT, Sentinel, BaseException]]:
         item_in = await self._queue_in.get()
-        if isinstance(item_in, (Sentinel, BaseException)):
-            yield item_in  # send item without conversion
+        if isinstance(item_in, Sentinel):
+            yield item_in  # pass the sentinel through as is
         else:
             async for item_out in self._aconvert_incoming_item(item_in):
                 yield item_out
@@ -124,10 +124,6 @@ class AsyncStreamable(Generic[IN, OUT]):
         if item_out is END_OF_QUEUE:
             self._queue_out = None
             raise StopAsyncIteration
-
-        if isinstance(item_out, BaseException):
-            self._queue_out = None
-            # don't raise, allow it to be put into _items_so_far - _AsyncIterator will raise it
 
         self._items_so_far.append(item_out)
         return item_out
@@ -162,6 +158,8 @@ class AsyncStreamable(Generic[IN, OUT]):
         ) -> Optional[bool]:
             is_send_closed_error = isinstance(exc_value, SendClosedError)
             if exc_value and not is_send_closed_error:
+                # TODO Oleksandr: is it a good idea to send this exception by context manager automatically ?
+                #  check this with the implementation of MessageSequence._MessageProducer.send_msg()
                 self.send(exc_value)
             self.close()
             # we are not suppressing SendClosedError even if self._suppress_exceptions is True
@@ -184,8 +182,8 @@ class AsyncStreamable(Generic[IN, OUT]):
                     else:
                         item = await self._async_streamable._anext_outgoing_item()
 
-            if isinstance(item, BaseException):
-                raise AsyncIterationError(item) from item
-
             self._index += 1
+
+            if isinstance(item, BaseException):
+                raise item
             return item
