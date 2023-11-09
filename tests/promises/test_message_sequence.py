@@ -76,5 +76,44 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
         async for msg in level1_sequence:
             actual_messages.append(await msg.amaterialize())
 
-    # assert that the first two messages were successfully processed
+    # assert that the messages before the error were successfully processed
     assert [msg.content for msg in actual_messages] == ["message 1", "message 2"]
+
+
+@pytest.mark.asyncio
+async def test_error_in_nested_message_sequence(forum: Forum) -> None:
+    """
+    Verify that an error in a message sequence comes out on the other end, but that the messages before the error
+    are still processed.
+    """
+    level1_sequence = MessageSequence(forum)
+    level1_producer = MessageSequence._MessageProducer(level1_sequence)
+    level2_sequence = MessageSequence(forum)
+    level2_producer = MessageSequence._MessageProducer(level2_sequence)
+
+    with level1_producer:
+        level1_producer.send_msg("message 1")
+        level1_producer.send_msg("message 2")
+        level1_producer.send_msg(level2_sequence)
+        level1_producer.send_msg("message 6")
+
+    async def _atask() -> None:
+        with level2_producer:
+            level2_producer.send_msg("message 3")
+
+            try:
+                raise ValueError("message 4")
+            except ValueError as exc:
+                level2_producer.send_msg(exc)
+
+            level2_producer.send_msg("message 5")
+
+    await asyncio.gather(_atask())
+
+    actual_messages = []
+    with pytest.raises(ValueError):
+        async for msg in level1_sequence:
+            actual_messages.append(await msg.amaterialize())
+
+    # assert that the messages before the error were successfully processed
+    assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "message 3"]

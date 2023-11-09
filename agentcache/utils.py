@@ -112,8 +112,11 @@ class AsyncStreamable(Generic[IN, OUT]):
         if isinstance(item_in, Sentinel):
             yield item_in  # pass the sentinel through as is
         else:
-            async for item_out in self._aconvert_incoming_item(item_in):
-                yield item_out
+            try:
+                async for item_out in self._aconvert_incoming_item(item_in):
+                    yield item_out
+            except BaseException as exc:  # pylint: disable=broad-except
+                yield exc
 
     async def _anext_outgoing_item(self) -> OUT:
         if self.completed:
@@ -182,8 +185,8 @@ class AsyncStreamable(Generic[IN, OUT]):
                     else:
                         item = await self._async_streamable._anext_outgoing_item()
 
-            self._index += 1
-
             if isinstance(item, BaseException):
                 raise item
+
+            self._index += 1
             return item

@@ -101,6 +101,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
 
         def send_msg(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
+            # TODO Oleksandr: rename to send_one_or_more_message() ?
             if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
                 content = tuple(content)
             self.send(MessageParameters(content=content, sender_alias=sender_alias, metadata=metadata))
