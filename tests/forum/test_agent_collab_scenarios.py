@@ -22,14 +22,12 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     @forum.agent
     async def _assistant(requests: MessageSequence, ctx: InteractionContext) -> None:
-        api_responses = await _reminder_api.aquick_call(requests)
+        api_responses = _reminder_api.quick_call(requests)
         if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
             # TODO Oleksandr: these "branch_from" parameters are very counter-intuitive - decide on a better
             #  message forwarding mechanism (that would also allow for agent call caching)
             # TODO Oleksandr: implement actual ErrorMessage class
-            corrections = await _critic.aquick_call(
-                api_responses, branch_from=await requests.aget_concluding_message()
-            )
+            corrections = _critic.quick_call(api_responses, branch_from=await requests.aget_concluding_message())
 
             assert await arepresent_conversation_with_dicts(corrections) == [
                 {
@@ -59,7 +57,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 },
             ]
 
-            api_responses = await _reminder_api.aquick_call(
+            api_responses = _reminder_api.quick_call(
                 corrections, branch_from=await api_responses.aget_concluding_message()
             )
 
@@ -106,7 +104,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             },
         ]
 
-        await ctx.arespond(api_responses)
+        ctx.respond(api_responses)
 
     @forum.agent
     async def _reminder_api(requests: MessageSequence, ctx: InteractionContext) -> None:
@@ -155,7 +153,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent1(requests: MessageSequence, ctx: InteractionContext) -> None:
-        await ctx.arespond(await _agent2.aquick_call(requests))
+        ctx.respond(_agent2.quick_call(requests))
         ctx.respond("agent1 also says hello")
 
     @forum.agent

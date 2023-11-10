@@ -104,18 +104,6 @@ class Agent:
             agent_call.send_request(content, sender_alias=sender_alias)
         return agent_call.finish()
 
-    async def aquick_call(
-        self,
-        content: Optional[MessageType],
-        sender_alias: Optional[str] = None,
-        branch_from: Optional["MessagePromise"] = None,
-        **function_kwargs,
-    ) -> "MessageSequence":
-        agent_call = self.call(sender_alias=sender_alias, branch_from=branch_from, **function_kwargs)
-        if content is not None:
-            await agent_call.asend_request(content, sender_alias=sender_alias)
-        return agent_call.finish()
-
     def call(
         self, sender_alias: Optional[str] = None, branch_from: Optional["MessagePromise"] = None, **function_kwargs
     ) -> "AgentCall":
@@ -128,7 +116,7 @@ class Agent:
         )
 
         parent_ctx = InteractionContext.get_current_context()
-        # TODO Oleksandr: get rid of this if by making Forum a context manager too and making sure all the
+        # TODO Oleksandr: get rid of this if-statement by making Forum a context manager too and making sure all the
         #  "seed" agent calls are done within the context of the forum ?
         if parent_ctx:
             parent_ctx._child_agent_calls.append(agent_call)
@@ -137,10 +125,12 @@ class Agent:
         return agent_call
 
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
-        with agent_call._responses:
-            with InteractionContext(forum=self.forum, agent=self, responses=agent_call._responses) as ctx:
+        with agent_call._response_producer:
+            with InteractionContext(
+                forum=self.forum, agent=self, response_producer=agent_call._response_producer
+            ) as ctx:
                 try:
-                    await self._func(agent_call._requests, ctx, **function_kwargs)
+                    await self._func(agent_call._request_messages, ctx, **function_kwargs)
                 except BaseException as exc:  # pylint: disable=broad-exception-caught
                     # catch all exceptions, including KeyboardInterrupt
                     ctx.respond(exc)
@@ -155,21 +145,17 @@ class InteractionContext:
 
     _current_context: ContextVar[Optional["InteractionContext"]] = ContextVar("_current_context", default=None)
 
-    def __init__(self, forum: Forum, agent: Agent, responses: "MessageSequence") -> None:
+    def __init__(self, forum: Forum, agent: Agent, response_producer: "MessageSequence._MessageProducer") -> None:
         self.forum = forum
         self.this_agent = agent
         # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
-        self._responses = responses
+        self._response_producer = response_producer
         self._child_agent_calls: List[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
     def respond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages."""
-        self._responses._send_msg(content, sender_alias=sender_alias, **metadata)
-
-    async def arespond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
-        """Respond with a message or a sequence of messages (async version)."""
-        await self._responses._asend_msg(content, sender_alias=sender_alias, **metadata)
+        self._response_producer.send_msg(content, sender_alias=sender_alias, **metadata)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -218,26 +204,26 @@ class AgentCall:
         self.forum = forum
         self.receiving_agent = receiving_agent
 
-        self._requests = MessageSequence(self.forum, branch_from=branch_from)
+        self._request_messages = MessageSequence(self.forum, branch_from=branch_from)
+        self._request_producer = MessageSequence._MessageProducer(self._request_messages)
+
         agent_call_msg_promise = DetachedAgentCallMsgPromise(
             forum=self.forum,
-            message_sequence=self._requests,
+            request_messages=self._request_messages,
             detached_agent_call_msg=AgentCallMsg(
                 content=self.receiving_agent.agent_alias,
                 sender_alias=forum.resolve_sender_alias(sender_alias),
                 metadata=Freeform(**kwargs),
             ),
         )
-        self._responses = MessageSequence(self.forum, branch_from=agent_call_msg_promise)
+
+        self._response_messages = MessageSequence(self.forum, branch_from=agent_call_msg_promise)
+        self._response_producer = MessageSequence._MessageProducer(self._response_messages)
 
     def send_request(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> "AgentCall":
-        self._requests._send_msg(content, sender_alias=sender_alias, **metadata)
-        return self
-
-    async def asend_request(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> "AgentCall":
-        await self._requests._asend_msg(content, sender_alias=sender_alias, **metadata)
+        self._request_producer.send_msg(content, sender_alias=sender_alias, **metadata)
         return self
 
     def finish(self) -> "MessageSequence":
-        self._requests._close()
-        return self._responses
+        self._request_producer.close()
+        return self._response_messages

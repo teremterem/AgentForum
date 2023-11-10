@@ -355,16 +355,16 @@ class DetachedAgentCallMsgPromise(MessagePromise):
     def __init__(
         self,
         forum: "Forum",
-        message_sequence: MessageSequence,
+        request_messages: MessageSequence,
         detached_agent_call_msg: AgentCallMsg,
     ) -> None:
         super().__init__(forum=forum, materialized_msg_content=detached_agent_call_msg.content)
         self.forum = forum
-        self._message_sequence = message_sequence
+        self._request_messages = request_messages
         self._detached_agent_call_msg = detached_agent_call_msg
 
     async def _amaterialize_impl(self) -> Message:
-        messages = await self._message_sequence.amaterialize_all()
+        messages = await self._request_messages.amaterialize_all()
         if messages:
             msg_seq_start_hash_key = messages[0].hash_key
             msg_seq_end_hash_key = messages[-1].hash_key
@@ -385,5 +385,5 @@ class DetachedAgentCallMsgPromise(MessagePromise):
         return type(self._detached_agent_call_msg)
 
     async def _aget_previous_message_impl(self) -> Optional[MessagePromise]:
-        msg_promises = [msg_promise async for msg_promise in self._message_sequence]
+        msg_promises = [msg_promise async for msg_promise in self._request_messages]
         return msg_promises[-1] if msg_promises else None
