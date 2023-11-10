@@ -47,7 +47,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 {
                     "ac_model_": "call",
                     "content": "_critic",
-                    "sender_alias": "_assistant",
+                    "sender_alias": "",
                     "messages_in_request": 1,
                 },
                 {
@@ -73,7 +73,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             },
             {
                 "ac_model_": "call",
-                "sender_alias": "_assistant",
+                "sender_alias": "",
                 "content": "_reminder_api",
                 "messages_in_request": 1,
             },
@@ -93,7 +93,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             },
             {
                 "ac_model_": "call",
-                "sender_alias": "_assistant",
+                "sender_alias": "",
                 "content": "_reminder_api",
                 "messages_in_request": 1,
             },
@@ -128,7 +128,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         },
         {
             "ac_model_": "call",
-            "sender_alias": "USER",
+            "sender_alias": "",
             "content": "_assistant",
             "messages_in_request": 1,
         },
@@ -171,7 +171,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         },
         {
             "ac_model_": "call",
-            "sender_alias": "USER",
+            "sender_alias": "",
             "content": "_agent1",
             "messages_in_request": 1,
         },

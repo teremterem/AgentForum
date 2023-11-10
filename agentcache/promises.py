@@ -97,9 +97,10 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
         """A context manager that allows sending messages to MessageSequence."""
 
-        def send_msg(self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata) -> None:
+        def send_zero_or_more_messages(
+            self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
+        ) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
-            # TODO Oleksandr: rename to send_zero_or_more_messages() ?
             if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
                 content = tuple(content)
             self.send(

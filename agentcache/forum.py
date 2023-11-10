@@ -142,7 +142,9 @@ class InteractionContext:
 
     def respond(self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages."""
-        self._response_producer.send_msg(content, override_sender_alias=override_sender_alias, **metadata)
+        self._response_producer.send_zero_or_more_messages(
+            content, override_sender_alias=override_sender_alias, **metadata
+        )
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -204,7 +206,9 @@ class AgentCall:
     def send_request(
         self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
     ) -> "AgentCall":
-        self._request_producer.send_msg(content, override_sender_alias=override_sender_alias, **metadata)
+        self._request_producer.send_zero_or_more_messages(
+            content, override_sender_alias=override_sender_alias, **metadata
+        )
         return self
 
     def finish(self) -> "MessageSequence":
