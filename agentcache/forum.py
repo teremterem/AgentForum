@@ -16,7 +16,7 @@ from agentcache.promises import MessagePromise, DetachedMsgPromise, MessageSeque
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import AgentFunction, MessageType, SingleMessageType
 
-DEFAULT_AGENT_ALIAS = "USER"
+USER_ALIAS = "USER"
 
 
 class Forum(BaseModel):
@@ -74,13 +74,8 @@ class Forum(BaseModel):
         )
 
     # noinspection PyMethodMayBeStatic
-    def resolve_sender_alias(self, sender_alias: Optional[str] = None) -> str:
-        """
-        Resolve the sender alias to use in a message. If sender_alias is not None, it is returned. Otherwise, the
-        current InteractionContext is used to get the agent alias, and if there is no current InteractionContext, then
-        DEFAULT_AGENT_ALIAS (which translates to "USER") is used.
-        """
-        return InteractionContext.resolve_sender_alias(sender_alias)
+    def get_default_sender_alias(self) -> str:
+        return InteractionContext.get_default_sender_alias()
 
 
 # noinspection PyProtectedMember
@@ -95,25 +90,17 @@ class Agent:
     def quick_call(
         self,
         content: Optional[MessageType],
-        sender_alias: Optional[str] = None,
+        override_sender_alias: Optional[str] = None,
         branch_from: Optional["MessagePromise"] = None,
         **function_kwargs,
     ) -> "MessageSequence":
-        agent_call = self.call(sender_alias=sender_alias, branch_from=branch_from, **function_kwargs)
+        agent_call = self.call(branch_from=branch_from, **function_kwargs)
         if content is not None:
-            agent_call.send_request(content, sender_alias=sender_alias)
+            agent_call.send_request(content, override_sender_alias=override_sender_alias)
         return agent_call.finish()
 
-    def call(
-        self, sender_alias: Optional[str] = None, branch_from: Optional["MessagePromise"] = None, **function_kwargs
-    ) -> "AgentCall":
-        agent_call = AgentCall(
-            forum=self.forum,
-            receiving_agent=self,
-            sender_alias=sender_alias,
-            branch_from=branch_from,
-            **function_kwargs,
-        )
+    def call(self, branch_from: Optional["MessagePromise"] = None, **function_kwargs) -> "AgentCall":
+        agent_call = AgentCall(forum=self.forum, receiving_agent=self, branch_from=branch_from, **function_kwargs)
 
         parent_ctx = InteractionContext.get_current_context()
         # TODO Oleksandr: get rid of this if-statement by making Forum a context manager too and making sure all the
@@ -153,9 +140,9 @@ class InteractionContext:
         self._child_agent_calls: List[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
-    def respond(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
+    def respond(self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages."""
-        self._response_producer.send_msg(content, sender_alias=sender_alias, **metadata)
+        self._response_producer.send_msg(content, override_sender_alias=override_sender_alias, **metadata)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -163,17 +150,11 @@ class InteractionContext:
         return cls._current_context.get()
 
     @classmethod
-    def resolve_sender_alias(cls, sender_alias: Optional[str] = None) -> str:
-        """
-        Resolve the sender alias to use in a message. If sender_alias is not None, it is returned. Otherwise, the
-        current InteractionContext is used to get the agent alias, and if there is no current InteractionContext, then
-        DEFAULT_AGENT_ALIAS (which translates to "USER") is used.
-        """
-        if not sender_alias:
-            ctx = cls.get_current_context()
-            if ctx:
-                sender_alias = ctx.this_agent.agent_alias
-        return sender_alias or DEFAULT_AGENT_ALIAS
+    def get_default_sender_alias(cls) -> str:
+        ctx = cls.get_current_context()
+        if ctx:
+            return ctx.this_agent.agent_alias
+        return USER_ALIAS
 
     def __enter__(self) -> "InteractionContext":
         """Set this context as the current context."""
@@ -194,17 +175,14 @@ class InteractionContext:
 # noinspection PyProtectedMember
 class AgentCall:
     def __init__(
-        self,
-        forum: Forum,
-        receiving_agent: Agent,
-        sender_alias: Optional[str] = None,
-        branch_from: Optional["MessagePromise"] = None,
-        **kwargs,
+        self, forum: Forum, receiving_agent: Agent, branch_from: Optional["MessagePromise"] = None, **kwargs
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
 
-        self._request_messages = MessageSequence(self.forum, branch_from=branch_from)
+        self._request_messages = MessageSequence(
+            self.forum, default_sender_alias=forum.get_default_sender_alias(), branch_from=branch_from
+        )
         self._request_producer = MessageSequence._MessageProducer(self._request_messages)
 
         agent_call_msg_promise = DetachedAgentCallMsgPromise(
@@ -212,16 +190,21 @@ class AgentCall:
             request_messages=self._request_messages,
             detached_agent_call_msg=AgentCallMsg(
                 content=self.receiving_agent.agent_alias,
-                sender_alias=forum.resolve_sender_alias(sender_alias),
+                # we keep agent calls anonymous to be able to cache call results for multiple caller agents to reuse
+                sender_alias="",
                 metadata=Freeform(**kwargs),
             ),
         )
 
-        self._response_messages = MessageSequence(self.forum, branch_from=agent_call_msg_promise)
+        self._response_messages = MessageSequence(
+            self.forum, default_sender_alias=self.receiving_agent.agent_alias, branch_from=agent_call_msg_promise
+        )
         self._response_producer = MessageSequence._MessageProducer(self._response_messages)
 
-    def send_request(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> "AgentCall":
-        self._request_producer.send_msg(content, sender_alias=sender_alias, **metadata)
+    def send_request(
+        self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
+    ) -> "AgentCall":
+        self._request_producer.send_msg(content, override_sender_alias=override_sender_alias, **metadata)
         return self
 
     def finish(self) -> "MessageSequence":

@@ -21,14 +21,14 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
         self,
         forum: "Forum",
         *args,
+        default_sender_alias: str,
         branch_from: Optional["MessagePromise"] = None,
-        default_sender_alias: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.forum = forum
         self._latest_message = branch_from
-        self._default_sender_alias = forum.resolve_sender_alias(default_sender_alias)
+        self._default_sender_alias = default_sender_alias
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message in the sequence."""
@@ -53,8 +53,6 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     async def _aconvert_incoming_item(
         self, incoming_item: MessageParameters
     ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
-        sender_alias = incoming_item.sender_alias or self._default_sender_alias
-
         if isinstance(incoming_item.content, BaseException):
             # TODO Oleksandr: introduce the concept of ErrorMessage
             yield incoming_item.content
@@ -63,7 +61,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
             # noinspection PyProtectedMember
             msg_promise = self.forum._new_message_promise(  # pylint: disable=protected-access
                 content=incoming_item.content,
-                sender_alias=sender_alias,
+                sender_alias=incoming_item.override_sender_alias or self._default_sender_alias,
                 branch_from=self._latest_message,
                 **incoming_item.metadata,
             )
@@ -76,7 +74,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
                     async for msg_promise in self._aconvert_incoming_item(
                         MessageParameters(
                             content=msg,
-                            sender_alias=sender_alias,
+                            override_sender_alias=incoming_item.override_sender_alias,
                             metadata=incoming_item.metadata,
                         )
                     ):
@@ -87,7 +85,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
                     async for msg_promise in self._aconvert_incoming_item(
                         MessageParameters(
                             content=msg,
-                            sender_alias=sender_alias,
+                            override_sender_alias=incoming_item.override_sender_alias,
                             metadata=incoming_item.metadata,
                         )
                     ):
@@ -99,12 +97,14 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
         """A context manager that allows sending messages to MessageSequence."""
 
-        def send_msg(self, content: MessageType, sender_alias: Optional[str] = None, **metadata) -> None:
+        def send_msg(self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
-            # TODO Oleksandr: rename to send_one_or_more_message() ?
+            # TODO Oleksandr: rename to send_zero_or_more_messages() ?
             if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
                 content = tuple(content)
-            self.send(MessageParameters(content=content, sender_alias=sender_alias, metadata=metadata))
+            self.send(
+                MessageParameters(content=content, override_sender_alias=override_sender_alias, metadata=metadata)
+            )
 
 
 class MessagePromise(AsyncStreamable[IN, Token]):
@@ -238,7 +238,7 @@ class StreamedMsgPromise(MessagePromise):
     def __init__(
         self,
         forum: "Forum",
-        sender_alias: Optional[str] = None,
+        sender_alias: str,
         metadata: Optional[Dict[str, Any]] = None,
         branch_from: Optional[MessagePromise] = None,
     ) -> None:

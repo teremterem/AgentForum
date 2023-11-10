@@ -160,5 +160,5 @@ class MessageParameters(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     content: MessageType
-    sender_alias: Optional[str] = None
+    override_sender_alias: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
