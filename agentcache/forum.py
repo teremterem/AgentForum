@@ -133,10 +133,13 @@ class Agent:
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
         with agent_call._response_producer:
             with InteractionContext(
-                forum=self.forum, agent=self, response_producer=agent_call._response_producer
+                forum=self.forum,
+                agent=self,
+                request_messages=agent_call._request_messages,
+                response_producer=agent_call._response_producer,
             ) as ctx:
                 try:
-                    await self._func(agent_call._request_messages, ctx, **function_kwargs)
+                    await self._func(ctx, **function_kwargs)
                 except BaseException as exc:  # pylint: disable=broad-exception-caught
                     # catch all exceptions, including KeyboardInterrupt
                     ctx.respond(exc)
@@ -151,13 +154,20 @@ class InteractionContext:
 
     _current_context: ContextVar[Optional["InteractionContext"]] = ContextVar("_current_context", default=None)
 
-    def __init__(self, forum: Forum, agent: Agent, response_producer: "MessageSequence._MessageProducer") -> None:
+    def __init__(
+        self,
+        forum: Forum,
+        agent: Agent,
+        request_messages: MessageSequence,
+        response_producer: "MessageSequence._MessageProducer",
+    ) -> None:
         self.forum = forum
         self.this_agent = agent
-        # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
+        self.request_messages = request_messages
         self._response_producer = response_producer
         self._child_agent_calls: List[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
+        # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
 
     def respond(self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages."""

@@ -48,6 +48,25 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
         """
         return [await msg.amaterialize() async for msg in self]
 
+    async def aget_full_history(
+        self, skip_agent_calls: bool = True, include_this_message: bool = True
+    ) -> List["MessagePromise"]:
+        """Get the full chat history of the conversation branch up to the last message in the sequence."""
+        return await (await self.aget_concluding_message()).aget_history(
+            skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
+        )
+
+    async def amaterialize_full_history(
+        self, skip_agent_calls: bool = True, include_this_message: bool = True
+    ) -> List["Message"]:
+        """
+        Get the full chat history of the conversation branch up to the last message in the sequence, but return a list
+        of Message objects instead of MessagePromise objects.
+        """
+        return await (await self.aget_concluding_message()).amaterialize_history(
+            skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
+        )
+
     async def _aconvert_incoming_item(
         self, incoming_item: MessageParameters
     ) -> AsyncIterator[Union["MessagePromise", BaseException]]:

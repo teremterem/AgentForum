@@ -4,11 +4,11 @@ from typing import TypeVar, Callable, Awaitable, Union, Iterable, Any, AsyncIter
 
 if typing.TYPE_CHECKING:
     from agentcache.forum import InteractionContext
-    from agentcache.promises import MessagePromise, MessageSequence
+    from agentcache.promises import MessagePromise
     from agentcache.models import Message
 
     SingleMessageType = Union[str, Message, MessagePromise, BaseException]
-    AgentFunction = Callable[[MessageSequence, InteractionContext, ...], Awaitable[None]]
+    AgentFunction = Callable[[InteractionContext, ...], Awaitable[None]]
 else:
     SingleMessageType = Union[Any]
     AgentFunction = Callable

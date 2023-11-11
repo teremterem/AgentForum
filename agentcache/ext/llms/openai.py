@@ -12,7 +12,7 @@ from agentcache.utils import Sentinel
 # noinspection PyProtectedMember
 async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protected-access
     forum: Forum,
-    prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
+    prompt: List[Union[MessagePromise, Message]],
     sender_alias: Optional[str] = None,
     branch_from: Optional[MessagePromise] = None,
     openai_module: Optional[Any] = None,

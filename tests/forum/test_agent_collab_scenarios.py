@@ -21,13 +21,15 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _assistant(requests: MessageSequence, ctx: InteractionContext) -> None:
-        api_responses = _reminder_api.quick_call(requests)
+    async def _assistant(ctx: InteractionContext) -> None:
+        api_responses = _reminder_api.quick_call(ctx.request_messages)
         if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
             # TODO Oleksandr: these "branch_from" parameters are very counter-intuitive - decide on a better
             #  message forwarding mechanism (that would also allow for agent call caching)
             # TODO Oleksandr: implement actual ErrorMessage class
-            corrections = _critic.quick_call(api_responses, branch_from=await requests.aget_concluding_message())
+            corrections = _critic.quick_call(
+                api_responses, branch_from=await ctx.request_messages.aget_concluding_message()
+            )
 
             assert await arepresent_conversation_with_dicts(corrections) == [
                 {
@@ -107,14 +109,14 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         ctx.respond(api_responses)
 
     @forum.agent
-    async def _reminder_api(requests: MessageSequence, ctx: InteractionContext) -> None:
-        if (await requests.amaterialize_concluding_message()).get_original_msg().sender_alias == "_critic":
+    async def _reminder_api(ctx: InteractionContext) -> None:
+        if (await ctx.request_messages.amaterialize_concluding_message()).get_original_msg().sender_alias == "_critic":
             ctx.respond("success: reminder set")
         else:
             ctx.respond("api error: invalid date format")
 
     @forum.agent
-    async def _critic(_: MessageSequence, ctx: InteractionContext) -> None:
+    async def _critic(ctx: InteractionContext) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
         ctx.respond("try swapping the month and day")
 
@@ -152,12 +154,12 @@ async def test_two_nested_agents(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _agent1(requests: MessageSequence, ctx: InteractionContext) -> None:
-        ctx.respond(_agent2.quick_call(requests))
+    async def _agent1(ctx: InteractionContext) -> None:
+        ctx.respond(_agent2.quick_call(ctx.request_messages))
         ctx.respond("agent1 also says hello")
 
     @forum.agent
-    async def _agent2(_: MessagePromise, ctx: InteractionContext) -> None:
+    async def _agent2(ctx: InteractionContext) -> None:
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
