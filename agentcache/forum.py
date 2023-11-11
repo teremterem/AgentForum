@@ -44,6 +44,8 @@ class Forum(BaseModel):
         branch_from: Optional["MessagePromise"] = None,
         **metadata,
     ) -> "MessagePromise":
+        # TODO Oleksandr: move this method into MessageSequence (after you introduce the concept of Conversation,
+        #  which would allow starting new conversations too)
         """
         Create a new, detached message promise in the forum. "Detached message promise" means that this message
         promise may be a reply to another message promise that may or may not be "materialized" yet.
@@ -73,10 +75,6 @@ class Forum(BaseModel):
             ),
         )
 
-    # noinspection PyMethodMayBeStatic
-    def get_default_sender_alias(self) -> str:
-        return InteractionContext.get_default_sender_alias()
-
 
 # noinspection PyProtectedMember
 class Agent:
@@ -94,12 +92,20 @@ class Agent:
         branch_from: Optional["MessagePromise"] = None,
         **function_kwargs,
     ) -> "MessageSequence":
+        """
+        Call the agent and immediately finish the call. Returns a MessageSequence object that contains the agent's
+        response(s).
+        """
         agent_call = self.call(branch_from=branch_from, **function_kwargs)
         if content is not None:
             agent_call.send_request(content, override_sender_alias=override_sender_alias)
         return agent_call.finish()
 
     def call(self, branch_from: Optional["MessagePromise"] = None, **function_kwargs) -> "AgentCall":
+        """
+        Call the agent. Returns an AgentCall object that can be used to send requests to the agent and receive its
+        responses.
+        """
         agent_call = AgentCall(forum=self.forum, receiving_agent=self, branch_from=branch_from, **function_kwargs)
 
         parent_ctx = InteractionContext.get_current_context()
@@ -152,7 +158,8 @@ class InteractionContext:
         return cls._current_context.get()
 
     @classmethod
-    def get_default_sender_alias(cls) -> str:
+    def get_current_sender_alias(cls) -> str:
+        """Get the sender alias from the current InteractionContext object."""
         ctx = cls.get_current_context()
         if ctx:
             return ctx.this_agent.agent_alias
@@ -176,6 +183,11 @@ class InteractionContext:
 
 # noinspection PyProtectedMember
 class AgentCall:
+    """
+    A call to an agent. This object is returned by Agent.call() method. It is used to send requests to the agent and
+    receive its responses.
+    """
+
     def __init__(
         self, forum: Forum, receiving_agent: Agent, branch_from: Optional["MessagePromise"] = None, **kwargs
     ) -> None:
@@ -183,7 +195,7 @@ class AgentCall:
         self.receiving_agent = receiving_agent
 
         self._request_messages = MessageSequence(
-            self.forum, default_sender_alias=forum.get_default_sender_alias(), branch_from=branch_from
+            self.forum, default_sender_alias=InteractionContext.get_current_sender_alias(), branch_from=branch_from
         )
         self._request_producer = MessageSequence._MessageProducer(self._request_messages)
 
@@ -206,11 +218,13 @@ class AgentCall:
     def send_request(
         self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
     ) -> "AgentCall":
+        """Send a request to the agent."""
         self._request_producer.send_zero_or_more_messages(
             content, override_sender_alias=override_sender_alias, **metadata
         )
         return self
 
     def finish(self) -> "MessageSequence":
+        """Finish the agent call and return the agent's response(s)."""
         self._request_producer.close()
         return self._response_messages
