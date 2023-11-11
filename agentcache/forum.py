@@ -19,7 +19,7 @@ from agentcache.typing import AgentFunction, MessageType, SingleMessageType
 USER_ALIAS = "USER"
 
 
-class Conversation:
+class Conversation:  # TODO Oleksandr: rename to ConversationTracker
     def __init__(self, forum: "Forum", branch_from: Optional[MessagePromise] = None) -> None:
         self.forum = forum
         self._latest_msg_promise = branch_from
@@ -117,7 +117,9 @@ class Agent:
         Call the agent. Returns an AgentCall object that can be used to send requests to the agent and receive its
         responses.
         """
-        agent_call = AgentCall(forum=self.forum, receiving_agent=self, branch_from=branch_from, **function_kwargs)
+        # TODO Oleksandr: accept Conversation as a parameter
+        conversation = Conversation(self.forum, branch_from=branch_from)
+        agent_call = AgentCall(self.forum, conversation, self, **function_kwargs)
 
         parent_ctx = InteractionContext.get_current_context()
         # TODO Oleksandr: get rid of this if-statement by making Forum a context manager too and making sure all the
@@ -199,18 +201,20 @@ class AgentCall:
     receive its responses.
     """
 
-    def __init__(
-        self, forum: Forum, receiving_agent: Agent, branch_from: Optional["MessagePromise"] = None, **kwargs
-    ) -> None:
+    def __init__(self, forum: Forum, conversation: Conversation, receiving_agent: Agent, **kwargs) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
 
+        # TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it completely when
+        #  you get to implementing cached agent calls
+        temporary_sub_conversation = Conversation(forum=forum, branch_from=conversation._latest_msg_promise)
         self._request_messages = MessageSequence(
-            Conversation(self.forum, branch_from=branch_from),
+            temporary_sub_conversation,
             default_sender_alias=InteractionContext.get_current_sender_alias(),
         )
         self._request_producer = MessageSequence._MessageProducer(self._request_messages)
 
+        # TODO Oleksandr: extract this into a separate method of Conversation
         agent_call_msg_promise = DetachedAgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,
@@ -221,11 +225,9 @@ class AgentCall:
                 metadata=Freeform(**kwargs),
             ),
         )
+        conversation._latest_msg_promise = agent_call_msg_promise
 
-        self._response_messages = MessageSequence(
-            Conversation(self.forum, branch_from=agent_call_msg_promise),
-            default_sender_alias=self.receiving_agent.agent_alias,
-        )
+        self._response_messages = MessageSequence(conversation, default_sender_alias=self.receiving_agent.agent_alias)
         self._response_producer = MessageSequence._MessageProducer(self._response_messages)
 
     def send_request(
