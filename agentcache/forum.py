@@ -19,7 +19,7 @@ from agentcache.typing import AgentFunction, MessageType, SingleMessageType
 USER_ALIAS = "USER"
 
 
-class Conversation:  # TODO Oleksandr: rename to ConversationTracker ?
+class ConversationTracker:
     def __init__(self, forum: "Forum", branch_from: Optional[MessagePromise] = None) -> None:
         self.forum = forum
         self._latest_msg_promise = branch_from
@@ -62,7 +62,7 @@ class Forum(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     immutable_storage: ImmutableStorage
-    _conversations: Dict[str, Conversation] = PrivateAttr(default_factory=dict)
+    _conversations: Dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
     def agent(self, func: AgentFunction) -> "Agent":
         """A decorator that registers an agent function in the forum."""
@@ -78,10 +78,10 @@ class Forum(BaseModel):
 
     def get_conversation(
         self, descriptor: Immutable, branch_from_if_new: Optional["MessagePromise"] = None
-    ) -> Conversation:
+    ) -> ConversationTracker:
         conversation = self._conversations.get(descriptor.hash_key)
         if not conversation:
-            conversation = Conversation(forum=self, branch_from=branch_from_if_new)
+            conversation = ConversationTracker(forum=self, branch_from=branch_from_if_new)
             self._conversations[descriptor.hash_key] = conversation
 
         return conversation
@@ -117,8 +117,8 @@ class Agent:
         Call the agent. Returns an AgentCall object that can be used to send requests to the agent and receive its
         responses.
         """
-        # TODO Oleksandr: accept Conversation as a parameter
-        conversation = Conversation(self.forum, branch_from=branch_from)
+        # TODO Oleksandr: accept ConversationTracker as a parameter
+        conversation = ConversationTracker(self.forum, branch_from=branch_from)
         agent_call = AgentCall(self.forum, conversation, self, **function_kwargs)
 
         parent_ctx = InteractionContext.get_current_context()
@@ -211,20 +211,20 @@ class AgentCall:
     receive its responses.
     """
 
-    def __init__(self, forum: Forum, conversation: Conversation, receiving_agent: Agent, **kwargs) -> None:
+    def __init__(self, forum: Forum, conversation: ConversationTracker, receiving_agent: Agent, **kwargs) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
 
         # TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it completely when
         #  you get to implementing cached agent calls
-        temporary_sub_conversation = Conversation(forum=forum, branch_from=conversation._latest_msg_promise)
+        temporary_sub_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
         self._request_messages = MessageSequence(
             temporary_sub_conversation,
             default_sender_alias=InteractionContext.get_current_sender_alias(),
         )
         self._request_producer = MessageSequence._MessageProducer(self._request_messages)
 
-        # TODO Oleksandr: extract this into a separate method of Conversation
+        # TODO Oleksandr: extract this into a separate method of ConversationTracker
         agent_call_msg_promise = DetachedAgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,

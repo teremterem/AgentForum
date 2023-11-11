@@ -51,7 +51,7 @@ async def user_proxy_agent(ctx: InteractionContext) -> None:
 
 async def main() -> None:
     """The chat loop."""
-    # conversation = Conversation(forum)
+    # conversation = ConversationTracker(forum)
     assistant_responses = []
     try:
         while True:

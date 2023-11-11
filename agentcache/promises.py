@@ -7,7 +7,7 @@ from agentcache.typing import IN, MessageType
 from agentcache.utils import AsyncStreamable, async_cached_method
 
 if typing.TYPE_CHECKING:
-    from agentcache.forum import Forum, Conversation
+    from agentcache.forum import Forum, ConversationTracker
 
 
 class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
@@ -17,13 +17,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     sequence is independent of the speed at which consumers iterate over them.
     """
 
-    def __init__(
-        self,
-        conversation: "Conversation",
-        *args,
-        default_sender_alias: str,
-        **kwargs,
-    ) -> None:
+    def __init__(self, conversation: "ConversationTracker", *args, default_sender_alias: str, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._conversation = conversation
         self._default_sender_alias = default_sender_alias
