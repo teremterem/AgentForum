@@ -12,7 +12,7 @@ load_dotenv()
 import promptlayer  # TODO Oleksandr: make this optional
 
 from agentcache.ext.llms.openai import aopenai_chat_completion
-from agentcache.forum import Forum, InteractionContext, Conversation
+from agentcache.forum import Forum, InteractionContext
 from agentcache.storage import InMemoryStorage
 
 forum = Forum(immutable_storage=InMemoryStorage())
@@ -24,7 +24,7 @@ async def first_openai_agent(ctx: InteractionContext, **kwargs) -> None:
     full_chat = await ctx.request_messages.amaterialize_full_history()
 
     first_response = await aopenai_chat_completion(
-        forum=ctx.forum, prompt=full_chat, branch_from=full_chat[-1], openai_module=promptlayer.openai, **kwargs
+        forum=ctx.forum, prompt=full_chat, openai_module=promptlayer.openai, **kwargs
     )
     ctx.respond(first_response)
 
@@ -51,18 +51,19 @@ async def user_proxy_agent(ctx: InteractionContext) -> None:
 
 async def main() -> None:
     """The chat loop."""
-    conversation = Conversation(forum)
-    assistant_responses = [
-        conversation.new_message_promise(
-            content="Hi, how are you doing?",
-            sender_alias=first_openai_agent.agent_alias,
-            openai_role="assistant",
-        )
-    ]
+    # conversation = Conversation(forum)
+    assistant_responses = []
     try:
         while True:
+            user_requests = user_proxy_agent.quick_call(assistant_responses)
+
+            # needed in order to wait until the previous back-and-forth is processed (otherwise back-and-forth-s will
+            # be perpetually scheduled but never executed)
+            # TODO Oleksandr: how to turn this hack into something more elegant ?
+            await user_requests.amaterialize_all()
+
             assistant_responses = first_openai_agent.quick_call(
-                user_proxy_agent.quick_call(assistant_responses),
+                user_requests,
                 # model="gpt-4-1106-preview",
                 # model="gpt-4",
                 model="gpt-3.5-turbo",

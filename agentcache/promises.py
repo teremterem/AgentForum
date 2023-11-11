@@ -244,7 +244,7 @@ class MessagePromise(AsyncStreamable[IN, Token]):
         return None
 
 
-class StreamedMsgPromise(MessagePromise):
+class StreamedMsgPromise(MessagePromise[IN]):
     """A message that is streamed token by token instead of being returned all at once."""
 
     def __init__(
