@@ -4,18 +4,18 @@ import asyncio
 
 import pytest
 
-from agentcache.forum import Forum
+from agentcache.forum import Forum, Conversation
 from agentcache.promises import MessageSequence
 
 
 @pytest.mark.asyncio
 async def test_nested_message_sequences(forum: Forum) -> None:
     """Verify that message ordering in nested message sequences is preserved."""
-    level1_sequence = MessageSequence(forum, default_sender_alias="test")
+    level1_sequence = MessageSequence(Conversation(forum=forum), default_sender_alias="test")
     level1_producer = MessageSequence._MessageProducer(level1_sequence)
-    level2_sequence = MessageSequence(forum, default_sender_alias="test")
+    level2_sequence = MessageSequence(Conversation(forum=forum), default_sender_alias="test")
     level2_producer = MessageSequence._MessageProducer(level2_sequence)
-    level3_sequence = MessageSequence(forum, default_sender_alias="test")
+    level3_sequence = MessageSequence(Conversation(forum=forum), default_sender_alias="test")
     level3_producer = MessageSequence._MessageProducer(level3_sequence)
 
     with level3_producer:
@@ -54,7 +54,7 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
     Verify that an error in a NESTED message sequence comes out on the other end of the OUTER sequence, but that the
     messages before the error are still processed.
     """
-    level1_sequence = MessageSequence(forum, default_sender_alias="test")
+    level1_sequence = MessageSequence(Conversation(forum=forum), default_sender_alias="test")
     level1_producer = MessageSequence._MessageProducer(level1_sequence)
 
     async def _atask() -> None:
@@ -86,9 +86,9 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
     Verify that an error in a message sequence comes out on the other end, but that the messages before the error
     are still processed.
     """
-    level1_sequence = MessageSequence(forum, default_sender_alias="test")
+    level1_sequence = MessageSequence(Conversation(forum=forum), default_sender_alias="test")
     level1_producer = MessageSequence._MessageProducer(level1_sequence)
-    level2_sequence = MessageSequence(forum, default_sender_alias="test")
+    level2_sequence = MessageSequence(Conversation(forum=forum), default_sender_alias="test")
     level2_producer = MessageSequence._MessageProducer(level2_sequence)
 
     with level1_producer:

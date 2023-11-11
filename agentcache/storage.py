@@ -19,19 +19,7 @@ class ImmutableStorage(ABC):
         """Retrieve an Immutable object."""
 
 
-class StringStorage(ABC):
-    """A mutable storage for strings. TODO Oleksandr: explain why we need this as a separate thing."""
-
-    @abstractmethod
-    async def astore_string(self, key: Tuple[str, ...], value: str) -> None:
-        """Store a string."""
-
-    @abstractmethod
-    async def aretrieve_string(self, key: Tuple[str, ...]) -> str:
-        """Retrieve a string."""
-
-
-class InMemoryStorage(ImmutableStorage, StringStorage):
+class InMemoryStorage(ImmutableStorage):
     """An in-memory storage."""
 
     def __init__(self) -> None:
@@ -46,9 +34,3 @@ class InMemoryStorage(ImmutableStorage, StringStorage):
 
     async def aretrieve_immutable(self, hash_key: str) -> Immutable:
         return self._immutable_data[hash_key]
-
-    async def astore_string(self, key: Tuple[str, ...], value: str) -> None:
-        self._string_data[key] = value
-
-    async def aretrieve_string(self, key: Tuple[str, ...]) -> str:
-        return self._string_data[key]

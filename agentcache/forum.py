@@ -7,45 +7,24 @@ for that).
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Optional, List
+from typing import Optional, List, Dict
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from agentcache.models import Message, Freeform, AgentCallMsg
-from agentcache.promises import MessagePromise, DetachedMsgPromise, MessageSequence, DetachedAgentCallMsgPromise
+from agentcache.models import Message, Freeform, AgentCallMsg, Immutable
+from agentcache.promises import MessagePromise, MessageSequence, DetachedAgentCallMsgPromise, DetachedMsgPromise
 from agentcache.storage import ImmutableStorage
 from agentcache.typing import AgentFunction, MessageType, SingleMessageType
 
 USER_ALIAS = "USER"
 
 
-class Forum(BaseModel):
-    """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
+class Conversation:
+    def __init__(self, forum: "Forum", branch_from: Optional[MessagePromise] = None) -> None:
+        self.forum = forum
+        self._latest_msg_promise = branch_from
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    immutable_storage: ImmutableStorage
-
-    def agent(self, func: AgentFunction) -> "Agent":
-        """A decorator that registers an agent function in the forum."""
-        return Agent(self, func)
-
-    async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
-        """Find a message in the forum."""
-        message = await self.immutable_storage.aretrieve_immutable(hash_key)
-        if not isinstance(message, Message):
-            # TODO Oleksandr: introduce a custom exception for this case ?
-            raise ValueError(f"Expected a Message, got a {type(message)}")
-        return MessagePromise(forum=self, materialized_msg=message)
-
-    def _new_message_promise(
-        self,
-        content: SingleMessageType,
-        sender_alias: str,
-        branch_from: Optional["MessagePromise"] = None,
-        **metadata,
-    ) -> "MessagePromise":
-        # TODO Oleksandr: move this method into MessageSequence (after you introduce the concept of Conversation,
-        #  which would allow starting new conversations too)
+    def new_message_promise(self, content: SingleMessageType, sender_alias: str, **metadata) -> "MessagePromise":
         """
         Create a new, detached message promise in the forum. "Detached message promise" means that this message
         promise may be a reply to another message promise that may or may not be "materialized" yet.
@@ -64,9 +43,9 @@ class Forum(BaseModel):
         else:
             raise ValueError(f"Unexpected message content type: {type(content)}")
 
-        return DetachedMsgPromise(
-            forum=self,
-            branch_from=branch_from,
+        msg_promise = DetachedMsgPromise(
+            forum=self.forum,
+            branch_from=self._latest_msg_promise,
             forward_of=forward_of,
             detached_msg=Message(
                 content=content,
@@ -74,6 +53,38 @@ class Forum(BaseModel):
                 metadata=Freeform(**metadata),
             ),
         )
+        self._latest_msg_promise = msg_promise
+        return msg_promise
+
+
+class Forum(BaseModel):
+    """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    immutable_storage: ImmutableStorage
+    _conversations: Dict[str, Conversation] = PrivateAttr(default_factory=dict)
+
+    def agent(self, func: AgentFunction) -> "Agent":
+        """A decorator that registers an agent function in the forum."""
+        return Agent(self, func)
+
+    async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
+        """Find a message in the forum."""
+        message = await self.immutable_storage.aretrieve_immutable(hash_key)
+        if not isinstance(message, Message):
+            # TODO Oleksandr: introduce a custom exception for this case ?
+            raise ValueError(f"Expected a Message, got a {type(message)}")
+        return MessagePromise(forum=self, materialized_msg=message)
+
+    def get_conversation(
+        self, descriptor: Immutable, branch_from_if_new: Optional["MessagePromise"] = None
+    ) -> Conversation:
+        conversation = self._conversations.get(descriptor.hash_key)
+        if not conversation:
+            conversation = Conversation(forum=self, branch_from=branch_from_if_new)
+            self._conversations[descriptor.hash_key] = conversation
+
+        return conversation
 
 
 # noinspection PyProtectedMember
@@ -195,7 +206,8 @@ class AgentCall:
         self.receiving_agent = receiving_agent
 
         self._request_messages = MessageSequence(
-            self.forum, default_sender_alias=InteractionContext.get_current_sender_alias(), branch_from=branch_from
+            Conversation(self.forum, branch_from=branch_from),
+            default_sender_alias=InteractionContext.get_current_sender_alias(),
         )
         self._request_producer = MessageSequence._MessageProducer(self._request_messages)
 
@@ -211,7 +223,8 @@ class AgentCall:
         )
 
         self._response_messages = MessageSequence(
-            self.forum, default_sender_alias=self.receiving_agent.agent_alias, branch_from=agent_call_msg_promise
+            Conversation(self.forum, branch_from=agent_call_msg_promise),
+            default_sender_alias=self.receiving_agent.agent_alias,
         )
         self._response_producer = MessageSequence._MessageProducer(self._response_messages)
 

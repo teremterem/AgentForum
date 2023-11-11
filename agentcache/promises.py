@@ -7,7 +7,7 @@ from agentcache.typing import IN, MessageType
 from agentcache.utils import AsyncStreamable, async_cached_method
 
 if typing.TYPE_CHECKING:
-    from agentcache.forum import Forum
+    from agentcache.forum import Forum, Conversation
 
 
 class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
@@ -19,15 +19,13 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
 
     def __init__(
         self,
-        forum: "Forum",
+        conversation: "Conversation",
         *args,
         default_sender_alias: str,
-        branch_from: Optional["MessagePromise"] = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.forum = forum
-        self._latest_message = branch_from
+        self._conversation = conversation
         self._default_sender_alias = default_sender_alias
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
@@ -58,15 +56,11 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
             yield incoming_item.content
 
         elif isinstance(incoming_item.content, (str, Message, MessagePromise)):
-            # noinspection PyProtectedMember
-            msg_promise = self.forum._new_message_promise(  # pylint: disable=protected-access
+            yield self._conversation.new_message_promise(
                 content=incoming_item.content,
                 sender_alias=incoming_item.override_sender_alias or self._default_sender_alias,
-                branch_from=self._latest_message,
                 **incoming_item.metadata,
             )
-            self._latest_message = msg_promise
-            yield msg_promise
 
         else:
             if hasattr(incoming_item.content, "__iter__"):
@@ -78,7 +72,6 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
                             metadata=incoming_item.metadata,
                         )
                     ):
-                        self._latest_message = msg_promise
                         yield msg_promise
             elif hasattr(incoming_item.content, "__aiter__"):
                 async for msg in incoming_item.content:
@@ -89,7 +82,6 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
                             metadata=incoming_item.metadata,
                         )
                     ):
-                        self._latest_message = msg_promise
                         yield msg_promise
             else:
                 raise ValueError(f"Unexpected message content type: {type(incoming_item.content)}")
