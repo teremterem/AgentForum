@@ -57,8 +57,8 @@ async def main() -> None:
         while True:
             user_requests = user_proxy_agent.quick_call(assistant_responses)
 
-            # needed in order to wait until the previous back-and-forth is processed (otherwise back-and-forth-s will
-            # be perpetually scheduled but never executed)
+            # the following line is needed in order to wait until the previous back-and-forth is processed
+            # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
             # TODO Oleksandr: how to turn this hack into something more elegant ?
             await user_requests.amaterialize_all()
 

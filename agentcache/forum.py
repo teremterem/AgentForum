@@ -19,7 +19,7 @@ from agentcache.typing import AgentFunction, MessageType, SingleMessageType
 USER_ALIAS = "USER"
 
 
-class Conversation:  # TODO Oleksandr: rename to ConversationTracker
+class Conversation:  # TODO Oleksandr: rename to ConversationTracker ?
     def __init__(self, forum: "Forum", branch_from: Optional[MessagePromise] = None) -> None:
         self.forum = forum
         self._latest_msg_promise = branch_from
