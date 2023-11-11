@@ -7,7 +7,7 @@ for that).
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -55,6 +55,35 @@ class ConversationTracker:
         )
         self._latest_msg_promise = msg_promise
         return msg_promise
+
+    async def aappend_zero_or_more_messages(
+        self, content: MessageType, sender_alias: str, do_not_forward_if_possible: bool = True, **metadata
+    ) -> AsyncIterator[MessagePromise]:
+        if isinstance(content, (str, Message, MessagePromise)):
+            yield self.new_message_promise(
+                content=content,
+                sender_alias=sender_alias,
+                **metadata,
+            )
+
+        elif hasattr(content, "__iter__"):
+            for msg in content:
+                async for msg_promise in self.aappend_zero_or_more_messages(
+                    content=msg,
+                    sender_alias=sender_alias,
+                    **metadata,
+                ):
+                    yield msg_promise
+        elif hasattr(content, "__aiter__"):
+            async for msg in content:
+                async for msg_promise in self.aappend_zero_or_more_messages(
+                    content=msg,
+                    sender_alias=sender_alias,
+                    **metadata,
+                ):
+                    yield msg_promise
+        else:
+            raise ValueError(f"Unexpected message content type: {type(content)}")
 
 
 class Forum(BaseModel):

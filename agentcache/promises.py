@@ -17,10 +17,18 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     sequence is independent of the speed at which consumers iterate over them.
     """
 
-    def __init__(self, conversation: "ConversationTracker", *args, default_sender_alias: str, **kwargs) -> None:
+    def __init__(
+        self,
+        conversation: "ConversationTracker",
+        *args,
+        default_sender_alias: str,
+        do_not_forward_if_possible: bool = True,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._conversation = conversation
         self._default_sender_alias = default_sender_alias
+        self._do_not_forward_if_possible = do_not_forward_if_possible
 
     async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message in the sequence."""
@@ -64,40 +72,22 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     async def _aconvert_incoming_item(
         self, incoming_item: MessageParameters
     ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
-        if isinstance(incoming_item.content, BaseException):
-            # TODO Oleksandr: introduce the concept of ErrorMessage
-            yield incoming_item.content
+        sender_alias = incoming_item.override_sender_alias or self._default_sender_alias
+        try:
+            if isinstance(incoming_item.content, BaseException):
+                raise incoming_item.content
 
-        elif isinstance(incoming_item.content, (str, Message, MessagePromise)):
-            yield self._conversation.new_message_promise(
+            async for msg_promise in self._conversation.aappend_zero_or_more_messages(
                 content=incoming_item.content,
-                sender_alias=incoming_item.override_sender_alias or self._default_sender_alias,
+                sender_alias=sender_alias,
+                do_not_forward_if_possible=self._do_not_forward_if_possible,
                 **incoming_item.metadata,
-            )
+            ):
+                yield msg_promise
 
-        else:
-            if hasattr(incoming_item.content, "__iter__"):
-                for msg in incoming_item.content:
-                    async for msg_promise in self._aconvert_incoming_item(
-                        MessageParameters(
-                            content=msg,
-                            override_sender_alias=incoming_item.override_sender_alias,
-                            metadata=incoming_item.metadata,
-                        )
-                    ):
-                        yield msg_promise
-            elif hasattr(incoming_item.content, "__aiter__"):
-                async for msg in incoming_item.content:
-                    async for msg_promise in self._aconvert_incoming_item(
-                        MessageParameters(
-                            content=msg,
-                            override_sender_alias=incoming_item.override_sender_alias,
-                            metadata=incoming_item.metadata,
-                        )
-                    ):
-                        yield msg_promise
-            else:
-                raise ValueError(f"Unexpected message content type: {type(incoming_item.content)}")
+        except BaseException as exc:  # pylint: disable=broad-except
+            # TODO Oleksandr: introduce the concept of ErrorMessage
+            yield exc
 
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
         """A context manager that allows sending messages to MessageSequence."""
