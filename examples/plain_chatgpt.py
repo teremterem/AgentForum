@@ -24,7 +24,7 @@ async def first_openai_agent(ctx: InteractionContext, **kwargs) -> None:
     full_chat = await ctx.request_messages.amaterialize_full_history()
 
     first_response = await aopenai_chat_completion(
-        forum=ctx.forum, prompt=full_chat, openai_module=promptlayer.openai, **kwargs
+        forum=ctx.forum, prompt=full_chat, **kwargs  # openai_module=promptlayer.openai
     )
     ctx.respond(first_response)
 
@@ -65,8 +65,7 @@ async def main() -> None:
             assistant_responses = first_openai_agent.quick_call(
                 user_requests,
                 # model="gpt-4-1106-preview",
-                # model="gpt-4",
-                model="gpt-3.5-turbo",
+                model="gpt-3.5-turbo-1106",
                 stream=True,
             )
     except KeyboardInterrupt:
