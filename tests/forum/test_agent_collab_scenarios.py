@@ -35,20 +35,20 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             do_not_forward_if_possible=False,
         )
         assert await arepresent_conversation_with_dicts(api_responses) == [
-            # {
-            #     "ac_model_": "message",
-            #     "sender_alias": "USER",
-            #     "content": "set a reminder for me for tomorrow at 10am",
-            # },
             {
-                "ac_model_": "forward",
-                "sender_alias": "_assistant",
-                "original_msg": {
-                    "ac_model_": "message",
-                    "sender_alias": "USER",
-                    "content": "set a reminder for me for tomorrow at 10am",
-                },
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "set a reminder for me for tomorrow at 10am",
             },
+            # {
+            #     "ac_model_": "forward",
+            #     "sender_alias": "_assistant",
+            #     "original_msg": {
+            #         "ac_model_": "message",
+            #         "sender_alias": "USER",
+            #         "content": "set a reminder for me for tomorrow at 10am",
+            #     },
+            # },
             {
                 "ac_model_": "call",
                 "sender_alias": "",
@@ -107,20 +107,20 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             )
 
         assert await arepresent_conversation_with_dicts(api_responses) == [
-            # {
-            #     "ac_model_": "message",
-            #     "sender_alias": "USER",
-            #     "content": "set a reminder for me for tomorrow at 10am",
-            # },
             {
-                "ac_model_": "forward",
-                "sender_alias": "_assistant",
-                "original_msg": {
-                    "ac_model_": "message",
-                    "sender_alias": "USER",
-                    "content": "set a reminder for me for tomorrow at 10am",
-                },
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "set a reminder for me for tomorrow at 10am",
             },
+            # {
+            #     "ac_model_": "forward",
+            #     "sender_alias": "_assistant",
+            #     "original_msg": {
+            #         "ac_model_": "message",
+            #         "sender_alias": "USER",
+            #         "content": "set a reminder for me for tomorrow at 10am",
+            #     },
+            # },
             {
                 "ac_model_": "call",
                 "sender_alias": "",
@@ -199,6 +199,9 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
 @pytest.mark.asyncio
 async def test_two_nested_agents(forum: Forum) -> None:
+    # TODO Oleksandr: test with and without intermediate "materialization"
+    #  (with and without intermediate conversation history checks)
+    # TODO Oleksandr: test with and without "do_not_forward_if_possible" flag
     """
     Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
     history is recorded correctly.
@@ -206,6 +209,14 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent1(ctx: InteractionContext) -> None:
+        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+            {
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "user says hello",
+            },
+        ]
+
         ctx.respond(
             _agent2.quick_call(
                 ctx.request_messages,
@@ -216,6 +227,14 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent2(ctx: InteractionContext) -> None:
+        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+            {
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "user says hello",
+            },
+        ]
+
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 

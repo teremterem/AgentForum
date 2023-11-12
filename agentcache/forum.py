@@ -20,6 +20,13 @@ USER_ALIAS = "USER"
 
 
 class ConversationTracker:
+    """An object that tracks the tip of a conversation branch."""
+
+    # TODO Oleksandr: Introduce the concept of MessagePlaceholder instead of MessagePromise
+    #  (composition instead of polymorphism) and move most of the logic from ConversationTracker to MessagePlaceholder.
+    #  This way it will become possible to delay the decision of whether any given message is eligible for
+    #  "do_not_forward_if_possible".
+
     def __init__(self, forum: "Forum", branch_from: Optional[MessagePromise] = None) -> None:
         self.forum = forum
         self._latest_msg_promise = branch_from
@@ -63,26 +70,27 @@ class ConversationTracker:
     async def aappend_zero_or_more_messages(
         self, content: MessageType, sender_alias: str, do_not_forward_if_possible: bool = True, **metadata
     ) -> AsyncIterator[MessagePromise]:
-        # TODO TODO TODO Oleksandr
-        # if do_not_forward_if_possible and not self.has_prior_history and not metadata:
-        #     # if there is no prior history (and no extra metadata) we can just append the original message
-        #     # (or sequence of messages) instead of creating message forwards
-        #
-        #     if isinstance(content, MessageSequence):
-        #         async for msg_promise in content:
-        #             self._latest_msg_promise = msg_promise
-        #             # TODO Oleksandr: other parallel tasks may submit messages to the same conversation which will
-        #             #  mess it up (because we are not doing forwards here) - how to protect from this ?
-        #             yield msg_promise
-        #         return
-        #     if isinstance(content, MessagePromise):
-        #         self._latest_msg_promise = content
-        #         yield content
-        #         return
-        #     if isinstance(content, Message):
-        #         self._latest_msg_promise = MessagePromise(forum=self.forum, materialized_msg=content)
-        #         yield self._latest_msg_promise
-        #         return
+        if do_not_forward_if_possible and not self.has_prior_history and not metadata:
+            # if there is no prior history (and no extra metadata) we can just append the original message
+            # (or sequence of messages) instead of creating message forwards
+            # TODO Oleksandr: move this logic into the future MessagePlaceholder class, because right now it works in
+            #  quite an unpredictable and hard to comprehend way
+
+            if isinstance(content, MessageSequence):
+                async for msg_promise in content:
+                    self._latest_msg_promise = msg_promise
+                    # TODO Oleksandr: other parallel tasks may submit messages to the same conversation which will
+                    #  mess it up (because we are not doing forwards here) - how to protect from this ?
+                    yield msg_promise
+                return
+            if isinstance(content, MessagePromise):
+                self._latest_msg_promise = content
+                yield content
+                return
+            if isinstance(content, Message):
+                self._latest_msg_promise = MessagePromise(forum=self.forum, materialized_msg=content)
+                yield self._latest_msg_promise
+                return
 
         # if it's not a plain string then it should be forwarded (either because prior history in this conversation
         # should be maintained or because there is extra metadata)
