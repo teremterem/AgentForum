@@ -16,6 +16,7 @@ from agentcache.forum import Forum, InteractionContext
 from agentcache.storage import InMemoryStorage
 
 forum = Forum(immutable_storage=InMemoryStorage())
+async_openai_client = promptlayer.openai.AsyncOpenAI()
 
 
 @forum.agent
@@ -24,7 +25,7 @@ async def first_openai_agent(ctx: InteractionContext, **kwargs) -> None:
     full_chat = await ctx.request_messages.amaterialize_full_history()
 
     first_response = await aopenai_chat_completion(
-        forum=ctx.forum, prompt=full_chat, **kwargs  # openai_module=promptlayer.openai
+        forum=ctx.forum, prompt=full_chat, async_openai_client=async_openai_client, **kwargs
     )
     ctx.respond(first_response)
 

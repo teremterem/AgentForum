@@ -24,6 +24,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
     if not async_openai_client:
         from openai import AsyncOpenAI  # pylint: disable=import-outside-toplevel
 
+        # TODO Oleksandr: move client initialization to the module level ?
         async_openai_client = AsyncOpenAI()
 
     if n != 1:
@@ -60,7 +61,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
         return message_promise
 
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
-    response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=False, **kwargs)
+    response = await async_openai_client.chat.completions.create(messages=message_dicts, stream=False, **kwargs)
     # TODO Oleksandr: fix it - there is no _new_message_promise() method on Forum anymore
     return forum._new_message_promise(
         content=response["choices"][0]["message"]["content"],
