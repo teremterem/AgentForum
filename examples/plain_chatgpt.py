@@ -29,8 +29,10 @@ async def first_openai_agent(ctx: InteractionContext, **kwargs) -> None:
     )
     ctx.respond(first_response)
 
+    # full_chat.append(await first_response.amaterialize())
+    #
     # second_response = await aopenai_chat_completion(
-    #     forum=request.forum, prompt=full_chat, branch_from=first_response, openai_module=promptlayer.openai, **kwargs
+    #     forum=ctx.forum, prompt=full_chat, async_openai_client=async_openai_client, **kwargs
     # )
     # ctx.respond(second_response)
 
@@ -52,7 +54,6 @@ async def user_proxy_agent(ctx: InteractionContext) -> None:
 
 async def main() -> None:
     """The chat loop."""
-    # conversation = ConversationTracker(forum)
     assistant_responses = []
     try:
         while True:

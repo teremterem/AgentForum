@@ -142,7 +142,7 @@ class AgentCallMsg(Message):
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
 
 
-class Token(Immutable):
+class Token(Immutable):  # TODO Oleksandr: rename to MessageChunk or ContentChunk and don't extend Immutable
     """
     A token. This class is used by MessagePromise (when the message is streamed token by token instead of being
     returned all at once).
