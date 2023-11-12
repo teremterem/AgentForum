@@ -86,6 +86,7 @@ def test_message_hash_key() -> None:
 
 
 def test_forwarded_message_hash_key() -> None:
+    # pylint: disable=protected-access
     """
     Assert that ForwardedMessage._original_msg is not serialized when calculating the hash_key of a ForwardedMessage
     (only ForwardedMessage.original_msg_hash_key is).
@@ -93,7 +94,7 @@ def test_forwarded_message_hash_key() -> None:
     original_msg = Message(content="message that is being forwarded", sender_alias="user")
 
     message = ForwardedMessage(content="test", sender_alias="user", original_msg_hash_key=original_msg.hash_key)
-    message._original_msg = original_msg  # pylint: disable=protected-access
+    message._original_msg = original_msg
 
     # print(message.model_dump_json())
     expected_hash_key = hashlib.sha256(

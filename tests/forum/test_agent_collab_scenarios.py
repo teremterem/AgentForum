@@ -21,22 +21,109 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _assistant(request: MessagePromise, ctx: InteractionContext) -> None:
-        api_response = await _reminder_api.call(request).aget_concluding_message()
-        if (await api_response.amaterialize()).content.startswith("api error:"):
-            # TODO Oleksandr: implement actual ErrorMessage class
-            correction = await _critic.call(api_response).aget_concluding_message()
-            api_response = await _reminder_api.call(correction).aget_concluding_message()
-
-        assert await represent_conversation_with_dicts(api_response) == [
+    async def _assistant(ctx: InteractionContext) -> None:
+        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
             {
                 "ac_model_": "message",
                 "sender_alias": "USER",
                 "content": "set a reminder for me for tomorrow at 10am",
             },
+        ]
+
+        api_responses = _reminder_api.quick_call(
+            ctx.request_messages,
+            do_not_forward_if_possible=False,
+        )
+        assert await arepresent_conversation_with_dicts(api_responses) == [
+            {
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "set a reminder for me for tomorrow at 10am",
+            },
+            # {
+            #     "ac_model_": "forward",
+            #     "sender_alias": "_assistant",
+            #     "original_msg": {
+            #         "ac_model_": "message",
+            #         "sender_alias": "USER",
+            #         "content": "set a reminder for me for tomorrow at 10am",
+            #     },
+            # },
             {
                 "ac_model_": "call",
-                "sender_alias": "_assistant",
+                "sender_alias": "",
+                "content": "_reminder_api",
+                "messages_in_request": 1,
+            },
+            {
+                "ac_model_": "message",
+                "sender_alias": "_reminder_api",
+                "content": "api error: invalid date format",
+            },
+        ]
+
+        if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
+            # TODO Oleksandr: these "branch_from" parameters are very counter-intuitive - decide on a better
+            #  message forwarding mechanism (that would also allow for agent call caching)
+            # TODO Oleksandr: implement actual ErrorMessage class
+            corrections = _critic.quick_call(
+                api_responses,
+                branch_from=await ctx.request_messages.aget_concluding_message(),
+                do_not_forward_if_possible=False,
+            )
+
+            assert await arepresent_conversation_with_dicts(corrections) == [
+                {
+                    "ac_model_": "message",
+                    "sender_alias": "USER",
+                    "content": "set a reminder for me for tomorrow at 10am",
+                },
+                {
+                    "ac_model_": "forward",
+                    "sender_alias": "_assistant",
+                    "original_msg": {
+                        "ac_model_": "message",
+                        "sender_alias": "_reminder_api",
+                        "content": "api error: invalid date format",
+                    },
+                },
+                {
+                    "ac_model_": "call",
+                    "sender_alias": "",
+                    "content": "_critic",
+                    "messages_in_request": 1,
+                },
+                {
+                    "ac_model_": "message",
+                    "sender_alias": "_critic",
+                    "content": "try swapping the month and day",
+                },
+            ]
+
+            api_responses = _reminder_api.quick_call(
+                corrections,
+                branch_from=await api_responses.aget_concluding_message(),
+                do_not_forward_if_possible=False,
+            )
+
+        assert await arepresent_conversation_with_dicts(api_responses) == [
+            {
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "set a reminder for me for tomorrow at 10am",
+            },
+            # {
+            #     "ac_model_": "forward",
+            #     "sender_alias": "_assistant",
+            #     "original_msg": {
+            #         "ac_model_": "message",
+            #         "sender_alias": "USER",
+            #         "content": "set a reminder for me for tomorrow at 10am",
+            #     },
+            # },
+            {
+                "ac_model_": "call",
+                "sender_alias": "",
                 "content": "_reminder_api",
                 "messages_in_request": 1,
             },
@@ -46,19 +133,17 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 "content": "api error: invalid date format",
             },
             {
-                "ac_model_": "call",
+                "ac_model_": "forward",
                 "sender_alias": "_assistant",
-                "content": "_critic",
-                "messages_in_request": 1,
-            },
-            {
-                "ac_model_": "message",
-                "sender_alias": "_critic",
-                "content": "try swapping the month and day",
+                "original_msg": {
+                    "ac_model_": "message",
+                    "sender_alias": "_critic",
+                    "content": "try swapping the month and day",
+                },
             },
             {
                 "ac_model_": "call",
-                "sender_alias": "_assistant",
+                "sender_alias": "",
                 "content": "_reminder_api",
                 "messages_in_request": 1,
             },
@@ -69,23 +154,26 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             },
         ]
 
-        ctx.respond(api_response)
+        ctx.respond(api_responses)
 
     @forum.agent
-    async def _reminder_api(request: MessagePromise, ctx: InteractionContext) -> None:
-        if (await request.amaterialize()).sender_alias == "_critic":
+    async def _reminder_api(ctx: InteractionContext) -> None:
+        if (await ctx.request_messages.amaterialize_concluding_message()).get_original_msg().sender_alias == "_critic":
             ctx.respond("success: reminder set")
         else:
             ctx.respond("api error: invalid date format")
 
     @forum.agent
-    async def _critic(_: MessagePromise, ctx: InteractionContext) -> None:
+    async def _critic(ctx: InteractionContext) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
         ctx.respond("try swapping the month and day")
 
-    assistant_responses = _assistant.call(forum.new_message_promise("set a reminder for me for tomorrow at 10am"))
+    assistant_responses = _assistant.quick_call(
+        "set a reminder for me for tomorrow at 10am",
+        do_not_forward_if_possible=False,
+    )
 
-    assert await represent_conversation_with_dicts(assistant_responses) == [
+    assert await arepresent_conversation_with_dicts(assistant_responses) == [
         {
             "ac_model_": "message",
             "sender_alias": "USER",
@@ -93,7 +181,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         },
         {
             "ac_model_": "call",
-            "sender_alias": "USER",
+            "sender_alias": "",
             "content": "_assistant",
             "messages_in_request": 1,
         },
@@ -111,24 +199,51 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
 @pytest.mark.asyncio
 async def test_two_nested_agents(forum: Forum) -> None:
+    # TODO Oleksandr: test with and without intermediate "materialization"
+    #  (with and without intermediate conversation history checks)
+    # TODO Oleksandr: test with and without "do_not_forward_if_possible" flag
     """
     Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
     history is recorded correctly.
     """
 
     @forum.agent
-    async def _agent1(request: MessagePromise, ctx: InteractionContext) -> None:
-        await ctx.arespond(_agent2.call(request))
+    async def _agent1(ctx: InteractionContext) -> None:
+        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+            {
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "user says hello",
+            },
+        ]
+
+        ctx.respond(
+            _agent2.quick_call(
+                ctx.request_messages,
+                do_not_forward_if_possible=False,
+            )
+        )
         ctx.respond("agent1 also says hello")
 
     @forum.agent
-    async def _agent2(_: MessagePromise, ctx: InteractionContext) -> None:
+    async def _agent2(ctx: InteractionContext) -> None:
+        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+            {
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "user says hello",
+            },
+        ]
+
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
-    responses1 = _agent1.call(forum.new_message_promise("user says hello"))
+    responses1 = _agent1.quick_call(
+        "user says hello",
+        do_not_forward_if_possible=False,
+    )
 
-    assert await represent_conversation_with_dicts(responses1) == [
+    assert await arepresent_conversation_with_dicts(responses1) == [
         {
             "ac_model_": "message",
             "sender_alias": "USER",
@@ -136,7 +251,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         },
         {
             "ac_model_": "call",
-            "sender_alias": "USER",
+            "sender_alias": "",
             "content": "_agent1",
             "messages_in_request": 1,
         },
@@ -166,15 +281,15 @@ async def test_two_nested_agents(forum: Forum) -> None:
     ]
 
 
-async def represent_conversation_with_dicts(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
+async def arepresent_conversation_with_dicts(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
     """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
     def _get_msg_dict(msg: Message) -> Dict[str, Any]:
-        msg_dict = msg.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"})
-        if msg_dict["metadata"] == {"ac_model_": "freeform"}:
+        msg_dict_ = msg.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"})
+        if msg_dict_["metadata"] == {"ac_model_": "freeform"}:
             # metadata is empty - remove it to reduce verbosity
-            del msg_dict["metadata"]
-        return msg_dict
+            del msg_dict_["metadata"]
+        return msg_dict_
 
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
     conversation = await concluding_msg.amaterialize_history(skip_agent_calls=False)

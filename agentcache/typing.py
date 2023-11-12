@@ -8,7 +8,7 @@ if typing.TYPE_CHECKING:
     from agentcache.models import Message
 
     SingleMessageType = Union[str, Message, MessagePromise, BaseException]
-    AgentFunction = Callable[[MessagePromise, InteractionContext, ...], Awaitable[None]]
+    AgentFunction = Callable[[InteractionContext, ...], Awaitable[None]]
 else:
     SingleMessageType = Union[Any]
     AgentFunction = Callable

@@ -9,5 +9,5 @@ class AgentCacheError(Exception):
 
 class SendClosedError(AgentCacheError):
     """
-    Raised when a Broadcastable is closed for sending.
+    Raised when a AsyncStreamable is closed for sending.
     """

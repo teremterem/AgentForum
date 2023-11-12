@@ -1,24 +1,23 @@
 """OpenAI API extension for AgentCache."""
 import asyncio
-from typing import List, Dict, Any, Set, Union, Optional
+from typing import List, Dict, Any, Set, Union, Optional, AsyncIterator
 
 from agentcache.errors import AgentCacheError
-from agentcache.forum import Forum
+from agentcache.forum import Forum, InteractionContext
 from agentcache.models import Token, Message
 from agentcache.promises import MessagePromise, StreamedMsgPromise
-from agentcache.utils import Sentinel
 
 
-async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
+# noinspection PyProtectedMember
+async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protected-access
     forum: Forum,
-    prompt: List[Union[MessagePromise, Message]],  # TODO Oleksandr: support more variants ?
-    sender_alias: Optional[str] = None,
-    in_reply_to: Optional[MessagePromise] = None,
+    prompt: List[Union[MessagePromise, Message]],
+    override_sender_alias: Optional[str] = None,
     openai_module: Optional[Any] = None,
     stream: bool = False,
     n: int = 1,
     **kwargs,
-) -> MessagePromise:
+) -> MessagePromise:  # TODO Oleksandr: this function doesn't necessarily need to be async
     """Chat with OpenAI models. Returns a message or a stream of tokens."""
     if not openai_module:
         import openai  # pylint: disable=import-outside-toplevel
@@ -39,70 +38,52 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     ]
     # pprint(message_dicts)
 
+    sender_alias = override_sender_alias or InteractionContext.get_current_sender_alias()
+
     if stream:
-        message_promise = _OpenAIStreamedMessage(
-            forum=forum,
-            # TODO Oleksandr: is this a bad place for sender alias resolution ? where to move it ?
-            sender_alias=forum.resolve_sender_alias(sender_alias),
-            in_reply_to=in_reply_to,
-        )
+        message_promise = _OpenAIStreamedMessage(forum=forum, sender_alias=sender_alias)
 
         async def _send_tokens() -> None:
-            # TODO Oleksandr: what if an exception occurs in this coroutine ?
-            #  how to convert it into an ErrorMessage at this point ?
-            response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=True, **kwargs)
-            with message_promise:
-                async for token_raw in response:
-                    # noinspection PyProtectedMember
-                    message_promise._send(token_raw)  # pylint: disable=protected-access
+            # noinspection PyProtectedMember
+            with _OpenAIStreamedMessage._Producer(message_promise) as token_producer:
+                response_ = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=True, **kwargs)
+                async for token_raw in response_:
+                    token_producer.send(token_raw)
             # # TODO Oleksandr: do we need the following ?
             # await message_promise.amaterialize()  # let's save the message in the storage
 
         asyncio.create_task(_send_tokens())
         return message_promise
 
-    # TODO Oleksandr: cover this case with a unit test ?
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
     response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=False, **kwargs)
-    return forum.new_message_promise(
+    # TODO Oleksandr: fix it - there is no _new_message_promise() method on Forum anymore
+    return forum._new_message_promise(
         content=response["choices"][0]["message"]["content"],
-        # TODO Oleksandr: is this a bad place for sender alias resolution ?
-        sender_alias=forum.resolve_sender_alias(sender_alias),
-        in_reply_to=in_reply_to,
+        sender_alias=sender_alias,
         **_build_openai_metadata_dict(response),
     )
 
 
-class _OpenAIStreamedMessage(StreamedMsgPromise):
+class _OpenAIStreamedMessage(StreamedMsgPromise[Dict[str, Any]]):
     """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._tokens_raw: List[Dict[str, Any]] = []
 
-    async def _aget_item_from_queue(self) -> Union[Dict[str, Any], Sentinel, BaseException]:
-        while True:
-            token_raw = await self._queue.get()
-            if isinstance(token_raw, Sentinel):
-                # if Sentinel, return it immediately
-                return token_raw
+    async def _aconvert_incoming_item(
+        self, incoming_item: Dict[str, Any]
+    ) -> AsyncIterator[Union[Token, BaseException]]:
+        self._tokens_raw.append(incoming_item)
+        # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built ?
+        for k, v in _build_openai_metadata_dict(incoming_item).items():
+            if v is not None:
+                self._metadata[k] = v
 
-            self._tokens_raw.append(token_raw)
-            # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built
-            for k, v in _build_openai_metadata_dict(token_raw).items():
-                if v is not None:
-                    self._metadata[k] = v
-
-            if self._token_raw_to_text(token_raw):
-                # we found a token that actually has some text - return it
-                return token_raw
-
-    def _convert_item(self, item: Dict[str, Any]) -> Token:
-        return Token(text=self._token_raw_to_text(item))
-
-    @staticmethod
-    def _token_raw_to_text(token_raw: Dict[str, Any]) -> str:
-        return token_raw["choices"][0]["delta"].get("content") or ""
+        token_text = incoming_item["choices"][0]["delta"].get("content")
+        if token_text:
+            yield Token(text=token_text)
 
 
 def _build_openai_metadata_dict(openai_response: Dict[str, Any]) -> Dict[str, Any]:
