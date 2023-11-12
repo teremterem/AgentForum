@@ -24,6 +24,10 @@ class ConversationTracker:
         self.forum = forum
         self._latest_msg_promise = branch_from
 
+    @property
+    def has_prior_history(self) -> bool:
+        return bool(self._latest_msg_promise)
+
     def new_message_promise(self, content: SingleMessageType, sender_alias: str, **metadata) -> "MessagePromise":
         """
         Create a new, detached message promise in the forum. "Detached message promise" means that this message
@@ -59,6 +63,30 @@ class ConversationTracker:
     async def aappend_zero_or_more_messages(
         self, content: MessageType, sender_alias: str, do_not_forward_if_possible: bool = True, **metadata
     ) -> AsyncIterator[MessagePromise]:
+        # TODO TODO TODO Oleksandr
+        # if do_not_forward_if_possible and not self.has_prior_history and not metadata:
+        #     # if there is no prior history (and no extra metadata) we can just append the original message
+        #     # (or sequence of messages) instead of creating message forwards
+        #
+        #     if isinstance(content, MessageSequence):
+        #         async for msg_promise in content:
+        #             self._latest_msg_promise = msg_promise
+        #             # TODO Oleksandr: other parallel tasks may submit messages to the same conversation which will
+        #             #  mess it up (because we are not doing forwards here) - how to protect from this ?
+        #             yield msg_promise
+        #         return
+        #     if isinstance(content, MessagePromise):
+        #         self._latest_msg_promise = content
+        #         yield content
+        #         return
+        #     if isinstance(content, Message):
+        #         self._latest_msg_promise = MessagePromise(forum=self.forum, materialized_msg=content)
+        #         yield self._latest_msg_promise
+        #         return
+
+        # if it's not a plain string then it should be forwarded (either because prior history in this conversation
+        # should be maintained or because there is extra metadata)
+
         if isinstance(content, (str, Message, MessagePromise)):
             yield self.new_message_promise(
                 content=content,
@@ -130,25 +158,35 @@ class Agent:
         content: Optional[MessageType],
         override_sender_alias: Optional[str] = None,
         branch_from: Optional["MessagePromise"] = None,
+        do_not_forward_if_possible: bool = True,
         **function_kwargs,
     ) -> "MessageSequence":
         """
         Call the agent and immediately finish the call. Returns a MessageSequence object that contains the agent's
         response(s).
         """
-        agent_call = self.call(branch_from=branch_from, **function_kwargs)
+        agent_call = self.call(
+            branch_from=branch_from, do_not_forward_if_possible=do_not_forward_if_possible, **function_kwargs
+        )
         if content is not None:
             agent_call.send_request(content, override_sender_alias=override_sender_alias)
         return agent_call.finish()
 
-    def call(self, branch_from: Optional["MessagePromise"] = None, **function_kwargs) -> "AgentCall":
+    def call(
+        self,
+        branch_from: Optional["MessagePromise"] = None,
+        do_not_forward_if_possible: bool = True,
+        **function_kwargs,
+    ) -> "AgentCall":
         """
         Call the agent. Returns an AgentCall object that can be used to send requests to the agent and receive its
         responses.
         """
         # TODO Oleksandr: accept ConversationTracker as a parameter
         conversation = ConversationTracker(self.forum, branch_from=branch_from)
-        agent_call = AgentCall(self.forum, conversation, self, **function_kwargs)
+        agent_call = AgentCall(
+            self.forum, conversation, self, do_not_forward_if_possible=do_not_forward_if_possible, **function_kwargs
+        )
 
         parent_ctx = InteractionContext.get_current_context()
         # TODO Oleksandr: get rid of this if-statement by making Forum a context manager too and making sure all the
@@ -240,16 +278,25 @@ class AgentCall:
     receive its responses.
     """
 
-    def __init__(self, forum: Forum, conversation: ConversationTracker, receiving_agent: Agent, **kwargs) -> None:
+    def __init__(
+        self,
+        forum: Forum,
+        conversation: ConversationTracker,
+        receiving_agent: Agent,
+        do_not_forward_if_possible: bool = True,
+        **kwargs,
+    ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
 
         # TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it completely when
         #  you get to implementing cached agent calls
         temporary_sub_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
+
         self._request_messages = MessageSequence(
             temporary_sub_conversation,
             default_sender_alias=InteractionContext.get_current_sender_alias(),
+            do_not_forward_if_possible=do_not_forward_if_possible,
         )
         self._request_producer = MessageSequence._MessageProducer(self._request_messages)
 

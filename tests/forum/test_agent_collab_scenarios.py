@@ -22,13 +22,54 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     @forum.agent
     async def _assistant(ctx: InteractionContext) -> None:
-        api_responses = _reminder_api.quick_call(ctx.request_messages)
+        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+            {
+                "ac_model_": "message",
+                "sender_alias": "USER",
+                "content": "set a reminder for me for tomorrow at 10am",
+            },
+        ]
+
+        api_responses = _reminder_api.quick_call(
+            ctx.request_messages,
+            do_not_forward_if_possible=False,
+        )
+        assert await arepresent_conversation_with_dicts(api_responses) == [
+            # {
+            #     "ac_model_": "message",
+            #     "sender_alias": "USER",
+            #     "content": "set a reminder for me for tomorrow at 10am",
+            # },
+            {
+                "ac_model_": "forward",
+                "sender_alias": "_assistant",
+                "original_msg": {
+                    "ac_model_": "message",
+                    "sender_alias": "USER",
+                    "content": "set a reminder for me for tomorrow at 10am",
+                },
+            },
+            {
+                "ac_model_": "call",
+                "sender_alias": "",
+                "content": "_reminder_api",
+                "messages_in_request": 1,
+            },
+            {
+                "ac_model_": "message",
+                "sender_alias": "_reminder_api",
+                "content": "api error: invalid date format",
+            },
+        ]
+
         if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
             # TODO Oleksandr: these "branch_from" parameters are very counter-intuitive - decide on a better
             #  message forwarding mechanism (that would also allow for agent call caching)
             # TODO Oleksandr: implement actual ErrorMessage class
             corrections = _critic.quick_call(
-                api_responses, branch_from=await ctx.request_messages.aget_concluding_message()
+                api_responses,
+                branch_from=await ctx.request_messages.aget_concluding_message(),
+                do_not_forward_if_possible=False,
             )
 
             assert await arepresent_conversation_with_dicts(corrections) == [
@@ -48,8 +89,8 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 },
                 {
                     "ac_model_": "call",
-                    "content": "_critic",
                     "sender_alias": "",
+                    "content": "_critic",
                     "messages_in_request": 1,
                 },
                 {
@@ -60,10 +101,17 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             ]
 
             api_responses = _reminder_api.quick_call(
-                corrections, branch_from=await api_responses.aget_concluding_message()
+                corrections,
+                branch_from=await api_responses.aget_concluding_message(),
+                do_not_forward_if_possible=False,
             )
 
         assert await arepresent_conversation_with_dicts(api_responses) == [
+            # {
+            #     "ac_model_": "message",
+            #     "sender_alias": "USER",
+            #     "content": "set a reminder for me for tomorrow at 10am",
+            # },
             {
                 "ac_model_": "forward",
                 "sender_alias": "_assistant",
@@ -120,7 +168,10 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         # TODO Oleksandr: turn this agent into a proxy agent
         ctx.respond("try swapping the month and day")
 
-    assistant_responses = _assistant.quick_call("set a reminder for me for tomorrow at 10am")
+    assistant_responses = _assistant.quick_call(
+        "set a reminder for me for tomorrow at 10am",
+        do_not_forward_if_possible=False,
+    )
 
     assert await arepresent_conversation_with_dicts(assistant_responses) == [
         {
@@ -155,7 +206,12 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent1(ctx: InteractionContext) -> None:
-        ctx.respond(_agent2.quick_call(ctx.request_messages))
+        ctx.respond(
+            _agent2.quick_call(
+                ctx.request_messages,
+                do_not_forward_if_possible=False,
+            )
+        )
         ctx.respond("agent1 also says hello")
 
     @forum.agent
@@ -163,7 +219,10 @@ async def test_two_nested_agents(forum: Forum) -> None:
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
-    responses1 = _agent1.quick_call("user says hello")
+    responses1 = _agent1.quick_call(
+        "user says hello",
+        do_not_forward_if_possible=False,
+    )
 
     assert await arepresent_conversation_with_dicts(responses1) == [
         {
