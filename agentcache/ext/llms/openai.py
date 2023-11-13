@@ -2,6 +2,8 @@
 import asyncio
 from typing import List, Dict, Any, Set, Union, Optional, AsyncIterator
 
+from pydantic import BaseModel
+
 from agentcache.errors import AgentCacheError
 from agentcache.forum import Forum, InteractionContext
 from agentcache.models import Token, Message
@@ -13,16 +15,17 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
     forum: Forum,
     prompt: List[Union[MessagePromise, Message]],
     override_sender_alias: Optional[str] = None,
-    openai_module: Optional[Any] = None,
+    async_openai_client: Optional[Any] = None,
     stream: bool = False,
     n: int = 1,
     **kwargs,
 ) -> MessagePromise:  # TODO Oleksandr: this function doesn't necessarily need to be async
     """Chat with OpenAI models. Returns a message or a stream of tokens."""
-    if not openai_module:
-        import openai  # pylint: disable=import-outside-toplevel
+    if not async_openai_client:
+        from openai import AsyncOpenAI  # pylint: disable=import-outside-toplevel
 
-        openai_module = openai
+        # TODO Oleksandr: move client initialization to the module level ?
+        async_openai_client = AsyncOpenAI()
 
     if n != 1:
         raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
@@ -46,7 +49,9 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
         async def _send_tokens() -> None:
             # noinspection PyProtectedMember
             with _OpenAIStreamedMessage._Producer(message_promise) as token_producer:
-                response_ = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=True, **kwargs)
+                response_ = await async_openai_client.chat.completions.create(
+                    messages=message_dicts, stream=True, **kwargs
+                )
                 async for token_raw in response_:
                     token_producer.send(token_raw)
             # # TODO Oleksandr: do we need the following ?
@@ -56,7 +61,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
         return message_promise
 
     # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
-    response = await openai_module.ChatCompletion.acreate(messages=message_dicts, stream=False, **kwargs)
+    response = await async_openai_client.chat.completions.create(messages=message_dicts, stream=False, **kwargs)
     # TODO Oleksandr: fix it - there is no _new_message_promise() method on Forum anymore
     return forum._new_message_promise(
         content=response["choices"][0]["message"]["content"],
@@ -65,25 +70,24 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
     )
 
 
-class _OpenAIStreamedMessage(StreamedMsgPromise[Dict[str, Any]]):
+class _OpenAIStreamedMessage(StreamedMsgPromise[BaseModel]):
     """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._tokens_raw: List[Dict[str, Any]] = []
+        self._tokens_raw: List[BaseModel] = []
 
-    async def _aconvert_incoming_item(
-        self, incoming_item: Dict[str, Any]
-    ) -> AsyncIterator[Union[Token, BaseException]]:
+    async def _aconvert_incoming_item(self, incoming_item: BaseModel) -> AsyncIterator[Union[Token, BaseException]]:
         self._tokens_raw.append(incoming_item)
-        # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built ?
-        for k, v in _build_openai_metadata_dict(incoming_item).items():
-            if v is not None:
-                self._metadata[k] = v
 
-        token_text = incoming_item["choices"][0]["delta"].get("content")
+        token_text = incoming_item.choices[0].delta.content
         if token_text:
             yield Token(text=token_text)
+
+        # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built ?
+        for k, v in _build_openai_metadata_dict(incoming_item.model_dump()).items():
+            if v is not None:
+                self._metadata[k] = v
 
 
 def _build_openai_metadata_dict(openai_response: Dict[str, Any]) -> Dict[str, Any]:

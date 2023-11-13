@@ -33,6 +33,7 @@ class ConversationTracker:
 
     @property
     def has_prior_history(self) -> bool:
+        """Check if there is prior history in this conversation."""
         return bool(self._latest_msg_promise)
 
     def new_message_promise(self, content: SingleMessageType, sender_alias: str, **metadata) -> "MessagePromise":
@@ -70,6 +71,9 @@ class ConversationTracker:
     async def aappend_zero_or_more_messages(
         self, content: MessageType, sender_alias: str, do_not_forward_if_possible: bool = True, **metadata
     ) -> AsyncIterator[MessagePromise]:
+        """
+        Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
+        """
         if do_not_forward_if_possible and not self.has_prior_history and not metadata:
             # if there is no prior history (and no extra metadata) we can just append the original message
             # (or sequence of messages) instead of creating message forwards
@@ -144,6 +148,13 @@ class Forum(BaseModel):
     def get_conversation(
         self, descriptor: Immutable, branch_from_if_new: Optional["MessagePromise"] = None
     ) -> ConversationTracker:
+        """
+        Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
+        exist yet, it will be created. If branch_from_if_new is specified, the conversation will be branched off of
+        that message promise (as long as the conversation doesn't exist yet). Descriptor is used to uniquely identify
+        the conversation. It can be an arbitrary Immutable object - its hash_key will be used to identify the
+        conversation.
+        """
         conversation = self._conversations.get(descriptor.hash_key)
         if not conversation:
             conversation = ConversationTracker(forum=self, branch_from=branch_from_if_new)
@@ -165,16 +176,21 @@ class Agent:
         self,
         content: Optional[MessageType],
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional["MessagePromise"] = None,
-        do_not_forward_if_possible: bool = True,
+        conversation: Optional[ConversationTracker] = None,
+        force_new_conversation: bool = False,
         **function_kwargs,
     ) -> "MessageSequence":
         """
         Call the agent and immediately finish the call. Returns a MessageSequence object that contains the agent's
-        response(s).
+        response(s). If force_new_conversation is False and conversation is not specified and pre-existing messages are
+        passed as requests (for ex. messages that came from other agents), then this agent call will be automatically
+        branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
+        from those messages, in other words).
         """
         agent_call = self.call(
-            branch_from=branch_from, do_not_forward_if_possible=do_not_forward_if_possible, **function_kwargs
+            conversation=conversation,
+            force_new_conversation=force_new_conversation,
+            **function_kwargs,
         )
         if content is not None:
             agent_call.send_request(content, override_sender_alias=override_sender_alias)
@@ -182,18 +198,25 @@ class Agent:
 
     def call(
         self,
-        branch_from: Optional["MessagePromise"] = None,
-        do_not_forward_if_possible: bool = True,
+        conversation: Optional[ConversationTracker] = None,
+        force_new_conversation: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
         """
         Call the agent. Returns an AgentCall object that can be used to send requests to the agent and receive its
-        responses.
+        responses. If force_new_conversation is False and conversation is not specified and pre-existing messages are
+        passed as requests (for ex. messages that came from other agents), then this agent call will be automatically
+        branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
+        from those messages, in other words).
         """
-        # TODO Oleksandr: accept ConversationTracker as a parameter
-        conversation = ConversationTracker(self.forum, branch_from=branch_from)
+        if conversation:
+            if conversation.has_prior_history and force_new_conversation:
+                raise ValueError("Cannot force a new conversation when there is prior history in ConversationTracker")
+        else:
+            conversation = ConversationTracker(self.forum)
+
         agent_call = AgentCall(
-            self.forum, conversation, self, do_not_forward_if_possible=do_not_forward_if_possible, **function_kwargs
+            self.forum, conversation, self, do_not_forward_if_possible=not force_new_conversation, **function_kwargs
         )
 
         parent_ctx = InteractionContext.get_current_context()
