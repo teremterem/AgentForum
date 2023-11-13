@@ -3,7 +3,7 @@ line-length = 119
 
 [tool.poetry]
 name = "agentforum"
-version = "0.0.2"
+version = "0.0.3"
 description = ""
 authors = ["Oleksandr Tereshchenko <toporok@gmail.com>"]
 readme = "README.md"
