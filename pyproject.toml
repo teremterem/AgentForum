@@ -3,14 +3,14 @@ line-length = 119
 
 [tool.poetry]
 name = "agentforum"
-version = "0.0.1"
+version = "0.0.2"
 description = ""
 authors = ["Oleksandr Tereshchenko <toporok@gmail.com>"]
 readme = "README.md"
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<4.0"
+python = ">=3.8.1,<4.0"
 pydantic = ">=2.0.0,<3.0.0"
 
 [tool.poetry.dev-dependencies]

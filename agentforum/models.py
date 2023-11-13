@@ -5,8 +5,6 @@ from typing import Dict, Any, Literal, Type, Tuple, Optional
 
 from pydantic import BaseModel, model_validator, ConfigDict
 
-from agentforum.typing import MessageType
-
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
 
@@ -159,6 +157,6 @@ class MessageParameters(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    content: MessageType
+    content: Any  # TODO Oleksandr: a newer version of Pydantic doesn't seem work with `MessageType` for some reason
     override_sender_alias: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
