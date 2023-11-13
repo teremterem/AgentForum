@@ -4,10 +4,10 @@ from typing import List, Dict, Any, Set, Union, Optional, AsyncIterator
 
 from pydantic import BaseModel
 
-from agentcache.errors import AgentCacheError
-from agentcache.forum import Forum, InteractionContext
-from agentcache.models import Token, Message
-from agentcache.promises import MessagePromise, StreamedMsgPromise
+from agentforum.errors import AgentCacheError
+from agentforum.forum import Forum, InteractionContext
+from agentforum.models import Token, Message
+from agentforum.promises import MessagePromise, StreamedMsgPromise
 
 
 # noinspection PyProtectedMember

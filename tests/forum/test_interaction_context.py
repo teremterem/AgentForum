@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agentcache.forum import InteractionContext
+from agentforum.forum import InteractionContext
 
 
 def test_nested_interaction_contexts() -> None:

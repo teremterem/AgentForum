@@ -2,12 +2,12 @@
 import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
-from agentcache.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
-from agentcache.typing import IN, MessageType
-from agentcache.utils import AsyncStreamable, async_cached_method
+from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
+from agentforum.typing import IN, MessageType
+from agentforum.utils import AsyncStreamable, async_cached_method
 
 if typing.TYPE_CHECKING:
-    from agentcache.forum import Forum, ConversationTracker
+    from agentforum.forum import Forum, ConversationTracker
 
 
 class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):

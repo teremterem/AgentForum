@@ -3,9 +3,9 @@ from typing import List, Union, Dict, Any
 
 import pytest
 
-from agentcache.forum import Forum, InteractionContext
-from agentcache.models import Message, AgentCallMsg
-from agentcache.promises import MessagePromise, MessageSequence
+from agentforum.forum import Forum, InteractionContext
+from agentforum.models import Message, AgentCallMsg
+from agentforum.promises import MessagePromise, MessageSequence
 
 
 @pytest.mark.asyncio

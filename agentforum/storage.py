@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple
 
-from agentcache.models import Immutable
+from agentforum.models import Immutable
 
 
 class ImmutableStorage(ABC):

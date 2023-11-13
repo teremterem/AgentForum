@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from agentcache.models import Immutable, Freeform, Message, ForwardedMessage
+from agentforum.models import Immutable, Freeform, Message, ForwardedMessage
 
 
 class SampleImmutable(Immutable):

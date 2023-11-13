@@ -3,8 +3,8 @@ import asyncio
 from types import TracebackType
 from typing import Optional, Iterable, List, AsyncIterator, Generic, Union, Type
 
-from agentcache.errors import SendClosedError
-from agentcache.typing import IN, OUT
+from agentforum.errors import SendClosedError
+from agentforum.typing import IN, OUT
 
 
 class Sentinel:
