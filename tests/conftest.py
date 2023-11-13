@@ -1,4 +1,4 @@
-"""Pytest configuration for the AgentCache framework. It is loaded by pytest automatically."""
+"""Pytest configuration for the AgentForum framework. It is loaded by pytest automatically."""
 import pytest
 
 from agentforum.forum import Forum

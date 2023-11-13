@@ -2,7 +2,7 @@
 line-length = 119
 
 [tool.poetry]
-name = "agentcache"
+name = "agentforum"
 version = "0.0.1"
 description = ""
 authors = ["Oleksandr Tereshchenko <toporok@gmail.com>"]

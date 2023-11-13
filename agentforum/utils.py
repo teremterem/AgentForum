@@ -1,4 +1,4 @@
-"""Utility functions and classes for the AgentCache framework."""
+"""Utility functions and classes for the AgentForum framework."""
 import asyncio
 from types import TracebackType
 from typing import Optional, Iterable, List, AsyncIterator, Generic, Union, Type

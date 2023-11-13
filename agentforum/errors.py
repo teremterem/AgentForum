@@ -1,13 +1,13 @@
-"""AgentCache errors."""
+"""AgentForum errors."""
 
 
-class AgentCacheError(Exception):
+class AgentForumError(Exception):
     """
-    Base class AgentCache errors.
+    Base class AgentForum errors.
     """
 
 
-class SendClosedError(AgentCacheError):
+class SendClosedError(AgentForumError):
     """
     Raised when a AsyncStreamable is closed for sending.
     """

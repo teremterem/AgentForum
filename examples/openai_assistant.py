@@ -1,5 +1,5 @@
 # pylint: disable=wrong-import-position,import-outside-toplevel
-"""Chat with OpenAI ChatGPT using the AgentCache library."""
+"""Chat with OpenAI ChatGPT using the AgentForum library."""
 import asyncio
 
 # noinspection PyUnresolvedReferences

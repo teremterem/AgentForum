@@ -1,4 +1,4 @@
-"""Typing definitions for AgentCache."""
+"""Typing definitions for AgentForum."""
 import typing
 from typing import TypeVar, Callable, Awaitable, Union, Iterable, Any, AsyncIterable
 
