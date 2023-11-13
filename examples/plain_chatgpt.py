@@ -1,5 +1,5 @@
 # pylint: disable=wrong-import-position
-"""Chat with OpenAI ChatGPT using the AgentCache library."""
+"""Chat with OpenAI ChatGPT using the AgentForum library."""
 import asyncio
 
 # noinspection PyUnresolvedReferences
@@ -11,9 +11,9 @@ load_dotenv()
 
 import promptlayer  # TODO Oleksandr: make this optional
 
-from agentcache.ext.llms.openai import aopenai_chat_completion
-from agentcache.forum import Forum, InteractionContext
-from agentcache.storage import InMemoryStorage
+from agentforum.ext.llms.openai import aopenai_chat_completion
+from agentforum.forum import Forum, InteractionContext
+from agentforum.storage import InMemoryStorage
 
 forum = Forum(immutable_storage=InMemoryStorage())
 async_openai_client = promptlayer.openai.AsyncOpenAI()

@@ -2,12 +2,12 @@
 import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
-from agentcache.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
-from agentcache.typing import IN, MessageType
-from agentcache.utils import AsyncStreamable, async_cached_method
+from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
+from agentforum.typing import IN, MessageType
+from agentforum.utils import AsyncStreamable, async_cached_method
 
 if typing.TYPE_CHECKING:
-    from agentcache.forum import Forum, ConversationTracker
+    from agentforum.forum import Forum, ConversationTracker
 
 
 class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
@@ -302,11 +302,11 @@ class DetachedMsgPromise(MessagePromise):
         if self._forward_of:
             original_msg = await self._forward_of.amaterialize()
 
-            metadata_dict = original_msg.metadata.model_dump(exclude={"ac_model_"})
+            metadata_dict = original_msg.metadata.model_dump(exclude={"af_model_"})
             # let's merge the metadata from the original message with the metadata from the detached message
             # (detached message metadata overrides the original message metadata in case of conflicts; also
             # keep in mind that it is a shallow merge - nested objects are not merged)
-            metadata_dict.update(self._detached_msg.metadata.model_dump(exclude={"ac_model_"}))
+            metadata_dict.update(self._detached_msg.metadata.model_dump(exclude={"af_model_"}))
 
             content = original_msg.content
             metadata = Freeform(**metadata_dict)
@@ -318,7 +318,7 @@ class DetachedMsgPromise(MessagePromise):
 
         materialized_msg = self.real_msg_class(
             **self._detached_msg.model_dump(
-                exclude={"ac_model_", "content", "metadata", "prev_msg_hash_key", "original_msg_hash_key"}
+                exclude={"af_model_", "content", "metadata", "prev_msg_hash_key", "original_msg_hash_key"}
             ),
             content=content,
             metadata=metadata,
@@ -370,7 +370,7 @@ class DetachedAgentCallMsgPromise(MessagePromise):
 
         return self.real_msg_class(
             **self._detached_agent_call_msg.model_dump(
-                exclude={"ac_model_", "metadata", "prev_msg_hash_key", "msg_seq_start_hash_key"}
+                exclude={"af_model_", "metadata", "prev_msg_hash_key", "msg_seq_start_hash_key"}
             ),
             metadata=self._detached_agent_call_msg.metadata,
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent calls get attached to the end of the message sequence

@@ -1,6 +1,6 @@
 # pylint: disable=protected-access
 """
-The Forum class is the main entry point for the agentcache library. It is used to create a forum, register agents in
+The Forum class is the main entry point for the agentforum library. It is used to create a forum, register agents in
 it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ImmutableStorage
 for that).
 """
@@ -11,10 +11,10 @@ from typing import Optional, List, Dict, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from agentcache.models import Message, Freeform, AgentCallMsg, Immutable
-from agentcache.promises import MessagePromise, MessageSequence, DetachedAgentCallMsgPromise, DetachedMsgPromise
-from agentcache.storage import ImmutableStorage
-from agentcache.typing import AgentFunction, MessageType, SingleMessageType
+from agentforum.models import Message, Freeform, AgentCallMsg, Immutable
+from agentforum.promises import MessagePromise, MessageSequence, DetachedAgentCallMsgPromise, DetachedMsgPromise
+from agentforum.storage import ImmutableStorage
+from agentforum.typing import AgentFunction, MessageType, SingleMessageType
 
 USER_ALIAS = "USER"
 

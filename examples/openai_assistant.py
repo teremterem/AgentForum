@@ -1,5 +1,5 @@
 # pylint: disable=wrong-import-position,import-outside-toplevel
-"""Chat with OpenAI ChatGPT using the AgentCache library."""
+"""Chat with OpenAI ChatGPT using the AgentForum library."""
 import asyncio
 
 # noinspection PyUnresolvedReferences
@@ -13,8 +13,8 @@ load_dotenv()
 from openai import AsyncOpenAI
 from openai.types.beta import Thread, Assistant
 
-from agentcache.forum import Forum, InteractionContext, ConversationTracker
-from agentcache.storage import InMemoryStorage
+from agentforum.forum import Forum, InteractionContext, ConversationTracker
+from agentforum.storage import InMemoryStorage
 
 forum = Forum(immutable_storage=InMemoryStorage())
 

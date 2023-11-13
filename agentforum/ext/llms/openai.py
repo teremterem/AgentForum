@@ -1,13 +1,13 @@
-"""OpenAI API extension for AgentCache."""
+"""OpenAI API extension for AgentForum."""
 import asyncio
 from typing import List, Dict, Any, Set, Union, Optional, AsyncIterator
 
 from pydantic import BaseModel
 
-from agentcache.errors import AgentCacheError
-from agentcache.forum import Forum, InteractionContext
-from agentcache.models import Token, Message
-from agentcache.promises import MessagePromise, StreamedMsgPromise
+from agentforum.errors import AgentForumError
+from agentforum.forum import Forum, InteractionContext
+from agentforum.models import Token, Message
+from agentforum.promises import MessagePromise, StreamedMsgPromise
 
 
 # noinspection PyProtectedMember
@@ -28,7 +28,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
         async_openai_client = AsyncOpenAI()
 
     if n != 1:
-        raise AgentCacheError("Only n=1 is supported by AgentCache for openai.ChatCompletion.acreate()")
+        raise AgentForumError("Only n=1 is supported by AgentForum for openai.ChatCompletion.acreate()")
 
     messages = [await msg.amaterialize() if isinstance(msg, MessagePromise) else msg for msg in prompt]
     # pprint(messages)

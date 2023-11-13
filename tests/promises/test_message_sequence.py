@@ -1,11 +1,11 @@
 # pylint: disable=protected-access
-"""Tests for agentcache.promises.MessageSequence"""
+"""Tests for agentforum.promises.MessageSequence"""
 import asyncio
 
 import pytest
 
-from agentcache.forum import Forum, ConversationTracker
-from agentcache.promises import MessageSequence
+from agentforum.forum import Forum, ConversationTracker
+from agentforum.promises import MessageSequence
 
 
 @pytest.mark.asyncio

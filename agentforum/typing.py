@@ -1,11 +1,11 @@
-"""Typing definitions for AgentCache."""
+"""Typing definitions for AgentForum."""
 import typing
 from typing import TypeVar, Callable, Awaitable, Union, Iterable, Any, AsyncIterable
 
 if typing.TYPE_CHECKING:
-    from agentcache.forum import InteractionContext
-    from agentcache.promises import MessagePromise
-    from agentcache.models import Message
+    from agentforum.forum import InteractionContext
+    from agentforum.promises import MessagePromise
+    from agentforum.models import Message
 
     SingleMessageType = Union[str, Message, MessagePromise, BaseException]
     AgentFunction = Callable[[InteractionContext, ...], Awaitable[None]]

@@ -5,7 +5,7 @@ from typing import Dict, Any, Literal, Type, Tuple, Optional
 
 from pydantic import BaseModel, model_validator, ConfigDict
 
-from agentcache.typing import MessageType
+from agentforum.typing import MessageType
 
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
 
@@ -17,7 +17,7 @@ class Immutable(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    ac_model_: str  # AgentCache model name
+    af_model_: str  # AgentForum model name
 
     @cached_property
     def hash_key(self) -> str:
@@ -65,12 +65,12 @@ class Freeform(Immutable):
     """
 
     model_config = ConfigDict(extra="allow")
-    ac_model_: Literal["freeform"] = "freeform"
+    af_model_: Literal["freeform"] = "freeform"
 
     @cached_property
     def as_kwargs(self) -> Dict[str, Any]:
         """Get the fields of the object as a dictionary of keyword arguments."""
-        return self.model_dump(exclude={"ac_model_"})
+        return self.model_dump(exclude={"af_model_"})
 
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
@@ -83,7 +83,7 @@ _TYPES_ALLOWED_IN_FREEFORM = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Freeform
 class Message(Immutable):
     """A message."""
 
-    ac_model_: Literal["message"] = "message"
+    af_model_: Literal["message"] = "message"
     content: str
     sender_alias: str
     metadata: Freeform = Freeform()  # empty metadata by default
@@ -101,7 +101,7 @@ class Message(Immutable):
 class ForwardedMessage(Message):
     """A subtype of Message that represents a message forwarded by an agent."""
 
-    ac_model_: Literal["message"] = "forward"
+    af_model_: Literal["message"] = "forward"
     original_msg_hash_key: str
 
     _original_msg: Optional["Message"] = None
@@ -125,7 +125,7 @@ class ForwardedMessage(Message):
 class AgentCallMsg(Message):
     """A subtype of Message that represents a call to an agent."""
 
-    ac_model_: Literal["call"] = "call"
+    af_model_: Literal["call"] = "call"
     msg_seq_start_hash_key: Optional[str] = None
 
     @property
@@ -148,7 +148,7 @@ class Token(Immutable):  # TODO Oleksandr: rename to MessageChunk or ContentChun
     returned all at once).
     """
 
-    ac_model_: Literal["token"] = "token"
+    af_model_: Literal["token"] = "token"
     text: str
 
 

@@ -1,4 +1,6 @@
-# 🌟🤖 AgentCache 🕵🌟
+# 🏛 AgentForum
+
+**TODO Oleksandr: update the README to reflect the current state of the project.**
 
 It is highly encouraged that the agents are stateless (rely only on the incoming messages and the chat history)
 because this simplifies "message replay" from arbitrary point in the agent interaction history. _(What about the

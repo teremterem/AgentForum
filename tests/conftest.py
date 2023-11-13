@@ -1,8 +1,8 @@
-"""Pytest configuration for the AgentCache framework. It is loaded by pytest automatically."""
+"""Pytest configuration for the AgentForum framework. It is loaded by pytest automatically."""
 import pytest
 
-from agentcache.forum import Forum
-from agentcache.storage import InMemoryStorage
+from agentforum.forum import Forum
+from agentforum.storage import InMemoryStorage
 
 
 @pytest.fixture
