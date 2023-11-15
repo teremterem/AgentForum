@@ -2,7 +2,8 @@
 import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
-from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
+from agentforum.message_placeholder import MessagePlaceholder
+from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParams
 from agentforum.typing import IN, MessageType
 from agentforum.utils import AsyncStreamable, async_cached_method
 
@@ -10,7 +11,7 @@ if typing.TYPE_CHECKING:
     from agentforum.forum import Forum, ConversationTracker
 
 
-class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
+class MessageSequence(AsyncStreamable[MessageParams, MessagePlaceholder]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     AsyncStreamable and relies on an internal async queue, the speed at which messages are produced and sent to the
@@ -18,19 +19,13 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     """
 
     def __init__(
-        self,
-        conversation: "ConversationTracker",
-        *args,
-        default_sender_alias: str,
-        do_not_forward_if_possible: bool = True,
-        **kwargs,
+        self, conversation: "ConversationTracker", *args, do_not_forward_if_possible: bool = True, **kwargs
     ) -> None:
         super().__init__(*args, **kwargs)
         self._conversation = conversation
-        self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
 
-    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
+    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional[MessagePlaceholder]:
         """Get the last message in the sequence."""
         concluding_message = None
         async for concluding_message in self:
@@ -52,7 +47,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
 
     async def aget_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> List["MessagePromise"]:
+    ) -> List[MessagePlaceholder]:
         """Get the full chat history of the conversation branch up to the last message in the sequence."""
         return await (await self.aget_concluding_message()).aget_history(
             skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
@@ -70,16 +65,16 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
         )
 
     async def _aconvert_incoming_item(
-        self, incoming_item: MessageParameters
-    ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
+        self, incoming_item: MessageParams
+    ) -> AsyncIterator[Union[MessagePlaceholder, BaseException]]:
         sender_alias = incoming_item.override_sender_alias or self._default_sender_alias
         try:
             if isinstance(incoming_item.content, BaseException):
                 raise incoming_item.content
 
             async for msg_promise in self._conversation.aappend_zero_or_more_messages(
-                content=incoming_item.content,
-                sender_alias=sender_alias,
+                zero_or_more_msgs=incoming_item.content,
+                forwarder_alias=self._,
                 do_not_forward_if_possible=self._do_not_forward_if_possible,
                 **incoming_item.metadata,
             ):
@@ -92,15 +87,18 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
         """A context manager that allows sending messages to MessageSequence."""
 
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self._default_sender_alias = default_sender_alias
+
         def send_zero_or_more_messages(
             self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
         ) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
             if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
                 content = tuple(content)
-            self.send(
-                MessageParameters(content=content, override_sender_alias=override_sender_alias, metadata=metadata)
-            )
+            sender_alias = override_sender_alias or self._default_sender_alias
+            self.send(MessageParams(content=content, sender_alias=sender_alias, metadata=metadata))
 
 
 class MessagePromise(AsyncStreamable[IN, Token]):

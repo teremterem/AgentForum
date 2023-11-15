@@ -140,23 +140,24 @@ class AgentCallMsg(Message):
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
 
 
-class Token(Immutable):  # TODO Oleksandr: rename to MessageChunk or ContentChunk and don't extend Immutable
+class Token(BaseModel):  # TODO Oleksandr: rename to ContentChunk (with content instead of text)
     """
     A token. This class is used by MessagePromise (when the message is streamed token by token instead of being
     returned all at once).
     """
 
-    af_model_: Literal["token"] = "token"
+    model_config = ConfigDict(frozen=True)
+
     text: str
 
 
-class MessageParameters(BaseModel):
+class MessageParams(BaseModel):
     """
     A set of parameters that can be converted into one or more messages or message promises.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     content: Any  # TODO Oleksandr: a newer version of Pydantic doesn't seem work with `MessageType` for some reason
-    override_sender_alias: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    sender_alias: str
+    metadata: Freeform
