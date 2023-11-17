@@ -1,110 +1,19 @@
-"""This module contains wrappers for the pydantic models that turn those models into asynchronous promises."""
+"""
+TODO Oleksandr: the classes defined in this module are temporary, merge their function into other related classes.
+"""
 import typing
-from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
+from typing import Optional, Type, List, Dict, Any, AsyncIterator
 
-from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
-from agentforum.typing import IN, MessageType
+from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform
+from agentforum.typing import IN
 from agentforum.utils import AsyncStreamable, async_cached_method
 
 if typing.TYPE_CHECKING:
-    from agentforum.forum import Forum, ConversationTracker
+    from agentforum.forum import Forum
+    from agentforum.promises import MessageSequence
 
 
-class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
-    # TODO Oleksandr: rename to AsyncMessageSequence ?
-    """
-    An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
-    AsyncStreamable and relies on internal async queues, the speed at which messages are produced and sent to the
-    sequence is independent of the speed at which consumers iterate over them.
-    """
-
-    def __init__(
-        self,
-        conversation: "ConversationTracker",
-        *args,
-        default_sender_alias: str,
-        do_not_forward_if_possible: bool = True,
-        **kwargs,
-    ) -> None:
-        super().__init__(*args, **kwargs)
-        self._conversation = conversation
-        self._default_sender_alias = default_sender_alias
-        self._do_not_forward_if_possible = do_not_forward_if_possible
-
-    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
-        """Get the last message in the sequence."""
-        concluding_message = None
-        async for concluding_message in self:
-            pass
-        if not concluding_message and raise_if_none:
-            # TODO Oleksandr: introduce a custom exception for this case
-            raise ValueError("MessageSequence is empty")
-        return concluding_message
-
-    async def amaterialize_concluding_message(self, raise_if_none: bool = True) -> Message:
-        """Get the last message in the sequence, but return a Message object instead of a MessagePromise object."""
-        return await (await self.aget_concluding_message(raise_if_none=raise_if_none)).amaterialize()
-
-    async def amaterialize_all(self) -> List["Message"]:
-        """
-        Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
-        """
-        return [await msg.amaterialize() async for msg in self]
-
-    async def aget_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> List["MessagePromise"]:
-        """Get the full chat history of the conversation branch up to the last message in the sequence."""
-        return await (await self.aget_concluding_message()).aget_history(
-            skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
-        )
-
-    async def amaterialize_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> List["Message"]:
-        """
-        Get the full chat history of the conversation branch up to the last message in the sequence, but return a list
-        of Message objects instead of MessagePromise objects.
-        """
-        return await (await self.aget_concluding_message()).amaterialize_history(
-            skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
-        )
-
-    async def _aconvert_incoming_item(
-        self, incoming_item: MessageParameters
-    ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
-        sender_alias = incoming_item.override_sender_alias or self._default_sender_alias
-        try:
-            if isinstance(incoming_item.content, BaseException):
-                raise incoming_item.content
-
-            async for msg_promise in self._conversation.aappend_zero_or_more_messages(
-                content=incoming_item.content,
-                sender_alias=sender_alias,
-                do_not_forward_if_possible=self._do_not_forward_if_possible,
-                **incoming_item.metadata,
-            ):
-                yield msg_promise
-
-        except BaseException as exc:  # pylint: disable=broad-except
-            # TODO Oleksandr: introduce the concept of ErrorMessage
-            yield exc
-
-    class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
-        """A context manager that allows sending messages to MessageSequence."""
-
-        def send_zero_or_more_messages(
-            self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
-        ) -> None:
-            """Send a message or messages to the sequence this producer is attached to."""
-            if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
-                content = tuple(content)
-            self.send(
-                MessageParameters(content=content, override_sender_alias=override_sender_alias, metadata=metadata)
-            )
-
-
-class MessagePromise(AsyncStreamable[IN, Token]):
+class MessagePromiseImpl(AsyncStreamable[IN, Token]):
     # pylint: disable=protected-access
     """A promise to materialize a message."""
 
@@ -116,8 +25,8 @@ class MessagePromise(AsyncStreamable[IN, Token]):
     ) -> None:
         """
         TODO Oleksandr: better docstring ?
-        NOTE: The `materialized_msg_content` parameter is used to initialize the MessagePromise with content from a
-        "detached" message (see DetachedMsgPromise class).
+        NOTE: The `materialized_msg_content` parameter is used to initialize the MessagePromiseImpl with content from a
+        "detached" message (see DetachedMsgPromiseImpl class).
         """
         if materialized_msg:
             # if there is a materialized message, then override whatever was passed in as materialized_msg_content -
@@ -149,7 +58,7 @@ class MessagePromise(AsyncStreamable[IN, Token]):
 
         return self._materialized_msg
 
-    async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+    async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromiseImpl"]:
         """Get the previous message in this conversation branch."""
         prev_msg = await self._aget_previous_message_cached()
 
@@ -163,7 +72,7 @@ class MessagePromise(AsyncStreamable[IN, Token]):
 
     async def aget_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> List["MessagePromise"]:
+    ) -> List["MessagePromiseImpl"]:
         """Get the full chat history of the conversation branch up to this message."""
         # TODO Oleksandr: introduce a limit on the number of messages to fetch
         msg = self
@@ -178,7 +87,7 @@ class MessagePromise(AsyncStreamable[IN, Token]):
     ) -> List[Message]:
         """
         Get the full chat history of the conversation branch up to this message, but return a list of Message objects
-        instead of MessagePromise objects.
+        instead of MessagePromiseImpl objects.
         """
         return [
             await msg.amaterialize()
@@ -187,7 +96,7 @@ class MessagePromise(AsyncStreamable[IN, Token]):
             )
         ]
 
-    async def aget_original_message(self, return_self_if_none: bool = True) -> Optional["MessagePromise"]:
+    async def aget_original_message(self, return_self_if_none: bool = True) -> Optional["MessagePromiseImpl"]:
         """
         Get the original message for this forwarded message. Return self or None if the original message is not found
         (depending on whether return_self_if_none is True or False).
@@ -198,11 +107,11 @@ class MessagePromise(AsyncStreamable[IN, Token]):
         return original_msg
 
     @async_cached_method
-    async def _aget_previous_message_cached(self) -> Optional["MessagePromise"]:
+    async def _aget_previous_message_cached(self) -> Optional["MessagePromiseImpl"]:
         return await self._aget_previous_message_impl()
 
     @async_cached_method
-    async def _aget_original_message_cached(self) -> Optional["MessagePromise"]:
+    async def _aget_original_message_cached(self) -> Optional["MessagePromiseImpl"]:
         return await self._aget_original_message_impl()
 
     # noinspection PyMethodMayBeStatic
@@ -212,24 +121,24 @@ class MessagePromise(AsyncStreamable[IN, Token]):
 
     async def _amaterialize_impl(self) -> Message:
         raise NotImplementedError(
-            "Either create a MessagePromise that is materialized from the start or use a subclass that implements "
+            "Either create a MessagePromiseImpl that is materialized from the start or use a subclass that implements "
             "this method."
         )
 
-    async def _aget_previous_message_impl(self) -> Optional["MessagePromise"]:
+    async def _aget_previous_message_impl(self) -> Optional["MessagePromiseImpl"]:
         msg = await self.amaterialize()
         if msg.prev_msg_hash_key:
             return await self.forum.afind_message_promise(msg.prev_msg_hash_key)
         return None
 
-    async def _aget_original_message_impl(self) -> Optional["MessagePromise"]:
+    async def _aget_original_message_impl(self) -> Optional["MessagePromiseImpl"]:
         if isinstance(self.real_msg_class, ForwardedMessage):
             # noinspection PyUnresolvedReferences
             return await self.forum.afind_message_promise(self.amaterialize().original_msg_hash_key)
         return None
 
 
-class StreamedMsgPromise(MessagePromise[IN]):
+class StreamedMsgPromiseImpl(MessagePromiseImpl[IN]):
     """A message that is streamed token by token instead of being returned all at once."""
 
     def __init__(
@@ -237,7 +146,7 @@ class StreamedMsgPromise(MessagePromise[IN]):
         forum: "Forum",
         sender_alias: str,
         metadata: Optional[Dict[str, Any]] = None,
-        branch_from: Optional[MessagePromise] = None,
+        branch_from: Optional[MessagePromiseImpl] = None,
     ) -> None:
         super().__init__(forum=forum)
         self._sender_alias = sender_alias
@@ -252,14 +161,14 @@ class StreamedMsgPromise(MessagePromise[IN]):
             prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
         )
 
-    async def _aget_previous_message_impl(self) -> Optional["MessagePromise"]:
+    async def _aget_previous_message_impl(self) -> Optional["MessagePromiseImpl"]:
         return self._branch_from
 
-    async def _aget_original_message_impl(self) -> Optional["MessagePromise"]:
+    async def _aget_original_message_impl(self) -> Optional["MessagePromiseImpl"]:
         return None
 
 
-class DetachedMsgPromise(MessagePromise):
+class DetachedMsgPromiseImpl(MessagePromiseImpl):
     # pylint: disable=protected-access
     """
     This is a detached message promise. A detached message is on one hand complete, but on the other hand doesn't
@@ -272,8 +181,8 @@ class DetachedMsgPromise(MessagePromise):
         self,
         forum: "Forum",
         detached_msg: Message,
-        branch_from: Optional[MessagePromise] = None,
-        forward_of: Optional[MessagePromise] = None,
+        branch_from: Optional[MessagePromiseImpl] = None,
+        forward_of: Optional[MessagePromiseImpl] = None,
     ) -> None:
         super().__init__(forum=forum, materialized_msg_content=detached_msg.content)
         self.forum = forum
@@ -336,23 +245,23 @@ class DetachedMsgPromise(MessagePromise):
             return ForwardedMessage
         return type(self._detached_msg)
 
-    async def _aget_previous_message_impl(self) -> Optional[MessagePromise]:
+    async def _aget_previous_message_impl(self) -> Optional[MessagePromiseImpl]:
         return self._branch_from
 
-    async def _aget_original_message_impl(self) -> Optional[MessagePromise]:
+    async def _aget_original_message_impl(self) -> Optional[MessagePromiseImpl]:
         return self._forward_of
 
 
-class DetachedAgentCallMsgPromise(MessagePromise):
+class DetachedAgentCallMsgPromiseImpl(MessagePromiseImpl):
     """
-    DetachedAgentCallMsgPromise is a subtype of MessagePromise that represents a promise that can be materialized into
-    an AgentCallMsg which, in turn, is a subtype of Message that represents a call to an agent.
+    DetachedAgentCallMsgPromiseImpl is a subtype of MessagePromiseImpl that represents a promise that can be
+    materialized into an AgentCallMsg which, in turn, is a subtype of Message that represents a call to an agent.
     """
 
     def __init__(
         self,
         forum: "Forum",
-        request_messages: MessageSequence,
+        request_messages: "MessageSequence",
         detached_agent_call_msg: AgentCallMsg,
     ) -> None:
         super().__init__(forum=forum, materialized_msg_content=detached_agent_call_msg.content)
@@ -381,6 +290,6 @@ class DetachedAgentCallMsgPromise(MessagePromise):
     def _foresee_real_msg_class(self) -> Type[Message]:
         return type(self._detached_agent_call_msg)
 
-    async def _aget_previous_message_impl(self) -> Optional[MessagePromise]:
+    async def _aget_previous_message_impl(self) -> Optional[MessagePromiseImpl]:
         msg_promises = [msg_promise async for msg_promise in self._request_messages]
         return msg_promises[-1] if msg_promises else None

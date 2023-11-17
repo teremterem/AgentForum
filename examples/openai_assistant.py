@@ -44,7 +44,7 @@ async def openai_assistant(ctx: InteractionContext) -> None:
         # instructions="Please address the user as Jane Doe. The user has a premium account."
     )
     for _ in range(100):
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         run = await async_openai_client.beta.threads.runs.retrieve(run_id=run.id, thread_id=thread.id)
         if run.status == "completed":
             assistant_messages = await async_openai_client.beta.threads.messages.list(
