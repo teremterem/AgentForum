@@ -12,9 +12,9 @@ from typing import Optional, List, Dict, AsyncIterator
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from agentforum.models import Message, Freeform, AgentCallMsg, Immutable
-from agentforum.promises import MessagePromise, MessageSequence, DetachedAgentCallMsgPromise, DetachedMsgPromise
+from agentforum.promises import MessagePromise, MessageSequence, DetachedAgentCallMsgPromise
 from agentforum.storage import ImmutableStorage
-from agentforum.typing import AgentFunction, MessageType, SingleMessageType
+from agentforum.typing import AgentFunction, MessageType
 
 USER_ALIAS = "USER"
 
@@ -36,89 +36,48 @@ class ConversationTracker:
         """Check if there is prior history in this conversation."""
         return bool(self._latest_msg_promise)
 
-    def new_message_promise(self, content: SingleMessageType, sender_alias: str, **metadata) -> "MessagePromise":
-        """
-        Create a new, detached message promise in the forum. "Detached message promise" means that this message
-        promise may be a reply to another message promise that may or may not be "materialized" yet.
-        """
-        if isinstance(content, str):
-            forward_of = None
-        elif isinstance(content, Message):
-            forward_of = MessagePromise(forum=self.forum, materialized_msg=content)
-            # TODO Oleksandr: should we store the materialized_msg ?
-            #  (the promise will not store it since it is already "materialized")
-            #  or do we trust that something else already stored it ?
-            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
-        elif isinstance(content, MessagePromise):
-            forward_of = content
-            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
-        else:
-            raise ValueError(f"Unexpected message content type: {type(content)}")
-
-        msg_promise = DetachedMsgPromise(
-            forum=self.forum,
-            branch_from=self._latest_msg_promise,
-            forward_of=forward_of,
-            detached_msg=Message(
-                content=content,
-                sender_alias=sender_alias,
-                metadata=Freeform(**metadata),
-            ),
-        )
-        self._latest_msg_promise = msg_promise
-        return msg_promise
-
     async def aappend_zero_or_more_messages(
-        self, content: MessageType, sender_alias: str, do_not_forward_if_possible: bool = True, **metadata
+        self,
+        content: MessageType,
+        default_sender_alias: str,
+        override_sender_alias: Optional[str] = None,
+        do_not_forward_if_possible: bool = True,
+        **metadata,
     ) -> AsyncIterator[MessagePromise]:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
-        if do_not_forward_if_possible and not self.has_prior_history and not metadata:
-            # if there is no prior history (and no extra metadata) we can just append the original message
-            # (or sequence of messages) instead of creating message forwards
-            # TODO Oleksandr: move this logic into the future MessagePlaceholder class, because right now it works in
-            #  quite an unpredictable and hard to comprehend way
-
-            if isinstance(content, MessageSequence):
-                async for msg_promise in content:
-                    self._latest_msg_promise = msg_promise
-                    # TODO Oleksandr: other parallel tasks may submit messages to the same conversation which will
-                    #  mess it up (because we are not doing forwards here) - how to protect from this ?
-                    yield msg_promise
-                return
-            if isinstance(content, MessagePromise):
-                self._latest_msg_promise = content
-                yield content
-                return
-            if isinstance(content, Message):
-                self._latest_msg_promise = MessagePromise(forum=self.forum, materialized_msg=content)
-                yield self._latest_msg_promise
-                return
-
-        # if it's not a plain string then it should be forwarded (either because prior history in this conversation
-        # should be maintained or because there is extra metadata)
-
         if isinstance(content, (str, Message, MessagePromise)):
-            yield self.new_message_promise(
+            yield MessagePromise(
+                forum=self.forum,
                 content=content,
-                sender_alias=sender_alias,
+                default_sender_alias=default_sender_alias,
+                override_sender_alias=override_sender_alias,
+                do_not_forward_if_possible=do_not_forward_if_possible,
                 **metadata,
             )
 
         elif hasattr(content, "__iter__"):
-            for msg in content:
+            # this is not a single message, this is a collection of messages
+            for sub_msg in content:
                 async for msg_promise in self.aappend_zero_or_more_messages(
-                    content=msg,
-                    sender_alias=sender_alias,
+                    forum=self.forum,
+                    content=sub_msg,
+                    default_sender_alias=default_sender_alias,
+                    override_sender_alias=override_sender_alias,
+                    do_not_forward_if_possible=do_not_forward_if_possible,
                     **metadata,
                 ):
                     yield msg_promise
         elif hasattr(content, "__aiter__"):
-            async for msg in content:
+            # this is not a single message, this is an asynchronous collection of messages
+            async for sub_msg in content:
                 async for msg_promise in self.aappend_zero_or_more_messages(
-                    content=msg,
-                    sender_alias=sender_alias,
+                    forum=self.forum,
+                    content=sub_msg,
+                    default_sender_alias=default_sender_alias,
+                    override_sender_alias=override_sender_alias,
+                    do_not_forward_if_possible=do_not_forward_if_possible,
                     **metadata,
                 ):
                     yield msg_promise

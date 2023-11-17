@@ -2,8 +2,9 @@
 import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
+from agentforum._internals.internal_promises import MessagePromiseImpl
 from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
-from agentforum.typing import IN, MessageType
+from agentforum.typing import IN, MessageType, SingleMessageType
 from agentforum.utils import AsyncStreamable, async_cached_method
 
 if typing.TYPE_CHECKING:
@@ -11,7 +12,7 @@ if typing.TYPE_CHECKING:
 
 
 class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
-    # TODO Oleksandr: rename to AsyncMessageSequence ?
+    # TODO Oleksandr: rename to AsyncMessageSequence
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     AsyncStreamable and relies on internal async queues, the speed at which messages are produced and sent to the
@@ -111,8 +112,11 @@ class MessagePromise(AsyncStreamable[IN, Token]):
     def __init__(
         self,
         forum: "Forum",
-        materialized_msg: Optional[Message] = None,
-        materialized_msg_content: Optional[str] = None,
+        content: SingleMessageType,
+        default_sender_alias: str,
+        override_sender_alias: Optional[str],
+        do_not_forward_if_possible: bool,
+        **metadata,
     ) -> None:
         """
         TODO Oleksandr: better docstring ?
@@ -130,6 +134,34 @@ class MessagePromise(AsyncStreamable[IN, Token]):
         )
         self.forum = forum
         self._materialized_msg = materialized_msg
+
+    def _materialize_msg_promise_impl(self) -> MessagePromiseImpl:
+        if isinstance(content, str):
+            forward_of = None
+        elif isinstance(content, Message):
+            forward_of = MessagePromise(forum=self.forum, materialized_msg=content)
+            # TODO Oleksandr: should we store the materialized_msg ?
+            #  (the promise will not store it since it is already "materialized")
+            #  or do we trust that something else already stored it ?
+            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
+        elif isinstance(content, MessagePromise):
+            forward_of = content
+            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
+        else:
+            raise ValueError(f"Unexpected message content type: {type(content)}")
+
+        msg_promise = DetachedMsgPromise(
+            forum=self.forum,
+            branch_from=self._latest_msg_promise,
+            forward_of=forward_of,
+            detached_msg=Message(
+                content=content,
+                sender_alias=sender_alias,
+                metadata=Freeform(**metadata),
+            ),
+        )
+        self._latest_msg_promise = msg_promise
+        return msg_promise
 
     @property
     def real_msg_class(self) -> Type[Message]:
