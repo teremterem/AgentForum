@@ -116,6 +116,7 @@ class MessagePromise(AsyncStreamable[IN, Token]):
         default_sender_alias: str,
         override_sender_alias: Optional[str],
         do_not_forward_if_possible: bool,
+        prev_msg_promise: Optional["MessagePromise"],
         **metadata,
     ) -> None:
         """
