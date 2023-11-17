@@ -4,12 +4,17 @@ import asyncio
 
 # noinspection PyUnresolvedReferences
 import readline  # pylint: disable=unused-import
+import warnings
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
 import promptlayer  # TODO Oleksandr: make this optional
+
+# TODO Oleksandr: get rid of this warning suppression when PromptLayer doesn't produce "Expected Choice but got dict"
+#  warning anymore
+warnings.filterwarnings("ignore", module="pydantic")
 
 from agentforum.ext.llms.openai import aopenai_chat_completion
 from agentforum.forum import Forum, InteractionContext
