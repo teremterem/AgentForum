@@ -117,7 +117,6 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
 
 
 class MessagePromise:
-    # pylint: disable=protected-access
     """A promise to materialize a message."""
 
     def __init__(
@@ -178,12 +177,13 @@ class MessagePromise:
                     self._content = None
                     self._default_sender_alias = None
                     self._override_sender_alias = None
-                    self._prev_msg_promise = None
+                    self._branch_from = None
                     self._metadata = None
 
         return self._materialized_msg
 
     async def _amaterialize_impl(self) -> Message:
+        sender_alias = self._override_sender_alias or self._default_sender_alias
         prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key if self._branch_from else None
 
         if isinstance(self._content, (str, StreamedMessage)):
@@ -197,12 +197,12 @@ class MessagePromise:
 
             return Message(
                 content=msg_content,
-                sender_alias=self._override_sender_alias or self._default_sender_alias,
+                sender_alias=sender_alias,
                 metadata=metadata,
                 prev_msg_hash_key=prev_msg_hash_key,
             )
 
-        elif isinstance(self._content, (Message, MessagePromise)):
+        if isinstance(self._content, (Message, MessagePromise)):
             if isinstance(self._content, MessagePromise):
                 original_msg = await self._content.amaterialize()
             else:
@@ -220,7 +220,7 @@ class MessagePromise:
                 # hash key)
                 forwarded_msg = ForwardedMessage(
                     original_msg_hash_key=original_msg.hash_key,
-                    sender_alias=self._override_sender_alias or self._default_sender_alias,
+                    sender_alias=sender_alias,
                     # let's merge the metadata from the original message with the metadata provided to the constructor
                     metadata=Freeform(**original_msg.metadata.as_kwargs, **self._metadata),
                     prev_msg_hash_key=prev_msg_hash_key,
