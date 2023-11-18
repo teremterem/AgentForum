@@ -127,6 +127,12 @@ class MessagePromise(AsyncStreamable[IN, Token]):
         self._prev_msg_promise = prev_msg_promise
         self._metadata = metadata
 
+    # TODO TODO TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO TODO TODO
+
     def _OLD_INIT(self, forum: "Forum") -> None:
         # TODO Oleksandr: what to do with this method ? is there anything useful in it ?
         if materialized_msg:
