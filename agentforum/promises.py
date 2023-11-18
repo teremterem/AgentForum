@@ -1,4 +1,5 @@
 """This module contains wrappers for the pydantic models that turn those models into asynchronous promises."""
+import asyncio
 import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
@@ -138,6 +139,9 @@ class MessagePromise:
         self._prev_msg_promise = prev_msg_promise
         self._metadata = metadata
 
+        self._materialized_msg: Optional[Message] = None
+        self._lock = asyncio.Lock()
+
     def __aiter__(self) -> AsyncIterator[ContentChunk]:
         if isinstance(self._content, StreamedMessage):
             return self._content.__aiter__()
@@ -150,6 +154,19 @@ class MessagePromise:
         # this message is not streamed, so we need to materialize it and return the whole content
         message = await self.amaterialize()
         return ContentChunk(text=message.content)
+
+    async def amaterialize(self) -> Message:
+        """
+        Get the full message. This method will "await" until all the tokens are received (or whatever else needs to be
+        waited for before the actual message can be constructed and stored in the storage) and then return the message.
+        """
+        if not self._materialized_msg:
+            async with self._lock:
+                if not self._materialized_msg:
+                    self._materialized_msg = await self._amaterialize_impl()
+                    await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
+
+        return self._materialized_msg
 
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
@@ -205,17 +222,6 @@ class MessagePromise:
         if self._materialized_msg:
             return type(self._materialized_msg)
         return self._foresee_real_msg_class()
-
-    async def amaterialize(self) -> Message:
-        """
-        Get the full message. This method will "await" until all the tokens are received (or whatever else needs to be
-        waited for before the actual message can be constructed and stored in the storage) and then return the message.
-        """
-        if not self._materialized_msg:  # TODO Oleksandr: apply asyncio.Lock
-            self._materialized_msg = await self._amaterialize_impl()
-            await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
-
-        return self._materialized_msg
 
     async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous message in this conversation branch."""
