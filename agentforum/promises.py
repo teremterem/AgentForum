@@ -124,13 +124,26 @@ class MessagePromise:
     def __init__(
         self,
         forum: "Forum",
-        content: SingleMessageType,
-        default_sender_alias: str,
-        override_sender_alias: Optional[str],
-        do_not_forward_if_possible: bool,
-        prev_msg_promise: Optional["MessagePromise"],
+        content: Optional[SingleMessageType] = None,
+        default_sender_alias: Optional[str] = None,
+        override_sender_alias: Optional[str] = None,
+        do_not_forward_if_possible: bool = True,
+        prev_msg_promise: Optional["MessagePromise"] = None,
+        materialized_msg: Optional[Message] = None,
         **metadata,
     ) -> None:
+        if materialized_msg and (
+            content is not None
+            or default_sender_alias is not None
+            or override_sender_alias is not None
+            or prev_msg_promise
+            or metadata
+        ):
+            raise ValueError(
+                "If materialized_msg is provided, content, default_sender_alias, override_sender_alias, "
+                "prev_msg_promise and metadata must not be provided."
+            )
+
         self.forum = forum
         self._content = content
         self._default_sender_alias = default_sender_alias
@@ -139,7 +152,7 @@ class MessagePromise:
         self._prev_msg_promise = prev_msg_promise
         self._metadata = metadata
 
-        self._materialized_msg: Optional[Message] = None
+        self._materialized_msg: Optional[Message] = materialized_msg
         self._lock = asyncio.Lock()
 
     def __aiter__(self) -> AsyncIterator[ContentChunk]:
@@ -166,6 +179,13 @@ class MessagePromise:
                     self._materialized_msg = await self._amaterialize_impl()
                     await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
 
+                    # from now on the source of truth is self._materialized_msg
+                    self._content = None
+                    self._default_sender_alias = None
+                    self._override_sender_alias = None
+                    self._prev_msg_promise = None
+                    self._metadata = None
+
         return self._materialized_msg
 
     # TODO TODO TODO TODO TODO TODO TODO
@@ -173,20 +193,6 @@ class MessagePromise:
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
-
-    def _OLD_INIT(self, forum: "Forum") -> None:
-        # TODO Oleksandr: what to do with this method ? is there anything useful in it ?
-        if materialized_msg:
-            # if there is a materialized message, then override whatever was passed in as materialized_msg_content -
-            # materialized_msg.content is the source of truth
-            materialized_msg_content = materialized_msg.content
-
-        super().__init__(
-            items_so_far=None if materialized_msg_content is None else [Token(text=materialized_msg_content)],
-            completed=materialized_msg_content is not None,
-        )
-        self.forum = forum
-        self._materialized_msg = materialized_msg
 
     def _materialize_msg_promise_impl(self) -> MessagePromiseImpl:
         if isinstance(content, str):
