@@ -201,24 +201,29 @@ class MessagePromise:
                 prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
             )
 
-        elif isinstance(self._content, Message):
+        elif isinstance(self._content, (Message, MessagePromise)):
+            if isinstance(self._content, MessagePromise):
+                original_msg = await self._content.amaterialize()
+            else:
+                original_msg = self._content
+
             should_be_forwarded = True
             if self._do_not_forward_if_possible and not self._metadata:
                 prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key if self._branch_from else None
-                if prev_msg_hash_key == self._content.prev_msg_hash_key:
+                if prev_msg_hash_key == original_msg.prev_msg_hash_key:
                     should_be_forwarded = False
 
             if should_be_forwarded:
                 forwarded_msg = ForwardedMessage(
-                    original_msg_hash_key=self._content.hash_key,
+                    original_msg_hash_key=original_msg.hash_key,
                     sender_alias=self._override_sender_alias or self._default_sender_alias,
                     metadata=Freeform(**self._metadata),
                     prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
                 )
-                forwarded_msg._original_msg = self._content  # pylint: disable=protected-access
+                forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
                 return forwarded_msg
 
-            return self._content
+            return original_msg
 
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
