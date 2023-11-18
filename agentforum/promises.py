@@ -185,20 +185,19 @@ class MessagePromise:
         return self._materialized_msg
 
     async def _amaterialize_impl(self) -> Message:
-        # TODO Oleksandr: get rid of code duplications within this method as much as possible
-        if isinstance(self._content, str):
+        prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key if self._branch_from else None
+
+        if isinstance(self._content, (str, StreamedMessage)):
+            if isinstance(self._content, StreamedMessage):
+                msg_content = "".join([token.text async for token in self._content])
+            else:
+                msg_content = self._content
+
             return Message(
-                content=self._content,
+                content=msg_content,
                 sender_alias=self._override_sender_alias or self._default_sender_alias,
                 metadata=Freeform(**self._metadata),
-                prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
-            )
-        elif isinstance(self._content, StreamedMessage):
-            return Message(
-                content="".join([token.text async for token in self._content]),
-                sender_alias=self._override_sender_alias or self._default_sender_alias,
-                metadata=Freeform(**self._metadata),
-                prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
+                prev_msg_hash_key=prev_msg_hash_key,
             )
 
         elif isinstance(self._content, (Message, MessagePromise)):
@@ -209,7 +208,6 @@ class MessagePromise:
 
             should_be_forwarded = True
             if self._do_not_forward_if_possible and not self._metadata:
-                prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key if self._branch_from else None
                 if prev_msg_hash_key == original_msg.prev_msg_hash_key:
                     should_be_forwarded = False
 
@@ -218,12 +216,14 @@ class MessagePromise:
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=self._override_sender_alias or self._default_sender_alias,
                     metadata=Freeform(**self._metadata),
-                    prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
+                    prev_msg_hash_key=prev_msg_hash_key,
                 )
                 forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
                 return forwarded_msg
 
             return original_msg
+
+        raise ValueError(f"Unexpected message content type: {type(self._content)}")
 
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
