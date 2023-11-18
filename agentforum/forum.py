@@ -11,8 +11,8 @@ from typing import Optional, List, Dict, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from agentforum.models import Message, Freeform, AgentCallMsg, Immutable
-from agentforum.promises import MessagePromise, MessageSequence, StreamedMessage
+from agentforum.models import Message, Immutable
+from agentforum.promises import MessagePromise, MessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage import ImmutableStorage
 from agentforum.typing import AgentFunction, MessageType
 
@@ -276,7 +276,7 @@ class AgentCall:
         conversation: ConversationTracker,
         receiving_agent: Agent,
         do_not_forward_if_possible: bool = True,
-        **kwargs,
+        **function_kwargs,
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
@@ -292,16 +292,11 @@ class AgentCall:
         )
         self._request_producer = MessageSequence._MessageProducer(self._request_messages)
 
-        # TODO Oleksandr: extract this into a separate method of ConversationTracker
-        agent_call_msg_promise = DetachedAgentCallMsgPromise(
+        agent_call_msg_promise = AgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,
-            detached_agent_call_msg=AgentCallMsg(
-                content=self.receiving_agent.agent_alias,
-                # we keep agent calls anonymous to be able to cache call results for multiple caller agents to reuse
-                sender_alias="",
-                metadata=Freeform(**kwargs),
-            ),
+            receiving_agent_alias=self.receiving_agent.agent_alias,
+            **function_kwargs,
         )
         conversation._latest_msg_promise = agent_call_msg_promise
 
