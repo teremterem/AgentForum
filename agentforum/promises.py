@@ -1,11 +1,11 @@
 """This module contains wrappers for the pydantic models that turn those models into asynchronous promises."""
 import asyncio
 import typing
-from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
+from typing import Optional, List, Dict, Any, AsyncIterator, Union
 
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
 from agentforum.typing import IN, MessageType, SingleMessageType
-from agentforum.utils import AsyncStreamable, async_cached_method
+from agentforum.utils import AsyncStreamable
 
 if typing.TYPE_CHECKING:
     from agentforum.forum import Forum, ConversationTracker
@@ -162,6 +162,13 @@ class MessagePromise:
         message = await self.amaterialize()
         return ContentChunk(text=message.content)
 
+    @property
+    def is_agent_call(self) -> bool:
+        """Check if this message is a call to an agent."""
+        if self._materialized_msg:
+            return isinstance(self._materialized_msg, AgentCallMsg)
+        return False  # this will be overridden in AgentCallMsgPromise
+
     async def amaterialize(self) -> Message:
         """
         Get the full message. This method will "await" until all the tokens are received (or whatever else needs to be
@@ -181,6 +188,16 @@ class MessagePromise:
                     self._metadata = None
 
         return self._materialized_msg
+
+    async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+        """Get the previous MessagePromise in this conversation branch."""
+        prev_msg_promise = await self._aget_previous_msg_promise_impl()
+
+        if skip_agent_calls:
+            while prev_msg_promise.is_agent_call:
+                prev_msg_promise = await prev_msg_promise._aget_previous_msg_promise_impl()
+
+        return prev_msg_promise
 
     async def _amaterialize_impl(self) -> Message:
         sender_alias = self._override_sender_alias or self._default_sender_alias
@@ -213,11 +230,10 @@ class MessagePromise:
                 or self._metadata
                 or prev_msg_hash_key != original_msg.prev_msg_hash_key
             ):
-                # the message must be forwarded, because either we are not trying to avoid forwarding
-                # (do_not_forward_if_possible==False), or additional metadata was provided (and message forwarding is
-                # the only way to attach metadata to a message), or the previous message hash key is different from the
-                # one in the original message (and message forwarding is the only way to change the previous message
-                # hash key)
+                # the message must be forwarded because either we are not actively trying to avoid forwarding
+                # (do_not_forward_if_possible is False), or additional metadata was provided (message forwarding is
+                # the only way to attach metadata to a message), or the original message is branched from a different
+                # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=sender_alias,
@@ -232,23 +248,18 @@ class MessagePromise:
 
         raise ValueError(f"Unexpected message content type: {type(self._content)}")
 
-    # TODO TODO TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO TODO TODO
+    async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
+        if self._materialized_msg:
+            if self._materialized_msg.prev_msg_hash_key:
+                return await self.forum.afind_message_promise(self._materialized_msg.prev_msg_hash_key)
+            return None
+        return self._branch_from
 
-    async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
-        """Get the previous message in this conversation branch."""
-        prev_msg = await self._aget_previous_message_cached()
-
-        if skip_agent_calls:
-            while prev_msg:
-                if not issubclass(prev_msg.real_msg_class, AgentCallMsg):
-                    break
-                prev_msg = await prev_msg._aget_previous_message_cached()
-
-        return prev_msg
+    # TODO TODO TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO TODO TODO
 
     async def aget_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
@@ -275,38 +286,3 @@ class MessagePromise:
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         ]
-
-    async def aget_original_message(self, return_self_if_none: bool = True) -> Optional["MessagePromise"]:
-        """
-        Get the original message for this forwarded message. Return self or None if the original message is not found
-        (depending on whether return_self_if_none is True or False).
-        """
-        original_msg = self._aget_original_message_cached()
-        if return_self_if_none:
-            original_msg = original_msg or self
-        return original_msg
-
-    @async_cached_method
-    async def _aget_previous_message_cached(self) -> Optional["MessagePromise"]:
-        return await self._aget_previous_message_impl()
-
-    @async_cached_method
-    async def _aget_original_message_cached(self) -> Optional["MessagePromise"]:
-        return await self._aget_original_message_impl()
-
-    # noinspection PyMethodMayBeStatic
-    def _foresee_real_msg_class(self) -> Type[Message]:
-        """This method foresees what the real message type will be when it is "materialized"."""
-        return Message
-
-    async def _aget_previous_message_impl(self) -> Optional["MessagePromise"]:
-        msg = await self.amaterialize()
-        if msg.prev_msg_hash_key:
-            return await self.forum.afind_message_promise(msg.prev_msg_hash_key)
-        return None
-
-    async def _aget_original_message_impl(self) -> Optional["MessagePromise"]:
-        if isinstance(self.real_msg_class, ForwardedMessage):
-            # noinspection PyUnresolvedReferences
-            return await self.forum.afind_message_promise(self.amaterialize().original_msg_hash_key)
-        return None
