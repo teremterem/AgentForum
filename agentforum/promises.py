@@ -3,7 +3,7 @@ import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
 from agentforum._internals.internal_promises import MessagePromiseImpl
-from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
+from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
 from agentforum.typing import IN, MessageType, SingleMessageType
 from agentforum.utils import AsyncStreamable, async_cached_method
 
@@ -113,7 +113,7 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         self.metadata = dict(metadata or {})
 
 
-class MessagePromise(AsyncStreamable[IN, Token]):
+class MessagePromise:
     # pylint: disable=protected-access
     """A promise to materialize a message."""
 
@@ -134,6 +134,19 @@ class MessagePromise(AsyncStreamable[IN, Token]):
         self._do_not_forward_if_possible = do_not_forward_if_possible
         self._prev_msg_promise = prev_msg_promise
         self._metadata = metadata
+
+    def __aiter__(self) -> AsyncIterator[ContentChunk]:
+        if isinstance(self._content, StreamedMessage):
+            return self._content.__aiter__()
+        return self
+
+    async def __anext__(self) -> ContentChunk:
+        if isinstance(self._content, StreamedMessage):
+            raise RuntimeError("You need to call __aiter__() and iterate over that object instead.")
+
+        # this message is not streamed, so we need to materialize it and return the whole content
+        message = await self.amaterialize()
+        return ContentChunk(text=message.content)
 
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
