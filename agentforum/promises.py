@@ -128,20 +128,16 @@ class MessagePromise:
         default_sender_alias: Optional[str] = None,
         override_sender_alias: Optional[str] = None,
         do_not_forward_if_possible: bool = True,
-        prev_msg_promise: Optional["MessagePromise"] = None,
+        branch_from: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
         **metadata,
     ) -> None:
         if materialized_msg and (
-            content is not None
-            or default_sender_alias is not None
-            or override_sender_alias is not None
-            or prev_msg_promise
-            or metadata
+            content is not None or default_sender_alias or override_sender_alias or branch_from or metadata
         ):
             raise ValueError(
                 "If materialized_msg is provided, content, default_sender_alias, override_sender_alias, "
-                "prev_msg_promise and metadata must not be provided."
+                "branch_from and metadata must not be provided."
             )
 
         self.forum = forum
@@ -149,7 +145,7 @@ class MessagePromise:
         self._default_sender_alias = default_sender_alias
         self._override_sender_alias = override_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
-        self._prev_msg_promise = prev_msg_promise
+        self._branch_from = branch_from
         self._metadata = metadata
 
         self._materialized_msg: Optional[Message] = materialized_msg
@@ -187,6 +183,42 @@ class MessagePromise:
                     self._metadata = None
 
         return self._materialized_msg
+
+    async def _amaterialize_impl(self) -> Message:
+        # TODO Oleksandr: get rid of code duplications within this method as much as possible
+        if isinstance(self._content, str):
+            return Message(
+                content=self._content,
+                sender_alias=self._override_sender_alias or self._default_sender_alias,
+                metadata=Freeform(**self._metadata),
+                prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
+            )
+        elif isinstance(self._content, StreamedMessage):
+            return Message(
+                content="".join([token.text async for token in self._content]),
+                sender_alias=self._override_sender_alias or self._default_sender_alias,
+                metadata=Freeform(**self._metadata),
+                prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
+            )
+
+        elif isinstance(self._content, Message):
+            should_be_forwarded = True
+            if self._do_not_forward_if_possible and not self._metadata:
+                prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key if self._branch_from else None
+                if prev_msg_hash_key == self._content.prev_msg_hash_key:
+                    should_be_forwarded = False
+
+            if should_be_forwarded:
+                forwarded_msg = ForwardedMessage(
+                    original_msg_hash_key=self._content.hash_key,
+                    sender_alias=self._override_sender_alias or self._default_sender_alias,
+                    metadata=Freeform(**self._metadata),
+                    prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
+                )
+                forwarded_msg._original_msg = self._content  # pylint: disable=protected-access
+                return forwarded_msg
+
+            return self._content
 
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
@@ -289,12 +321,6 @@ class MessagePromise:
     def _foresee_real_msg_class(self) -> Type[Message]:
         """This method foresees what the real message type will be when it is "materialized"."""
         return Message
-
-    async def _amaterialize_impl(self) -> Message:
-        raise NotImplementedError(
-            "Either create a MessagePromise that is materialized from the start or use a subclass that implements "
-            "this method."
-        )
 
     async def _aget_previous_message_impl(self) -> Optional["MessagePromise"]:
         msg = await self.amaterialize()

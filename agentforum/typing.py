@@ -7,7 +7,7 @@ if typing.TYPE_CHECKING:
     from agentforum.promises import StreamedMessage, MessagePromise
     from agentforum.models import Message
 
-    SingleMessageType = Union[str, Message, StreamedMessage, MessagePromise, BaseException]
+    SingleMessageType = Union[str, StreamedMessage, Message, MessagePromise, BaseException]
     AgentFunction = Callable[[InteractionContext, ...], Awaitable[None]]
 else:
     SingleMessageType = Union[Any]
