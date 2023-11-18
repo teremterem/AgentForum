@@ -1,5 +1,5 @@
-# pylint: disable=protected-access
 """Tests for agentforum.promises.MessageSequence"""
+# pylint: disable=protected-access
 import asyncio
 
 import pytest

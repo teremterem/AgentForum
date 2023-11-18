@@ -11,7 +11,7 @@ from agentforum.promises import MessagePromise, StreamedMessage
 
 
 # noinspection PyProtectedMember
-async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protected-access
+async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     forum: Forum,
     prompt: List[Union[MessagePromise, Message]],
     override_sender_alias: Optional[str] = None,
@@ -19,7 +19,7 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
     stream: bool = False,
     n: int = 1,
     **kwargs,
-) -> MessagePromise:  # TODO Oleksandr: this function doesn't necessarily need to be async
+) -> StreamedMessage:  # TODO Oleksandr: this function doesn't necessarily need to be async
     """Chat with OpenAI models. Returns a message or a stream of tokens."""
     if not async_openai_client:
         from openai import AsyncOpenAI  # pylint: disable=import-outside-toplevel
@@ -44,11 +44,12 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
     sender_alias = override_sender_alias or InteractionContext.get_current_sender_alias()
 
     if stream:
-        message_promise = _OpenAIStreamedMessage(forum=forum, sender_alias=sender_alias)
+        streamed_message = _OpenAIStreamedMessage(forum=forum, sender_alias=sender_alias)
 
         async def _send_tokens() -> None:
+            # pylint: disable=protected-access
             # noinspection PyProtectedMember
-            with _OpenAIStreamedMessage._Producer(message_promise) as token_producer:
+            with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
                 response_ = await async_openai_client.chat.completions.create(
                     messages=message_dicts, stream=True, **kwargs
                 )
@@ -58,16 +59,17 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
             # await message_promise.amaterialize()  # let's save the message in the storage
 
         asyncio.create_task(_send_tokens())
-        return message_promise
+        return streamed_message
 
-    # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
-    response = await async_openai_client.chat.completions.create(messages=message_dicts, stream=False, **kwargs)
-    # TODO Oleksandr: fix it - there is no _new_message_promise() method on Forum anymore
-    return forum._new_message_promise(
-        content=response["choices"][0]["message"]["content"],
-        sender_alias=sender_alias,
-        **_build_openai_metadata_dict(response),
-    )
+    raise NotImplementedError("TODO Oleksandr: implement the non-streaming case")
+    # # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
+    # response = await async_openai_client.chat.completions.create(messages=message_dicts, stream=False, **kwargs)
+    # # TODO Oleksandr: fix it - there is no _new_message_promise() method on Forum anymore
+    # return forum._new_message_promise(
+    #     content=response["choices"][0]["message"]["content"],
+    #     sender_alias=sender_alias,
+    #     **_build_openai_metadata_dict(response),
+    # )
 
 
 class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
@@ -83,7 +85,7 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
         # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built ?
         for k, v in _build_openai_metadata_dict(incoming_item.model_dump()).items():
             if v is not None:
-                self.metadata[k] = v
+                self._metadata[k] = v
 
 
 def _build_openai_metadata_dict(openai_response: Dict[str, Any]) -> Dict[str, Any]:

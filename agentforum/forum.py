@@ -1,4 +1,3 @@
-# pylint: disable=protected-access
 """
 The Forum class is the main entry point for the agentforum library. It is used to create a forum, register agents in
 it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ImmutableStorage
@@ -184,12 +183,13 @@ class Agent:
         # TODO Oleksandr: get rid of this if-statement by making Forum a context manager too and making sure all the
         #  "seed" agent calls are done within the context of the forum ?
         if parent_ctx:
-            parent_ctx._child_agent_calls.append(agent_call)
+            parent_ctx._child_agent_calls.append(agent_call)  # pylint: disable=protected-access
 
         asyncio.create_task(self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs))
         return agent_call
 
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
+        # pylint: disable=protected-access
         with agent_call._response_producer:
             with InteractionContext(
                 forum=self.forum,

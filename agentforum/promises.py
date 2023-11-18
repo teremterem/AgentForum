@@ -111,9 +111,18 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
     content (as a stream of tokens) and metadata. It does not maintain sender_alias, prev_msg_hash_key, etc.
     """
 
-    def __init__(self, *args, metadata: Optional[Dict[str, Any]] = None, **kwargs) -> None:
+    def __init__(self, *args, override_metadata: Optional[Dict[str, Any]] = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.metadata = dict(metadata or {})
+        self._metadata = {}
+        self._override_metadata = override_metadata or {}
+
+    def build_metadata(self) -> Dict[str, Any]:
+        """
+        Build metadata from the metadata provided to the constructor and the metadata collected during streaming.
+        Metadata provided to the constructor (override_metadata) takes precedence over the metadata collected during
+        streaming.
+        """
+        return {**self._metadata, **self._override_metadata}
 
 
 class MessagePromise:  # pylint: disable=too-many-instance-attributes
@@ -208,7 +217,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if isinstance(self._content, StreamedMessage):
                 msg_content = "".join([token.text async for token in self._content])
                 # let's merge the metadata from the stream with the metadata provided to the constructor
-                metadata = Freeform(**self._content.metadata, **self._metadata)
+                metadata = Freeform(**self._content.build_metadata(), **self._metadata)
             else:
                 msg_content = self._content
                 metadata = Freeform(**self._metadata)
