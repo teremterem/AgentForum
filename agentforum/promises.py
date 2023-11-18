@@ -119,11 +119,16 @@ class MessagePromise(AsyncStreamable[IN, Token]):
         prev_msg_promise: Optional["MessagePromise"],
         **metadata,
     ) -> None:
-        """
-        TODO Oleksandr: better docstring ?
-        NOTE: The `materialized_msg_content` parameter is used to initialize the MessagePromise with content from a
-        "detached" message (see DetachedMsgPromise class).
-        """
+        self.forum = forum
+        self._content = content
+        self._default_sender_alias = default_sender_alias
+        self._override_sender_alias = override_sender_alias
+        self._do_not_forward_if_possible = do_not_forward_if_possible
+        self._prev_msg_promise = prev_msg_promise
+        self._metadata = metadata
+
+    def _OLD_INIT(self, forum: "Forum") -> None:
+        # TODO Oleksandr: what to do with this method ? is there anything useful in it ?
         if materialized_msg:
             # if there is a materialized message, then override whatever was passed in as materialized_msg_content -
             # materialized_msg.content is the source of truth
