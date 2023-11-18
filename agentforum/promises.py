@@ -191,12 +191,12 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
     async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous MessagePromise in this conversation branch."""
-        prev_msg_promise = await self._aget_previous_msg_promise_impl()
+        prev_msg_promise = await self._aget_previous_msg_promise_try_materialized()
 
         if skip_agent_calls:
             while prev_msg_promise.is_agent_call:
                 # pylint: disable=protected-access
-                prev_msg_promise = await prev_msg_promise._aget_previous_msg_promise_impl()
+                prev_msg_promise = await prev_msg_promise._aget_previous_msg_promise_try_materialized()
 
         return prev_msg_promise
 
@@ -249,11 +249,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         raise ValueError(f"Unexpected message content type: {type(self._content)}")
 
-    async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
+    async def _aget_previous_msg_promise_try_materialized(self) -> Optional["MessagePromise"]:
         if self._materialized_msg:
             if self._materialized_msg.prev_msg_hash_key:
                 return await self.forum.afind_message_promise(self._materialized_msg.prev_msg_hash_key)
             return None
+        return await self._aget_previous_msg_promise_impl()
+
+    async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
         return self._branch_from
 
     async def aget_history(
@@ -284,3 +287,44 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         ]
+
+
+class AgentCallMsgPromise(MessagePromise):
+    """
+    A promise to materialize an agent call message. Agent call messages are special because they are not produced by
+    any agent, but rather by the forum itself. They are used to capture parameters of agent calls (a sequence of
+    request messages and agent function kwargs) so the results of those calls can be cached later.
+    """
+
+    def __init__(
+        self, forum: "Forum", request_messages: MessageSequence, receiving_agent_alias: str, **function_kwargs
+    ) -> None:
+        super().__init__(forum=forum, content=receiving_agent_alias, **function_kwargs)
+        self._request_messages = request_messages
+
+    @property
+    def is_agent_call(self) -> bool:
+        return True
+
+    async def _amaterialize_impl(self) -> Message:
+        messages = await self._request_messages.amaterialize_all()
+        if messages:
+            msg_seq_start_hash_key = messages[0].hash_key
+            msg_seq_end_hash_key = messages[-1].hash_key
+        else:
+            msg_seq_start_hash_key = None
+            msg_seq_end_hash_key = None
+
+        return AgentCallMsg(
+            content=self._content,  # receiving_agent_alias
+            sender_alias="",  # we keep agent calls anonymous, so they could be cached and reused by other agents
+            metadata=Freeform(**self._metadata),  # function_kwargs
+            prev_msg_hash_key=msg_seq_end_hash_key,  # agent call gets attached to the end of the request messages
+            msg_seq_start_hash_key=msg_seq_start_hash_key,
+        )
+
+    async def _aget_previous_msg_promise_impl(self) -> Optional[MessagePromise]:
+        msg_promise = None
+        async for msg_promise in self._request_messages:
+            pass
+        return msg_promise
