@@ -141,7 +141,7 @@ class AgentCallMsg(Message):
 
 
 class ContentChunk(Immutable):
-    af_model_: Literal["token"] = "chunk"
+    af_model_: Literal["chunk"] = "chunk"
     text: str
 
 
