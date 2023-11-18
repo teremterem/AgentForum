@@ -116,10 +116,10 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         self.metadata = dict(metadata or {})
 
 
-class MessagePromise:
+class MessagePromise:  # pylint: disable=too-many-instance-attributes
     """A promise to materialize a message."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         forum: "Forum",
         content: Optional[SingleMessageType] = None,
@@ -130,7 +130,7 @@ class MessagePromise:
         materialized_msg: Optional[Message] = None,
         **metadata,
     ) -> None:
-        if materialized_msg and (
+        if materialized_msg and (  # pylint: disable=too-many-boolean-expressions
             content is not None or default_sender_alias or override_sender_alias or branch_from or metadata
         ):
             raise ValueError(
@@ -195,6 +195,7 @@ class MessagePromise:
 
         if skip_agent_calls:
             while prev_msg_promise.is_agent_call:
+                # pylint: disable=protected-access
                 prev_msg_promise = await prev_msg_promise._aget_previous_msg_promise_impl()
 
         return prev_msg_promise
@@ -255,21 +256,18 @@ class MessagePromise:
             return None
         return self._branch_from
 
-    # TODO TODO TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO TODO TODO
-
     async def aget_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List["MessagePromise"]:
-        """Get the full chat history of the conversation branch up to this message."""
-        # TODO Oleksandr: introduce a limit on the number of messages to fetch
-        msg = self
-        result = [msg] if include_this_message else []
-        while msg := await msg.aget_previous_message(skip_agent_calls=skip_agent_calls):
-            result.append(msg)
+        """
+        Get the full chat history of the conversation branch up to this message. Returns a list of MessagePromise
+        objects.
+        """
+        # TODO Oleksandr: introduce a limit on the number of messages to fetch ?
+        msg_promise = self
+        result = [msg_promise] if include_this_message else []
+        while msg_promise := await msg_promise.aget_previous_msg_promise(skip_agent_calls=skip_agent_calls):
+            result.append(msg_promise)
         result.reverse()
         return result
 
@@ -281,8 +279,8 @@ class MessagePromise:
         instead of MessagePromise objects.
         """
         return [
-            await msg.amaterialize()
-            for msg in await self.aget_history(
+            await msg_promise.amaterialize()
+            for msg_promise in await self.aget_history(
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         ]
