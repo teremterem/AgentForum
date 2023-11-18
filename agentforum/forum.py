@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, AsyncIterator
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from agentforum.models import Message, Freeform, AgentCallMsg, Immutable
-from agentforum.promises import MessagePromise, MessageSequence, DetachedAgentCallMsgPromise
+from agentforum.promises import MessagePromise, MessageSequence, StreamedMessage
 from agentforum.storage import ImmutableStorage
 from agentforum.typing import AgentFunction, MessageType
 
@@ -21,11 +21,6 @@ USER_ALIAS = "USER"
 
 class ConversationTracker:
     """An object that tracks the tip of a conversation branch."""
-
-    # TODO Oleksandr: Introduce the concept of MessagePlaceholder instead of MessagePromise
-    #  (composition instead of polymorphism) and move most of the logic from ConversationTracker to MessagePlaceholder.
-    #  This way it will become possible to delay the decision of whether any given message is eligible for
-    #  "do_not_forward_if_possible".
 
     def __init__(self, forum: "Forum", branch_from: Optional[MessagePromise] = None) -> None:
         self.forum = forum
@@ -47,7 +42,7 @@ class ConversationTracker:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
-        if isinstance(content, (str, Message, MessagePromise)):
+        if isinstance(content, (str, Message, StreamedMessage, MessagePromise)):
             msg_promise = MessagePromise(
                 forum=self.forum,
                 content=content,

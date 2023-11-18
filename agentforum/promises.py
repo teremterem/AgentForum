@@ -3,7 +3,7 @@ import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
 from agentforum._internals.internal_promises import MessagePromiseImpl
-from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters
+from agentforum.models import Token, Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
 from agentforum.typing import IN, MessageType, SingleMessageType
 from agentforum.utils import AsyncStreamable, async_cached_method
 
@@ -103,6 +103,14 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
             self.send(
                 MessageParameters(content=content, override_sender_alias=override_sender_alias, metadata=metadata)
             )
+
+
+class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
+    """A message that is streamed token by token instead of being returned all at once."""
+
+    def __init__(self, *args, metadata: Optional[Dict[str, Any]] = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.metadata = dict(metadata or {})
 
 
 class MessagePromise(AsyncStreamable[IN, Token]):
@@ -271,160 +279,3 @@ class MessagePromise(AsyncStreamable[IN, Token]):
             # noinspection PyUnresolvedReferences
             return await self.forum.afind_message_promise(self.amaterialize().original_msg_hash_key)
         return None
-
-
-class StreamedMsgPromise(MessagePromise[IN]):
-    """A message that is streamed token by token instead of being returned all at once."""
-
-    def __init__(
-        self,
-        forum: "Forum",
-        sender_alias: str,
-        metadata: Optional[Dict[str, Any]] = None,
-        branch_from: Optional[MessagePromise] = None,
-    ) -> None:
-        super().__init__(forum=forum)
-        self._sender_alias = sender_alias
-        self._metadata = dict(metadata or {})
-        self._branch_from = branch_from
-
-    async def _amaterialize_impl(self) -> Message:
-        return Message(
-            content="".join([token.text async for token in self]),
-            sender_alias=self._sender_alias,
-            metadata=Freeform(**self._metadata),
-            prev_msg_hash_key=(await self._branch_from.amaterialize()).hash_key if self._branch_from else None,
-        )
-
-    async def _aget_previous_message_impl(self) -> Optional["MessagePromise"]:
-        return self._branch_from
-
-    async def _aget_original_message_impl(self) -> Optional["MessagePromise"]:
-        return None
-
-
-class DetachedMsgPromise(MessagePromise):
-    # pylint: disable=protected-access
-    """
-    This is a detached message promise. A detached message is on one hand complete, but on the other hand doesn't
-    reference the previous message in the conversation yet (neither it references its original message, in case it's
-    a forward). This is why branch_from and forward_of are specified as standalone properties in the promise
-    constructor - those relations will become part of the underlying Message upon its "materialization".
-    """
-
-    def __init__(
-        self,
-        forum: "Forum",
-        detached_msg: Message,
-        branch_from: Optional[MessagePromise] = None,
-        forward_of: Optional[MessagePromise] = None,
-    ) -> None:
-        super().__init__(forum=forum, materialized_msg_content=detached_msg.content)
-        self.forum = forum
-        self._detached_msg = detached_msg
-        self._branch_from = branch_from
-        self._forward_of = forward_of
-
-    def __aiter__(self) -> AsyncIterator[Token]:
-        if self._forward_of:
-            return self._forward_of.__aiter__()
-        return super().__aiter__()
-
-    @property
-    def completed(self) -> bool:
-        if self._forward_of:
-            return self._forward_of.completed
-        return super().completed
-
-    async def _amaterialize_impl(self) -> Message:
-        """
-        Get the full message. This method will "await" until all the tokens are received and then return the complete
-        message.
-        """
-        prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key if self._branch_from else None
-        original_msg = None
-
-        if self._forward_of:
-            original_msg = await self._forward_of.amaterialize()
-
-            metadata_dict = original_msg.metadata.model_dump(exclude={"af_model_"})
-            # let's merge the metadata from the original message with the metadata from the detached message
-            # (detached message metadata overrides the original message metadata in case of conflicts; also
-            # keep in mind that it is a shallow merge - nested objects are not merged)
-            metadata_dict.update(self._detached_msg.metadata.model_dump(exclude={"af_model_"}))
-
-            content = original_msg.content
-            metadata = Freeform(**metadata_dict)
-            extra_kwargs = {"original_msg_hash_key": original_msg.hash_key}
-        else:
-            content = self._detached_msg.content
-            metadata = self._detached_msg.metadata
-            extra_kwargs = {}
-
-        materialized_msg = self.real_msg_class(
-            **self._detached_msg.model_dump(
-                exclude={"af_model_", "content", "metadata", "prev_msg_hash_key", "original_msg_hash_key"}
-            ),
-            content=content,
-            metadata=metadata,
-            prev_msg_hash_key=prev_msg_hash_key,
-            **extra_kwargs,
-        )
-
-        if original_msg:
-            materialized_msg._original_msg = original_msg
-        return materialized_msg
-
-    def _foresee_real_msg_class(self) -> Type[Message]:
-        if self._forward_of:
-            return ForwardedMessage
-        return type(self._detached_msg)
-
-    async def _aget_previous_message_impl(self) -> Optional[MessagePromise]:
-        return self._branch_from
-
-    async def _aget_original_message_impl(self) -> Optional[MessagePromise]:
-        return self._forward_of
-
-
-class DetachedAgentCallMsgPromise(MessagePromise):
-    """
-    DetachedAgentCallMsgPromise is a subtype of MessagePromise that represents a promise that can be materialized into
-    an AgentCallMsg which, in turn, is a subtype of Message that represents a call to an agent.
-    """
-
-    def __init__(
-        self,
-        forum: "Forum",
-        request_messages: MessageSequence,
-        detached_agent_call_msg: AgentCallMsg,
-    ) -> None:
-        super().__init__(forum=forum, materialized_msg_content=detached_agent_call_msg.content)
-        self.forum = forum
-        self._request_messages = request_messages
-        self._detached_agent_call_msg = detached_agent_call_msg
-
-    async def _amaterialize_impl(self) -> Message:
-        messages = await self._request_messages.amaterialize_all()
-        if messages:
-            msg_seq_start_hash_key = messages[0].hash_key
-            msg_seq_end_hash_key = messages[-1].hash_key
-        else:
-            msg_seq_start_hash_key = None
-            msg_seq_end_hash_key = None
-
-        return self.real_msg_class(
-            **self._detached_agent_call_msg.model_dump(
-                exclude={"af_model_", "metadata", "prev_msg_hash_key", "msg_seq_start_hash_key"}
-            ),
-            metadata=self._detached_agent_call_msg.metadata,
-            prev_msg_hash_key=msg_seq_end_hash_key,  # agent calls get attached to the end of the message sequence
-            msg_seq_start_hash_key=msg_seq_start_hash_key,
-        )
-
-    def _foresee_real_msg_class(self) -> Type[Message]:
-        return type(self._detached_agent_call_msg)
-
-    async def _aget_previous_message_impl(self) -> Optional[MessagePromise]:
-        msg_promises = [msg_promise async for msg_promise in self._request_messages]
-        return msg_promises[-1] if msg_promises else None
