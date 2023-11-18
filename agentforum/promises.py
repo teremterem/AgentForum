@@ -3,7 +3,6 @@ import asyncio
 import typing
 from typing import Optional, Type, List, Dict, Any, AsyncIterator, Union
 
-from agentforum._internals.internal_promises import MessagePromiseImpl
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
 from agentforum.typing import IN, MessageType, SingleMessageType
 from agentforum.utils import AsyncStreamable, async_cached_method
@@ -190,13 +189,16 @@ class MessagePromise:
         if isinstance(self._content, (str, StreamedMessage)):
             if isinstance(self._content, StreamedMessage):
                 msg_content = "".join([token.text async for token in self._content])
+                # let's merge the metadata from the stream with the metadata provided to the constructor
+                metadata = Freeform(**self._content.metadata, **self._metadata)
             else:
                 msg_content = self._content
+                metadata = Freeform(**self._metadata)
 
             return Message(
                 content=msg_content,
                 sender_alias=self._override_sender_alias or self._default_sender_alias,
-                metadata=Freeform(**self._metadata),
+                metadata=metadata,
                 prev_msg_hash_key=prev_msg_hash_key,
             )
 
@@ -206,16 +208,21 @@ class MessagePromise:
             else:
                 original_msg = self._content
 
-            should_be_forwarded = True
-            if self._do_not_forward_if_possible and not self._metadata:
-                if prev_msg_hash_key == original_msg.prev_msg_hash_key:
-                    should_be_forwarded = False
-
-            if should_be_forwarded:
+            if (
+                (not self._do_not_forward_if_possible)
+                or self._metadata
+                or prev_msg_hash_key != original_msg.prev_msg_hash_key
+            ):
+                # the message must be forwarded, because either we are not trying to avoid forwarding
+                # (do_not_forward_if_possible==False), or additional metadata was provided (and message forwarding is
+                # the only way to attach metadata to a message), or the previous message hash key is different from the
+                # one in the original message (and message forwarding is the only way to change the previous message
+                # hash key)
                 forwarded_msg = ForwardedMessage(
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=self._override_sender_alias or self._default_sender_alias,
-                    metadata=Freeform(**self._metadata),
+                    # let's merge the metadata from the original message with the metadata provided to the constructor
+                    metadata=Freeform(**original_msg.metadata.as_kwargs, **self._metadata),
                     prev_msg_hash_key=prev_msg_hash_key,
                 )
                 forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
@@ -230,41 +237,6 @@ class MessagePromise:
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
     # TODO TODO TODO TODO TODO TODO TODO
-
-    def _materialize_msg_promise_impl(self) -> MessagePromiseImpl:
-        if isinstance(content, str):
-            forward_of = None
-        elif isinstance(content, Message):
-            forward_of = MessagePromise(forum=self.forum, materialized_msg=content)
-            # TODO Oleksandr: should we store the materialized_msg ?
-            #  (the promise will not store it since it is already "materialized")
-            #  or do we trust that something else already stored it ?
-            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
-        elif isinstance(content, MessagePromise):
-            forward_of = content
-            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
-        else:
-            raise ValueError(f"Unexpected message content type: {type(content)}")
-
-        msg_promise = DetachedMsgPromise(
-            forum=self.forum,
-            branch_from=self._latest_msg_promise,
-            forward_of=forward_of,
-            detached_msg=Message(
-                content=content,
-                sender_alias=sender_alias,
-                metadata=Freeform(**metadata),
-            ),
-        )
-        self._latest_msg_promise = msg_promise
-        return msg_promise
-
-    @property
-    def real_msg_class(self) -> Type[Message]:
-        """Return the type of the real message that this promise represents."""
-        if self._materialized_msg:
-            return type(self._materialized_msg)
-        return self._foresee_real_msg_class()
 
     async def aget_previous_message(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous message in this conversation branch."""
