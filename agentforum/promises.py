@@ -240,7 +240,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if (
                 (not self._do_not_forward_if_possible)
                 or self._metadata
-                or prev_msg_hash_key != original_msg.prev_msg_hash_key
+                or (prev_msg_hash_key and prev_msg_hash_key != original_msg.prev_msg_hash_key)
             ):
                 # the message must be forwarded because either we are not actively trying to avoid forwarding
                 # (do_not_forward_if_possible is False), or additional metadata was provided (message forwarding is
