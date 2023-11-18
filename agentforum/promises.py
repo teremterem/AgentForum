@@ -74,16 +74,16 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     async def _aconvert_incoming_item(
         self, incoming_item: MessageParameters
     ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
-        sender_alias = incoming_item.override_sender_alias or self._default_sender_alias
         try:
             if isinstance(incoming_item.content, BaseException):
                 raise incoming_item.content
 
             async for msg_promise in self._conversation.aappend_zero_or_more_messages(
                 content=incoming_item.content,
-                sender_alias=sender_alias,
+                default_sender_alias=self._default_sender_alias,
+                override_sender_alias=incoming_item.override_sender_alias,
                 do_not_forward_if_possible=self._do_not_forward_if_possible,
-                **incoming_item.metadata,
+                **incoming_item.metadata.as_kwargs,
             ):
                 yield msg_promise
 
@@ -101,7 +101,9 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
             if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
                 content = tuple(content)
             self.send(
-                MessageParameters(content=content, override_sender_alias=override_sender_alias, metadata=metadata)
+                MessageParameters(
+                    content=content, override_sender_alias=override_sender_alias, metadata=Freeform(**metadata)
+                )
             )
 
 
@@ -245,6 +247,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 # the only way to attach metadata to a message), or the original message is branched from a different
                 # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
+                    content=original_msg.content,  # duplicate the original content in the forwarded message
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=sender_alias,
                     # let's merge the metadata from the original message with the metadata provided to the constructor

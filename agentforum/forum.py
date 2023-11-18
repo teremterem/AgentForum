@@ -48,7 +48,7 @@ class ConversationTracker:
                 default_sender_alias=default_sender_alias,
                 override_sender_alias=override_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
-                prev_msg_promise=self._latest_msg_promise,
+                branch_from=self._latest_msg_promise,
                 **metadata,
             )
             self._latest_msg_promise = msg_promise
@@ -58,12 +58,10 @@ class ConversationTracker:
             # this is not a single message, this is a collection of messages
             for sub_msg in content:
                 async for msg_promise in self.aappend_zero_or_more_messages(
-                    forum=self.forum,
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     override_sender_alias=override_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    prev_msg_promise=self._latest_msg_promise,
                     **metadata,
                 ):
                     self._latest_msg_promise = msg_promise
@@ -72,12 +70,10 @@ class ConversationTracker:
             # this is not a single message, this is an asynchronous collection of messages
             async for sub_msg in content:
                 async for msg_promise in self.aappend_zero_or_more_messages(
-                    forum=self.forum,
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     override_sender_alias=override_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    prev_msg_promise=self._latest_msg_promise,
                     **metadata,
                 ):
                     self._latest_msg_promise = msg_promise

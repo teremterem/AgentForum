@@ -141,16 +141,19 @@ class AgentCallMsg(Message):
 
 
 class ContentChunk(Immutable):
+    """A chunk of message content. For ex. a token if the message is streamed token by token."""
+
     af_model_: Literal["chunk"] = "chunk"
     text: str
 
 
-class MessageParameters(Immutable):
+class MessageParameters(BaseModel):
     """
     A set of parameters that can be converted into one or more messages or message promises.
     """
 
-    af_model_: Literal["msg_params"] = "msg_params"
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
     content: Any  # TODO Oleksandr: a newer version of Pydantic doesn't seem work with `MessageType` for some reason
     override_sender_alias: Optional[str] = None
     metadata: Freeform = Freeform()  # empty metadata by default
