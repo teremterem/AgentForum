@@ -6,8 +6,8 @@ from pydantic import BaseModel
 
 from agentforum.errors import AgentForumError
 from agentforum.forum import Forum, InteractionContext
-from agentforum.models import Token, Message
-from agentforum.promises import MessagePromise, StreamedMsgPromise
+from agentforum.models import Message, ContentChunk
+from agentforum.promises import MessagePromise, StreamedMessage
 
 
 # noinspection PyProtectedMember
@@ -70,24 +70,20 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments,protect
     )
 
 
-class _OpenAIStreamedMessage(StreamedMsgPromise[BaseModel]):
+class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
     """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._tokens_raw: List[BaseModel] = []
-
-    async def _aconvert_incoming_item(self, incoming_item: BaseModel) -> AsyncIterator[Union[Token, BaseException]]:
-        self._tokens_raw.append(incoming_item)
-
+    async def _aconvert_incoming_item(
+        self, incoming_item: BaseModel
+    ) -> AsyncIterator[Union[ContentChunk, BaseException]]:
         token_text = incoming_item.choices[0].delta.content
         if token_text:
-            yield Token(text=token_text)
+            yield ContentChunk(text=token_text)
 
         # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built ?
         for k, v in _build_openai_metadata_dict(incoming_item.model_dump()).items():
             if v is not None:
-                self._metadata[k] = v
+                self.metadata[k] = v
 
 
 def _build_openai_metadata_dict(openai_response: Dict[str, Any]) -> Dict[str, Any]:

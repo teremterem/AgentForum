@@ -106,7 +106,10 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
 
 
 class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
-    """A message that is streamed token by token instead of being returned all at once."""
+    """
+    A message that is streamed token by token instead of being returned all at once. StreamedMessage only maintains
+    content (as a stream of tokens) and metadata. It does not maintain sender_alias, prev_msg_hash_key, etc.
+    """
 
     def __init__(self, *args, metadata: Optional[Dict[str, Any]] = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
