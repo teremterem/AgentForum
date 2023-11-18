@@ -257,6 +257,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
                 return forwarded_msg
 
+            # TODO Oleksandr: this message is stored in the storage twice, because it is "materialized" twice
             return original_msg
 
         raise ValueError(f"Unexpected message content type: {type(self._content)}")
