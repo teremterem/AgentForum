@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any, AsyncIterator, Union
 
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
 from agentforum.typing import IN, MessageType, SingleMessageType
-from agentforum.utils import AsyncStreamable
+from agentforum.utils import AsyncStreamable, NO_VALUE
 
 if typing.TYPE_CHECKING:
     from agentforum.forum import Forum, ConversationTracker
@@ -213,7 +213,11 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
     async def _amaterialize_impl(self) -> Message:
         sender_alias = self._override_sender_alias or self._default_sender_alias
-        prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key if self._branch_from else None
+
+        if self._branch_from and self._branch_from is not NO_VALUE:
+            prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key
+        else:
+            prev_msg_hash_key = None
 
         if isinstance(self._content, (str, StreamedMessage)):
             if isinstance(self._content, StreamedMessage):
@@ -240,7 +244,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if (
                 (not self._do_not_forward_if_possible)
                 or self._metadata
-                or (prev_msg_hash_key and prev_msg_hash_key != original_msg.prev_msg_hash_key)
+                or (self._branch_from is not NO_VALUE and prev_msg_hash_key != original_msg.prev_msg_hash_key)
             ):
                 # the message must be forwarded because either we are not actively trying to avoid forwarding
                 # (do_not_forward_if_possible is False), or additional metadata was provided (message forwarding is
@@ -270,7 +274,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         return await self._aget_previous_msg_promise_impl()
 
     async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
-        if self._do_not_forward_if_possible and not self._branch_from:
+        if self._do_not_forward_if_possible and self._branch_from is NO_VALUE:
             # this message promise doesn't have a previous message promise of its own but there may be an "original"
             # message inside self._content which is not going to be forwarded (do_not_forward_if_possible is True),
             # hence we should try to work with the "original" message's branch instead of starting a new branch (which
@@ -281,7 +285,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if isinstance(self._content, Message):
                 return await self.forum.afind_message_promise(self._content.prev_msg_hash_key)
 
-        return self._branch_from
+        return None if self._branch_from is NO_VALUE else self._branch_from
 
     async def aget_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True

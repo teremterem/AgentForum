@@ -14,7 +14,7 @@ from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, MessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage import ImmutableStorage
 from agentforum.typing import AgentFunction, MessageType
-from agentforum.utils import Sentinel
+from agentforum.utils import Sentinel, NO_VALUE
 
 USER_ALIAS = "USER"
 
@@ -23,6 +23,8 @@ class ConversationTracker:
     """An object that tracks the tip of a conversation branch."""
 
     def __init__(self, forum: "Forum", branch_from: Optional[Union[MessagePromise, Sentinel]] = None) -> None:
+        # branch_from=NO_VALUE would mean that whether this conversation is branched off of an existing conversation
+        # branch or not will be determined by the messages that are passed into this conversation later
         self.forum = forum
         self._latest_msg_promise = branch_from
 
@@ -171,7 +173,7 @@ class Agent:
             if conversation.has_prior_history and force_new_conversation:
                 raise ValueError("Cannot force a new conversation when there is prior history in ConversationTracker")
         else:
-            conversation = ConversationTracker(self.forum)
+            conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
 
         agent_call = AgentCall(
             self.forum, conversation, self, do_not_forward_if_possible=not force_new_conversation, **function_kwargs
