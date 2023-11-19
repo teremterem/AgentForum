@@ -240,12 +240,99 @@ async def test_two_nested_agents(forum: Forum) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "force_new_conversation, expected_forwards",
+    [
+        (
+            True,
+            [
+                {
+                    "af_model_": "forward",
+                    "sender_alias": "_agent1",
+                    "original_msg": {
+                        "af_model_": "forward",
+                        "sender_alias": "_agent3",
+                        "original_msg": {
+                            "af_model_": "forward",
+                            "sender_alias": "_agent1",
+                            "original_msg": {
+                                "af_model_": "message",
+                                "sender_alias": "_agent2",
+                                "content": "agent2 says hello",
+                            },
+                        },
+                    },
+                },
+                {
+                    "af_model_": "forward",
+                    "sender_alias": "_agent1",
+                    "original_msg": {
+                        "af_model_": "forward",
+                        "sender_alias": "_agent3",
+                        "original_msg": {
+                            "af_model_": "forward",
+                            "sender_alias": "_agent1",
+                            "original_msg": {
+                                "af_model_": "message",
+                                "sender_alias": "_agent2",
+                                "content": "agent2 says hello again",
+                            },
+                        },
+                    },
+                },
+            ],
+        ),
+        (
+            False,
+            [
+                {
+                    "af_model_": "forward",
+                    "sender_alias": "_agent1",
+                    "original_msg": {
+                        "af_model_": "forward",
+                        "sender_alias": "_agent3",
+                        "original_msg": {
+                            "af_model_": "message",
+                            "sender_alias": "_agent2",
+                            "content": "agent2 says hello",
+                        },
+                    },
+                },
+                {
+                    "af_model_": "forward",
+                    "sender_alias": "_agent1",
+                    "original_msg": {
+                        "af_model_": "forward",
+                        "sender_alias": "_agent3",
+                        "original_msg": {
+                            "af_model_": "message",
+                            "sender_alias": "_agent2",
+                            "content": "agent2 says hello again",
+                        },
+                    },
+                },
+            ],
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_three_nested_agents_force_new_conversation(forum: Forum) -> None:
+async def test_three_nested_agents_force_new_conversation(
+    forum: Forum, force_new_conversation: bool, expected_forwards: List[Dict[str, Any]]
+) -> None:
     @forum.agent
     async def _agent1(ctx: InteractionContext) -> None:
         ctx.respond("agent1 also says hello")
-        ctx.respond(_agent3.quick_call(_agent2.quick_call(ctx.request_messages), force_new_conversation=True))
+        ctx.respond(
+            _agent3.quick_call(
+                _agent2.quick_call(
+                    ctx.request_messages,
+                    # this particular force_new_conversation should NOT make a difference for the final output
+                    force_new_conversation=force_new_conversation,
+                ),
+                # this particular force_new_conversation SHOULD make a difference for the final output
+                force_new_conversation=force_new_conversation,
+            )
+        )
 
     @forum.agent
     async def _agent2(ctx: InteractionContext) -> None:
@@ -254,10 +341,14 @@ async def test_three_nested_agents_force_new_conversation(forum: Forum) -> None:
 
     @forum.agent
     async def _agent3(ctx: InteractionContext) -> None:
-        ctx.respond(ctx.request_messages)
         ctx.respond("agent3 says hello")
+        ctx.respond(ctx.request_messages)
 
-    responses1 = _agent1.quick_call("user says hello")
+    responses1 = _agent1.quick_call(
+        "user says hello",
+        # this particular force_new_conversation should NOT make a difference for the final output
+        force_new_conversation=force_new_conversation,
+    )
 
     assert await arepresent_conversation_with_dicts(responses1) == [
         {
@@ -280,37 +371,12 @@ async def test_three_nested_agents_force_new_conversation(forum: Forum) -> None:
             "af_model_": "forward",
             "sender_alias": "_agent1",
             "original_msg": {
-                "af_model_": "forward",
-                "sender_alias": "_agent3",
-                "original_msg": {
-                    "af_model_": "message",
-                    "sender_alias": "_agent2",
-                    "content": "agent2 says hello",
-                },
-            },
-        },
-        {
-            "af_model_": "forward",
-            "sender_alias": "_agent1",
-            "original_msg": {
-                "af_model_": "forward",
-                "sender_alias": "_agent3",
-                "original_msg": {
-                    "af_model_": "message",
-                    "sender_alias": "_agent2",
-                    "content": "agent2 says hello again",
-                },
-            },
-        },
-        {
-            "af_model_": "forward",
-            "sender_alias": "_agent1",
-            "original_msg": {
                 "af_model_": "message",
                 "sender_alias": "_agent3",
                 "content": "agent3 says hello",
             },
         },
+        *expected_forwards,
     ]
 
 
