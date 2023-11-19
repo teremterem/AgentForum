@@ -5,7 +5,7 @@ import pytest
 
 from agentforum.forum import Forum, InteractionContext
 from agentforum.models import Message, AgentCallMsg
-from agentforum.promises import MessagePromise, MessageSequence
+from agentforum.promises import MessagePromise, AsyncMessageSequence
 
 
 @pytest.mark.asyncio
@@ -24,7 +24,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     async def _assistant(ctx: InteractionContext) -> None:
         assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "USER",
                 "content": "set a reminder for me for tomorrow at 10am",
             },
@@ -33,18 +33,18 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         api_responses = _reminder_api.quick_call(ctx.request_messages)
         assert await arepresent_conversation_with_dicts(api_responses) == [
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "USER",
                 "content": "set a reminder for me for tomorrow at 10am",
             },
             {
-                "af_model_": "call",
+                "im_model_": "call",
                 "sender_alias": "",
                 "content": "_reminder_api",
                 "messages_in_request": 1,
             },
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_reminder_api",
                 "content": "api error: invalid date format",
             },
@@ -56,29 +56,29 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
             assert await arepresent_conversation_with_dicts(corrections) == [
                 {
-                    "af_model_": "message",
+                    "im_model_": "message",
                     "sender_alias": "USER",
                     "content": "set a reminder for me for tomorrow at 10am",
                 },
                 {
-                    "af_model_": "call",
+                    "im_model_": "call",
                     "sender_alias": "",
                     "content": "_reminder_api",
                     "messages_in_request": 1,
                 },
                 {
-                    "af_model_": "message",
+                    "im_model_": "message",
                     "sender_alias": "_reminder_api",
                     "content": "api error: invalid date format",
                 },
                 {
-                    "af_model_": "call",
+                    "im_model_": "call",
                     "sender_alias": "",
                     "content": "_critic",
                     "messages_in_request": 1,
                 },
                 {
-                    "af_model_": "message",
+                    "im_model_": "message",
                     "sender_alias": "_critic",
                     "content": "try swapping the month and day",
                 },
@@ -88,40 +88,40 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
         assert await arepresent_conversation_with_dicts(api_responses) == [
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "USER",
                 "content": "set a reminder for me for tomorrow at 10am",
             },
             {
-                "af_model_": "call",
+                "im_model_": "call",
                 "sender_alias": "",
                 "content": "_reminder_api",
                 "messages_in_request": 1,
             },
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_reminder_api",
                 "content": "api error: invalid date format",
             },
             {
-                "af_model_": "call",
+                "im_model_": "call",
                 "sender_alias": "",
                 "content": "_critic",
                 "messages_in_request": 1,
             },
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_critic",
                 "content": "try swapping the month and day",
             },
             {
-                "af_model_": "call",
+                "im_model_": "call",
                 "sender_alias": "",
                 "content": "_reminder_api",
                 "messages_in_request": 1,
             },
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_reminder_api",
                 "content": "success: reminder set",
             },
@@ -145,21 +145,21 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     assert await arepresent_conversation_with_dicts(assistant_responses) == [
         {
-            "af_model_": "message",
+            "im_model_": "message",
             "sender_alias": "USER",
             "content": "set a reminder for me for tomorrow at 10am",
         },
         {
-            "af_model_": "call",
+            "im_model_": "call",
             "sender_alias": "",
             "content": "_assistant",
             "messages_in_request": 1,
         },
         {
-            "af_model_": "forward",
+            "im_model_": "forward",
             "sender_alias": "_assistant",
             "original_msg": {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_reminder_api",
                 "content": "success: reminder set",
             },
@@ -178,7 +178,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
     async def _agent1(ctx: InteractionContext) -> None:
         assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "USER",
                 "content": "user says hello",
             },
@@ -191,7 +191,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
     async def _agent2(ctx: InteractionContext) -> None:
         assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "USER",
                 "content": "user says hello",
             },
@@ -204,36 +204,36 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     assert await arepresent_conversation_with_dicts(responses1) == [
         {
-            "af_model_": "message",
+            "im_model_": "message",
             "sender_alias": "USER",
             "content": "user says hello",
         },
         {
-            "af_model_": "call",
+            "im_model_": "call",
             "sender_alias": "",
             "content": "_agent1",
             "messages_in_request": 1,
         },
         {
-            "af_model_": "forward",
+            "im_model_": "forward",
             "sender_alias": "_agent1",
             "original_msg": {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_agent2",
                 "content": "agent2 says hello",
             },
         },
         {
-            "af_model_": "forward",
+            "im_model_": "forward",
             "sender_alias": "_agent1",
             "original_msg": {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_agent2",
                 "content": "agent2 says hello again",
             },
         },
         {
-            "af_model_": "message",
+            "im_model_": "message",
             "sender_alias": "_agent1",
             "content": "agent1 also says hello",
         },
@@ -285,50 +285,50 @@ async def test_agent_force_new_conversation(
     if force_new_conversation:
         assert await arepresent_conversation_with_dicts(responses1) == [
             {
-                "af_model_": "forward",
+                "im_model_": "forward",
                 "sender_alias": "USER",
                 "original_msg": {
-                    "af_model_": "message",
+                    "im_model_": "message",
                     "sender_alias": "_agent2",
                     "content": "agent2 says hello",
                 },
             },
             {
-                "af_model_": "forward",
+                "im_model_": "forward",
                 "sender_alias": "USER",
                 "original_msg": {
-                    "af_model_": "message",
+                    "im_model_": "message",
                     "sender_alias": "_agent2",
                     "content": "agent2 says hello again",
                 },
             },
             {
-                "af_model_": "call",
+                "im_model_": "call",
                 "sender_alias": "",
                 "content": "_agent1",
                 "messages_in_request": 2,
             },
             {
-                "af_model_": "forward",
+                "im_model_": "forward",
                 "sender_alias": "_agent1",
                 "original_msg": {
-                    "af_model_": "forward",
+                    "im_model_": "forward",
                     "sender_alias": "USER",
                     "original_msg": {
-                        "af_model_": "message",
+                        "im_model_": "message",
                         "sender_alias": "_agent2",
                         "content": "agent2 says hello",
                     },
                 },
             },
             {
-                "af_model_": "forward",
+                "im_model_": "forward",
                 "sender_alias": "_agent1",
                 "original_msg": {
-                    "af_model_": "forward",
+                    "im_model_": "forward",
                     "sender_alias": "USER",
                     "original_msg": {
-                        "af_model_": "message",
+                        "im_model_": "message",
                         "sender_alias": "_agent2",
                         "content": "agent2 says hello again",
                     },
@@ -338,46 +338,46 @@ async def test_agent_force_new_conversation(
     else:
         assert await arepresent_conversation_with_dicts(responses1) == [
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "USER",
                 "content": "user says hello",
             },
             {
-                "af_model_": "call",
+                "im_model_": "call",
                 "sender_alias": "",
                 "content": "_agent2",
                 "messages_in_request": 1,
             },
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_agent2",
                 "content": "agent2 says hello",
             },
             {
-                "af_model_": "message",
+                "im_model_": "message",
                 "sender_alias": "_agent2",
                 "content": "agent2 says hello again",
             },
             {
-                "af_model_": "call",
+                "im_model_": "call",
                 "sender_alias": "",
                 "content": "_agent1",
                 "messages_in_request": 2,
             },
             {
-                "af_model_": "forward",
+                "im_model_": "forward",
                 "sender_alias": "_agent1",
                 "original_msg": {
-                    "af_model_": "message",
+                    "im_model_": "message",
                     "sender_alias": "_agent2",
                     "content": "agent2 says hello",
                 },
             },
             {
-                "af_model_": "forward",
+                "im_model_": "forward",
                 "sender_alias": "_agent1",
                 "original_msg": {
-                    "af_model_": "message",
+                    "im_model_": "message",
                     "sender_alias": "_agent2",
                     "content": "agent2 says hello again",
                 },
@@ -385,12 +385,14 @@ async def test_agent_force_new_conversation(
         ]
 
 
-async def arepresent_conversation_with_dicts(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
+async def arepresent_conversation_with_dicts(
+    response: Union[MessagePromise, AsyncMessageSequence]
+) -> List[Dict[str, Any]]:
     """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
     def _get_msg_dict(msg_: Message) -> Dict[str, Any]:
         msg_dict_ = msg_.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"})
-        if msg_dict_["metadata"] == {"af_model_": "freeform"}:
+        if msg_dict_["metadata"] == {"im_model_": "freeform"}:
             # metadata is empty - remove it to reduce verbosity
             del msg_dict_["metadata"]
 

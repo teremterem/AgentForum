@@ -1,22 +1,22 @@
-"""Tests for agentforum.promises.MessageSequence"""
+"""Tests for agentforum.promises.AsyncMessageSequence"""
 # pylint: disable=protected-access
 import asyncio
 
 import pytest
 
 from agentforum.forum import Forum, ConversationTracker
-from agentforum.promises import MessageSequence
+from agentforum.promises import AsyncMessageSequence
 
 
 @pytest.mark.asyncio
 async def test_nested_message_sequences(forum: Forum) -> None:
     """Verify that message ordering in nested message sequences is preserved."""
-    level1_sequence = MessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
-    level1_producer = MessageSequence._MessageProducer(level1_sequence)
-    level2_sequence = MessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
-    level2_producer = MessageSequence._MessageProducer(level2_sequence)
-    level3_sequence = MessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
-    level3_producer = MessageSequence._MessageProducer(level3_sequence)
+    level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
+    level2_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    level2_producer = AsyncMessageSequence._MessageProducer(level2_sequence)
+    level3_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    level3_producer = AsyncMessageSequence._MessageProducer(level3_sequence)
 
     with level3_producer:
         level3_producer.send_zero_or_more_messages("message 3")
@@ -54,8 +54,8 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
     Verify that an error in a NESTED message sequence comes out on the other end of the OUTER sequence, but that the
     messages before the error are still processed.
     """
-    level1_sequence = MessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
-    level1_producer = MessageSequence._MessageProducer(level1_sequence)
+    level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
 
     async def _atask() -> None:
         with level1_producer:
@@ -87,10 +87,10 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
     Verify that an error in a message sequence comes out on the other end, but that the messages before the error
     are still processed.
     """
-    level1_sequence = MessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
-    level1_producer = MessageSequence._MessageProducer(level1_sequence)
-    level2_sequence = MessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
-    level2_producer = MessageSequence._MessageProducer(level2_sequence)
+    level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
+    level2_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    level2_producer = AsyncMessageSequence._MessageProducer(level2_sequence)
 
     with level1_producer:
         level1_producer.send_zero_or_more_messages("message 1")

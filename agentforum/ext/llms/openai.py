@@ -10,6 +10,7 @@ from agentforum.promises import MessagePromise, StreamedMessage
 
 
 def openai_chat_completion(
+    # TODO Oleksandr: switch `prompt` to a combination of MessageType and a list of dicts ?
     prompt: List[Union[MessagePromise, Message]],
     async_openai_client: Optional[Any] = None,
     stream: bool = False,
@@ -24,7 +25,7 @@ def openai_chat_completion(
         async_openai_client = AsyncOpenAI()
 
     if n != 1:
-        raise AgentForumError("Only n=1 is supported by AgentForum for openai.ChatCompletion.acreate()")
+        raise AgentForumError("Only n=1 is supported by AgentForum for AsyncOpenAI().chat.completions.create()")
 
     streamed_message = _OpenAIStreamedMessage()
 
@@ -35,6 +36,7 @@ def openai_chat_completion(
             messages = [await msg.amaterialize() if isinstance(msg, MessagePromise) else msg for msg in prompt]
             message_dicts = [
                 {
+                    # TODO Oleksandr: introduce a lambda function to derive roles from messages
                     "role": getattr(msg.metadata, "openai_role", "user"),
                     "content": msg.content,
                 }
@@ -71,7 +73,7 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
         if token_text:
             yield ContentChunk(text=token_text)
 
-        # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full msg is built ?
+        # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full message is built
         for k, v in _build_openai_metadata_dict(incoming_item.model_dump()).items():
             if v is not None:
                 self._metadata[k] = v

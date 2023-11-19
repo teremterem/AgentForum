@@ -128,7 +128,8 @@ class AsyncStreamable(Generic[IN, OUT]):
             is_send_closed_error = isinstance(exc_value, SendClosedError)
             if exc_value and not is_send_closed_error:
                 # TODO Oleksandr: is it a good idea to send this exception by context manager automatically ?
-                #  check this with the implementation of MessageSequence._MessageProducer.send_zero_or_more_messages()
+                #  check this with the implementation of
+                #  AsyncMessageSequence._MessageProducer.send_zero_or_more_messages()
                 self.send(exc_value)
             self.close()
             # we are not suppressing SendClosedError even if self._suppress_exceptions is True
