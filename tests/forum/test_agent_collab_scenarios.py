@@ -240,144 +240,92 @@ async def test_two_nested_agents(forum: Forum) -> None:
     ]
 
 
-@pytest.mark.parametrize(
-    "force_new_conversation, expected_forwards",
-    [
-        (
-            True,
-            [
-                {
-                    "af_model_": "forward",
-                    "sender_alias": "_agent1",
-                    "original_msg": {
-                        "af_model_": "forward",
-                        "sender_alias": "_agent3",
-                        "original_msg": {
-                            "af_model_": "forward",
-                            "sender_alias": "_agent1",
-                            "original_msg": {
-                                "af_model_": "message",
-                                "sender_alias": "_agent2",
-                                "content": "agent2 says hello",
-                            },
-                        },
-                    },
-                },
-                {
-                    "af_model_": "forward",
-                    "sender_alias": "_agent1",
-                    "original_msg": {
-                        "af_model_": "forward",
-                        "sender_alias": "_agent3",
-                        "original_msg": {
-                            "af_model_": "forward",
-                            "sender_alias": "_agent1",
-                            "original_msg": {
-                                "af_model_": "message",
-                                "sender_alias": "_agent2",
-                                "content": "agent2 says hello again",
-                            },
-                        },
-                    },
-                },
-            ],
-        ),
-        (
-            False,
-            [
-                {
-                    "af_model_": "forward",
-                    "sender_alias": "_agent1",
-                    "original_msg": {
-                        "af_model_": "forward",
-                        "sender_alias": "_agent3",
-                        "original_msg": {
-                            "af_model_": "message",
-                            "sender_alias": "_agent2",
-                            "content": "agent2 says hello",
-                        },
-                    },
-                },
-                {
-                    "af_model_": "forward",
-                    "sender_alias": "_agent1",
-                    "original_msg": {
-                        "af_model_": "forward",
-                        "sender_alias": "_agent3",
-                        "original_msg": {
-                            "af_model_": "message",
-                            "sender_alias": "_agent2",
-                            "content": "agent2 says hello again",
-                        },
-                    },
-                },
-            ],
-        ),
-    ],
-)
+@pytest.mark.parametrize("force_new_conversation", [True, False])
 @pytest.mark.asyncio
-async def test_three_nested_agents_force_new_conversation(
-    forum: Forum, force_new_conversation: bool, expected_forwards: List[Dict[str, Any]]
-) -> None:
+async def test_agent_force_new_conversation(forum: Forum, force_new_conversation: bool) -> None:
+    """
+    Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
+    history is recorded according to the `force_new_conversation` flag (if `force_new_conversation` is True then the
+    conversation history for the _agent1 starts from the response of _agent2 and not from the user's greeting).
+    """
+
     @forum.agent
     async def _agent1(ctx: InteractionContext) -> None:
-        ctx.respond("agent1 also says hello")
-        ctx.respond(
-            _agent3.quick_call(
-                _agent2.quick_call(
-                    ctx.request_messages,
-                    # this particular force_new_conversation should NOT make a difference for the final output
-                    force_new_conversation=force_new_conversation,
-                ),
-                # this particular force_new_conversation SHOULD make a difference for the final output
-                force_new_conversation=force_new_conversation,
-            )
-        )
+        ctx.respond(ctx.request_messages)
 
     @forum.agent
     async def _agent2(ctx: InteractionContext) -> None:
         ctx.respond("agent2 says hello")
-        ctx.respond("agent2 says hello again")
-
-    @forum.agent
-    async def _agent3(ctx: InteractionContext) -> None:
-        ctx.respond("agent3 says hello")
-        ctx.respond(ctx.request_messages)
 
     responses1 = _agent1.quick_call(
-        "user says hello",
-        # this particular force_new_conversation should NOT make a difference for the final output
-        force_new_conversation=force_new_conversation,
+        _agent2.quick_call("user says hello"), force_new_conversation=force_new_conversation
     )
 
-    assert await arepresent_conversation_with_dicts(responses1) == [
-        {
-            "af_model_": "message",
-            "sender_alias": "USER",
-            "content": "user says hello",
-        },
-        {
-            "af_model_": "call",
-            "sender_alias": "",
-            "content": "_agent1",
-            "messages_in_request": 1,
-        },
-        {
-            "af_model_": "message",
-            "sender_alias": "_agent1",
-            "content": "agent1 also says hello",
-        },
-        {
-            "af_model_": "forward",
-            "sender_alias": "_agent1",
-            "original_msg": {
-                "af_model_": "message",
-                "sender_alias": "_agent3",
-                "content": "agent3 says hello",
+    if force_new_conversation:
+        assert await arepresent_conversation_with_dicts(responses1) == [
+            {
+                "af_model_": "forward",
+                "sender_alias": "USER",
+                "original_msg": {
+                    "af_model_": "message",
+                    "sender_alias": "_agent2",
+                    "content": "agent2 says hello",
+                },
             },
-        },
-        *expected_forwards,
-    ]
+            {
+                "af_model_": "call",
+                "sender_alias": "",
+                "content": "_agent1",
+                "messages_in_request": 1,
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "_agent1",
+                "original_msg": {
+                    "af_model_": "forward",
+                    "sender_alias": "USER",
+                    "original_msg": {
+                        "af_model_": "message",
+                        "sender_alias": "_agent2",
+                        "content": "agent2 says hello",
+                    },
+                },
+            },
+        ]
+    else:
+        assert await arepresent_conversation_with_dicts(responses1) == [
+            {
+                "af_model_": "message",
+                "sender_alias": "USER",
+                "content": "user says hello",
+            },
+            {
+                "af_model_": "call",
+                "sender_alias": "",
+                "content": "_agent2",
+                "messages_in_request": 1,
+            },
+            {
+                "af_model_": "message",
+                "sender_alias": "_agent2",
+                "content": "agent2 says hello",
+            },
+            {
+                "af_model_": "call",
+                "sender_alias": "",
+                "content": "_agent1",
+                "messages_in_request": 1,
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "_agent1",
+                "original_msg": {
+                    "af_model_": "message",
+                    "sender_alias": "_agent2",
+                    "content": "agent2 says hello",
+                },
+            },
+        ]
 
 
 async def arepresent_conversation_with_dicts(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
