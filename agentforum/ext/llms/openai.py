@@ -15,8 +15,8 @@ def openai_chat_completion(
     stream: bool = False,
     n: int = 1,
     **kwargs,
-) -> StreamedMessage:  # TODO Oleksandr: this function doesn't necessarily need to be async
-    """Chat with OpenAI models. Returns a message or a stream of tokens."""
+) -> StreamedMessage:
+    """Chat with OpenAI models."""
     if not async_openai_client:
         from openai import AsyncOpenAI  # pylint: disable=import-outside-toplevel
 
@@ -41,22 +41,20 @@ def openai_chat_completion(
                 for msg in messages
             ]
 
-            response = await async_openai_client.chat.completions.create(messages=message_dicts, stream=True, **kwargs)
-            async for token_raw in response:
-                token_producer.send(token_raw)
+            # noinspection PyTypeChecker
+            response = await async_openai_client.chat.completions.create(
+                messages=message_dicts, stream=stream, n=n, **kwargs
+            )
+            if stream:
+                async for token_raw in response:
+                    token_producer.send(token_raw)
+            else:
+                # send the whole response as a single "token"
+                token_producer.send(response)
 
     asyncio.create_task(_make_request())
 
     return streamed_message
-
-    # # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
-    # response = await async_openai_client.chat.completions.create(messages=message_dicts, stream=False, **kwargs)
-    # # TODO Oleksandr: fix it - there is no _new_message_promise() method on Forum anymore
-    # return forum._new_message_promise(
-    #     content=response["choices"][0]["message"]["content"],
-    #     sender_alias=sender_alias,
-    #     **_build_openai_metadata_dict(response),
-    # )
 
 
 class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
@@ -65,7 +63,11 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
     async def _aconvert_incoming_item(
         self, incoming_item: BaseModel
     ) -> AsyncIterator[Union[ContentChunk, BaseException]]:
-        token_text = incoming_item.choices[0].delta.content
+        try:
+            token_text = incoming_item.choices[0].delta.content
+        except AttributeError:
+            token_text = incoming_item.choices[0].message.content
+
         if token_text:
             yield ContentChunk(text=token_text)
 
