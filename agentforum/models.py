@@ -140,10 +140,11 @@ class AgentCallMsg(Message):
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
 
 
-class ContentChunk(Immutable):
+class ContentChunk(BaseModel):
     """A chunk of message content. For ex. a token if the message is streamed token by token."""
 
-    im_model_: Literal["chunk"] = "chunk"
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     text: str
 
 
