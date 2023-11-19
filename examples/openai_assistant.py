@@ -51,11 +51,6 @@ async def openai_assistant(ctx: InteractionContext) -> None:
                 thread_id=thread.id, before=latest_oai_msg_id
             )
             latest_oai_msg_id = assistant_messages.last_id
-            # print()
-            # print()
-            # pprint(assistant_messages.model_dump())
-            # print()
-            # print()
             for assistant_message in reversed(assistant_messages.data):
                 ctx.respond(assistant_message.content[0].text.value)
             return
