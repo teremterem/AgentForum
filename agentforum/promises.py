@@ -172,7 +172,13 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         async def _aiter() -> AsyncIterator[ContentChunk]:
             """Return only one element - the whole message."""
-            yield ContentChunk(text=self._content)
+            if self._materialized_msg:
+                yield ContentChunk(text=self._materialized_msg.content)
+            elif isinstance(self._content, Message):
+                yield ContentChunk(text=self._content.content)
+            else:
+                yield ContentChunk(text=self._content)
+            # TODO Oleksandr: what to do if self._content is of type BaseException ?
 
         return _aiter()
 
