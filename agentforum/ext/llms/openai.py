@@ -5,16 +5,12 @@ from typing import List, Dict, Any, Set, Union, Optional, AsyncIterator
 from pydantic import BaseModel
 
 from agentforum.errors import AgentForumError
-from agentforum.forum import Forum, InteractionContext
 from agentforum.models import Message, ContentChunk
 from agentforum.promises import MessagePromise, StreamedMessage
 
 
-# noinspection PyProtectedMember
-async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
-    forum: Forum,
+def openai_chat_completion(
     prompt: List[Union[MessagePromise, Message]],
-    override_sender_alias: Optional[str] = None,
     async_openai_client: Optional[Any] = None,
     stream: bool = False,
     n: int = 1,
@@ -30,38 +26,29 @@ async def aopenai_chat_completion(  # pylint: disable=too-many-arguments
     if n != 1:
         raise AgentForumError("Only n=1 is supported by AgentForum for openai.ChatCompletion.acreate()")
 
-    messages = [await msg.amaterialize() if isinstance(msg, MessagePromise) else msg for msg in prompt]
-    # pprint(messages)
-    message_dicts = [
-        {
-            "role": getattr(msg.metadata, "openai_role", "user"),
-            "content": msg.content,
-        }
-        for msg in messages
-    ]
-    # pprint(message_dicts)
+    streamed_message = _OpenAIStreamedMessage()
 
-    sender_alias = override_sender_alias or InteractionContext.get_current_sender_alias()
+    async def _make_request() -> None:
+        # pylint: disable=protected-access
+        # noinspection PyProtectedMember
+        with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
+            messages = [await msg.amaterialize() if isinstance(msg, MessagePromise) else msg for msg in prompt]
+            message_dicts = [
+                {
+                    "role": getattr(msg.metadata, "openai_role", "user"),
+                    "content": msg.content,
+                }
+                for msg in messages
+            ]
 
-    if stream:
-        streamed_message = _OpenAIStreamedMessage(forum=forum, sender_alias=sender_alias)
+            response = await async_openai_client.chat.completions.create(messages=message_dicts, stream=True, **kwargs)
+            async for token_raw in response:
+                token_producer.send(token_raw)
 
-        async def _send_tokens() -> None:
-            # pylint: disable=protected-access
-            # noinspection PyProtectedMember
-            with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
-                response_ = await async_openai_client.chat.completions.create(
-                    messages=message_dicts, stream=True, **kwargs
-                )
-                async for token_raw in response_:
-                    token_producer.send(token_raw)
-            # # TODO Oleksandr: do we need the following ?
-            # await message_promise.amaterialize()  # let's save the message in the storage
+    asyncio.create_task(_make_request())
 
-        asyncio.create_task(_send_tokens())
-        return streamed_message
+    return streamed_message
 
-    raise NotImplementedError("TODO Oleksandr: implement the non-streaming case")
     # # TODO Oleksandr: don't wait for the response, return an unfulfilled "MessagePromise" instead ?
     # response = await async_openai_client.chat.completions.create(messages=message_dicts, stream=False, **kwargs)
     # # TODO Oleksandr: fix it - there is no _new_message_promise() method on Forum anymore

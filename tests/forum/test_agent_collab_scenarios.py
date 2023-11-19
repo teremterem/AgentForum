@@ -401,7 +401,7 @@ async def arepresent_conversation_with_dicts(response: Union[MessagePromise, Mes
             del msg_dict_["content"]
         return msg_dict_
 
-    concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
+    concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_msg_promise()
     conversation = await concluding_msg.amaterialize_history(skip_agent_calls=False)
 
     conversation_dicts = []

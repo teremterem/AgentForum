@@ -32,8 +32,8 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
         self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
 
-    async def aget_concluding_message(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
-        """Get the last message in the sequence."""
+    async def aget_concluding_msg_promise(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
+        """Get the last message promise in the sequence."""
         concluding_message = None
         async for concluding_message in self:
             pass
@@ -44,7 +44,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
 
     async def amaterialize_concluding_message(self, raise_if_none: bool = True) -> Message:
         """Get the last message in the sequence, but return a Message object instead of a MessagePromise object."""
-        return await (await self.aget_concluding_message(raise_if_none=raise_if_none)).amaterialize()
+        return await (await self.aget_concluding_msg_promise(raise_if_none=raise_if_none)).amaterialize()
 
     async def amaterialize_all(self) -> List["Message"]:
         """
@@ -56,9 +56,12 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List["MessagePromise"]:
         """Get the full chat history of the conversation branch up to the last message in the sequence."""
-        return await (await self.aget_concluding_message()).aget_history(
-            skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
-        )
+        concluding_msg_promise = await self.aget_concluding_msg_promise(raise_if_none=False)
+        if concluding_msg_promise:
+            return await concluding_msg_promise.aget_history(
+                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
+            )
+        return []
 
     async def amaterialize_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
@@ -67,9 +70,12 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
         Get the full chat history of the conversation branch up to the last message in the sequence, but return a list
         of Message objects instead of MessagePromise objects.
         """
-        return await (await self.aget_concluding_message()).amaterialize_history(
-            skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
-        )
+        return [
+            await msg_promise.amaterialize()
+            for msg_promise in await self.aget_full_history(
+                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
+            )
+        ]
 
     async def _aconvert_incoming_item(
         self, incoming_item: MessageParameters
@@ -205,7 +211,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         prev_msg_promise = await self._aget_previous_msg_promise_try_materialized()
 
         if skip_agent_calls:
-            while prev_msg_promise.is_agent_call:
+            while prev_msg_promise and prev_msg_promise.is_agent_call:
                 # pylint: disable=protected-access
                 prev_msg_promise = await prev_msg_promise._aget_previous_msg_promise_try_materialized()
 
