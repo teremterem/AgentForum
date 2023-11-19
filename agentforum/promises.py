@@ -167,17 +167,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         self._lock = asyncio.Lock()
 
     def __aiter__(self) -> AsyncIterator[ContentChunk]:
-        if isinstance(self._content, StreamedMessage):
+        if isinstance(self._content, (StreamedMessage, MessagePromise)):
             return self._content.__aiter__()
-        return self
 
-    async def __anext__(self) -> ContentChunk:
-        if isinstance(self._content, StreamedMessage):
-            raise RuntimeError("You need to call __aiter__() and iterate over that object instead.")
+        async def _aiter() -> AsyncIterator[ContentChunk]:
+            """Return only one element - the whole message."""
+            yield ContentChunk(text=self._content)
 
-        # this message is not streamed, so we need to materialize it and return the whole content
-        message = await self.amaterialize()
-        return ContentChunk(text=message.content)
+        return _aiter()
 
     @property
     def is_agent_call(self) -> bool:
