@@ -11,8 +11,7 @@ if typing.TYPE_CHECKING:
     from agentforum.forum import Forum, ConversationTracker
 
 
-class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
-    # TODO Oleksandr: rename to AsyncMessageSequence
+class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     AsyncStreamable and relies on internal async queues, the speed at which messages are produced and sent to the
@@ -39,7 +38,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
             pass
         if not concluding_message and raise_if_none:
             # TODO Oleksandr: introduce a custom exception for this case
-            raise ValueError("MessageSequence is empty")
+            raise ValueError("AsyncMessageSequence is empty")
         return concluding_message
 
     async def amaterialize_concluding_message(self, raise_if_none: bool = True) -> Message:
@@ -98,7 +97,7 @@ class MessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
             yield exc
 
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
-        """A context manager that allows sending messages to MessageSequence."""
+        """A context manager that allows sending messages to AsyncMessageSequence."""
 
         def send_zero_or_more_messages(
             self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
@@ -334,7 +333,7 @@ class AgentCallMsgPromise(MessagePromise):
     """
 
     def __init__(
-        self, forum: "Forum", request_messages: MessageSequence, receiving_agent_alias: str, **function_kwargs
+        self, forum: "Forum", request_messages: AsyncMessageSequence, receiving_agent_alias: str, **function_kwargs
     ) -> None:
         super().__init__(forum=forum, content=receiving_agent_alias, **function_kwargs)
         self._request_messages = request_messages

@@ -5,7 +5,7 @@ import pytest
 
 from agentforum.forum import Forum, InteractionContext
 from agentforum.models import Message, AgentCallMsg
-from agentforum.promises import MessagePromise, MessageSequence
+from agentforum.promises import MessagePromise, AsyncMessageSequence
 
 
 @pytest.mark.asyncio
@@ -385,7 +385,9 @@ async def test_agent_force_new_conversation(
         ]
 
 
-async def arepresent_conversation_with_dicts(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
+async def arepresent_conversation_with_dicts(
+    response: Union[MessagePromise, AsyncMessageSequence]
+) -> List[Dict[str, Any]]:
     """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
     def _get_msg_dict(msg_: Message) -> Dict[str, Any]:

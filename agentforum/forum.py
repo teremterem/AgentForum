@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, AsyncIterator, Union
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from agentforum.models import Message, Immutable
-from agentforum.promises import MessagePromise, MessageSequence, StreamedMessage, AgentCallMsgPromise
+from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage import ImmutableStorage
 from agentforum.typing import AgentFunction, MessageType
 from agentforum.utils import Sentinel, NO_VALUE
@@ -142,9 +142,9 @@ class Agent:
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
-    ) -> "MessageSequence":
+    ) -> "AsyncMessageSequence":
         """
-        Call the agent and immediately finish the call. Returns a MessageSequence object that contains the agent's
+        Call the agent and immediately finish the call. Returns a AsyncMessageSequence object that contains the agent's
         response(s). If force_new_conversation is False and conversation is not specified and pre-existing messages are
         passed as requests (for ex. messages that came from other agents), then this agent call will be automatically
         branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
@@ -220,8 +220,8 @@ class InteractionContext:
         self,
         forum: Forum,
         agent: Agent,
-        request_messages: MessageSequence,
-        response_producer: "MessageSequence._MessageProducer",
+        request_messages: AsyncMessageSequence,
+        response_producer: "AsyncMessageSequence._MessageProducer",
     ) -> None:
         self.forum = forum
         self.this_agent = agent
@@ -288,12 +288,12 @@ class AgentCall:
         #  you get to implementing cached agent calls
         temporary_sub_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
 
-        self._request_messages = MessageSequence(
+        self._request_messages = AsyncMessageSequence(
             temporary_sub_conversation,
             default_sender_alias=InteractionContext.get_current_sender_alias(),
             do_not_forward_if_possible=do_not_forward_if_possible,
         )
-        self._request_producer = MessageSequence._MessageProducer(self._request_messages)
+        self._request_producer = AsyncMessageSequence._MessageProducer(self._request_messages)
 
         agent_call_msg_promise = AgentCallMsgPromise(
             forum=self.forum,
@@ -303,8 +303,10 @@ class AgentCall:
         )
         conversation._latest_msg_promise = agent_call_msg_promise
 
-        self._response_messages = MessageSequence(conversation, default_sender_alias=self.receiving_agent.agent_alias)
-        self._response_producer = MessageSequence._MessageProducer(self._response_messages)
+        self._response_messages = AsyncMessageSequence(
+            conversation, default_sender_alias=self.receiving_agent.agent_alias
+        )
+        self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
 
     def send_request(
         self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
@@ -315,7 +317,7 @@ class AgentCall:
         )
         return self
 
-    def finish(self) -> "MessageSequence":
+    def finish(self) -> "AsyncMessageSequence":
         """Finish the agent call and return the agent's response(s)."""
         self._request_producer.close()
         return self._response_messages
