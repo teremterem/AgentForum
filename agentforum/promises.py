@@ -270,6 +270,17 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         return await self._aget_previous_msg_promise_impl()
 
     async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
+        if self._do_not_forward_if_possible and not self._branch_from:
+            # this message promise doesn't have a previous message promise of its own but there may be an "original"
+            # message inside self._content which is not going to be forwarded (do_not_forward_if_possible is True),
+            # hence we should try to work with the "original" message's branch instead of starting a new branch (which
+            # would have been the case if we just returned self._branch_from as it's value is being None)
+            if isinstance(self._content, MessagePromise):
+                return await self._content.aget_previous_msg_promise(skip_agent_calls=False)
+
+            if isinstance(self._content, Message):
+                return await self.forum.afind_message_promise(self._content.prev_msg_hash_key)
+
         return self._branch_from
 
     async def aget_history(
