@@ -169,9 +169,6 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
 @pytest.mark.asyncio
 async def test_two_nested_agents(forum: Forum) -> None:
-    # TODO Oleksandr: test with and without intermediate "materialization"
-    #  (with and without intermediate conversation history checks)
-    # TODO Oleksandr: test with and without "force_new_conversation" flag
     """
     Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
     history is recorded correctly.
@@ -243,28 +240,173 @@ async def test_two_nested_agents(forum: Forum) -> None:
     ]
 
 
+@pytest.mark.parametrize("force_new_conversation", [True, False])
+@pytest.mark.parametrize("materialize_beforehand", [True, False])
+@pytest.mark.parametrize("dont_send_promises", [True, False])
+@pytest.mark.asyncio
+async def test_agent_force_new_conversation(
+    forum: Forum, force_new_conversation: bool, materialize_beforehand: bool, dont_send_promises: bool
+) -> None:
+    """
+    Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
+    history is recorded according to the `force_new_conversation` flag (if `force_new_conversation` is True then the
+    conversation history for the _agent1 starts from the response of _agent2 and not from the user's greeting).
+
+    If agent interaction mechanism is implemented correctly then materialize_beforehand and dont_send_promises should
+    not affect the conversation history.
+    """
+
+    @forum.agent
+    async def _agent1(ctx: InteractionContext) -> None:
+        if materialize_beforehand:
+            await ctx.request_messages.amaterialize_all()
+
+        request_messages = ctx.request_messages
+        if dont_send_promises:
+            request_messages = await request_messages.amaterialize_all()
+
+        # echoing the request messages back
+        ctx.respond(request_messages)
+
+    @forum.agent
+    async def _agent2(ctx: InteractionContext) -> None:
+        if materialize_beforehand:
+            await ctx.request_messages.amaterialize_all()
+
+        ctx.respond("agent2 says hello")
+        ctx.respond("agent2 says hello again")
+
+    responses2 = _agent2.quick_call("user says hello")
+    if dont_send_promises:
+        responses2 = await responses2.amaterialize_all()
+
+    responses1 = _agent1.quick_call(responses2, force_new_conversation=force_new_conversation)
+
+    if force_new_conversation:
+        assert await arepresent_conversation_with_dicts(responses1) == [
+            {
+                "af_model_": "forward",
+                "sender_alias": "USER",
+                "original_msg": {
+                    "af_model_": "message",
+                    "sender_alias": "_agent2",
+                    "content": "agent2 says hello",
+                },
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "USER",
+                "original_msg": {
+                    "af_model_": "message",
+                    "sender_alias": "_agent2",
+                    "content": "agent2 says hello again",
+                },
+            },
+            {
+                "af_model_": "call",
+                "sender_alias": "",
+                "content": "_agent1",
+                "messages_in_request": 2,
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "_agent1",
+                "original_msg": {
+                    "af_model_": "forward",
+                    "sender_alias": "USER",
+                    "original_msg": {
+                        "af_model_": "message",
+                        "sender_alias": "_agent2",
+                        "content": "agent2 says hello",
+                    },
+                },
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "_agent1",
+                "original_msg": {
+                    "af_model_": "forward",
+                    "sender_alias": "USER",
+                    "original_msg": {
+                        "af_model_": "message",
+                        "sender_alias": "_agent2",
+                        "content": "agent2 says hello again",
+                    },
+                },
+            },
+        ]
+    else:
+        assert await arepresent_conversation_with_dicts(responses1) == [
+            {
+                "af_model_": "message",
+                "sender_alias": "USER",
+                "content": "user says hello",
+            },
+            {
+                "af_model_": "call",
+                "sender_alias": "",
+                "content": "_agent2",
+                "messages_in_request": 1,
+            },
+            {
+                "af_model_": "message",
+                "sender_alias": "_agent2",
+                "content": "agent2 says hello",
+            },
+            {
+                "af_model_": "message",
+                "sender_alias": "_agent2",
+                "content": "agent2 says hello again",
+            },
+            {
+                "af_model_": "call",
+                "sender_alias": "",
+                "content": "_agent1",
+                "messages_in_request": 2,
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "_agent1",
+                "original_msg": {
+                    "af_model_": "message",
+                    "sender_alias": "_agent2",
+                    "content": "agent2 says hello",
+                },
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "_agent1",
+                "original_msg": {
+                    "af_model_": "message",
+                    "sender_alias": "_agent2",
+                    "content": "agent2 says hello again",
+                },
+            },
+        ]
+
+
 async def arepresent_conversation_with_dicts(response: Union[MessagePromise, MessageSequence]) -> List[Dict[str, Any]]:
     """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
-    def _get_msg_dict(msg: Message) -> Dict[str, Any]:
-        msg_dict_ = msg.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"})
+    def _get_msg_dict(msg_: Message) -> Dict[str, Any]:
+        msg_dict_ = msg_.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"})
         if msg_dict_["metadata"] == {"af_model_": "freeform"}:
             # metadata is empty - remove it to reduce verbosity
             del msg_dict_["metadata"]
+
+        original_msg_ = msg_.get_original_msg(return_self_if_none=False)
+        if original_msg_:
+            assert msg_dict_["content"] == original_msg_.content
+            msg_dict_["original_msg"] = _get_msg_dict(original_msg_)
+            del msg_dict_["content"]
         return msg_dict_
 
-    concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_message()
+    concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_msg_promise()
     conversation = await concluding_msg.amaterialize_history(skip_agent_calls=False)
 
     conversation_dicts = []
     for idx, msg in enumerate(conversation):
         msg_dict = _get_msg_dict(msg)
-
-        original_msg = msg.get_original_msg(return_self_if_none=False)
-        if original_msg:
-            msg_dict["original_msg"] = _get_msg_dict(original_msg)
-            assert msg_dict["content"] == msg_dict["original_msg"]["content"]
-            del msg_dict["content"]
 
         if isinstance(msg, AgentCallMsg):
             messages_in_request = 0

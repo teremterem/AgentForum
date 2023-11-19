@@ -16,7 +16,7 @@ import promptlayer  # TODO Oleksandr: make this optional
 #  warning anymore
 warnings.filterwarnings("ignore", module="pydantic")
 
-from agentforum.ext.llms.openai import aopenai_chat_completion
+from agentforum.ext.llms.openai import openai_chat_completion
 from agentforum.forum import Forum, InteractionContext
 from agentforum.storage import InMemoryStorage
 
@@ -25,21 +25,10 @@ async_openai_client = promptlayer.openai.AsyncOpenAI()
 
 
 @forum.agent
-async def first_openai_agent(ctx: InteractionContext, **kwargs) -> None:
+async def openai_agent(ctx: InteractionContext, **kwargs) -> None:
     """The first agent that uses OpenAI ChatGPT. It sends the full chat history to the OpenAI API."""
     full_chat = await ctx.request_messages.amaterialize_full_history()
-
-    first_response = await aopenai_chat_completion(
-        forum=ctx.forum, prompt=full_chat, async_openai_client=async_openai_client, **kwargs
-    )
-    ctx.respond(first_response)
-
-    # full_chat.append(await first_response.amaterialize())
-    #
-    # second_response = await aopenai_chat_completion(
-    #     forum=ctx.forum, prompt=full_chat, async_openai_client=async_openai_client, **kwargs
-    # )
-    # ctx.respond(second_response)
+    ctx.respond(openai_chat_completion(prompt=full_chat, async_openai_client=async_openai_client, **kwargs))
 
 
 @forum.agent
@@ -69,7 +58,7 @@ async def main() -> None:
             # TODO Oleksandr: how to turn this hack into something more elegant ?
             await user_requests.amaterialize_all()
 
-            assistant_responses = first_openai_agent.quick_call(
+            assistant_responses = openai_agent.quick_call(
                 user_requests,
                 # model="gpt-4-1106-preview",
                 model="gpt-3.5-turbo-1106",

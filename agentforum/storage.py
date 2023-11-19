@@ -27,9 +27,11 @@ class InMemoryStorage(ImmutableStorage):
         self._string_data: Dict[Tuple[str, ...], str] = {}
 
     async def astore_immutable(self, immutable: Immutable) -> None:
-        if immutable.hash_key in self._immutable_data:
-            # TODO Oleksandr: introduce a custom exception for this case
-            raise ValueError(f"an immutable object with hash key {immutable.hash_key} is already stored")
+        # TODO Oleksandr: uncomment the following lines when messages that evaded forwarding
+        #  (do_not_forward_if_possible parameter) are not stored twice anymore
+        # if immutable.hash_key in self._immutable_data:
+        #     # TODO Oleksandr: introduce a custom exception for this case
+        #     raise ValueError(f"an immutable object with hash key {immutable.hash_key} is already stored")
         self._immutable_data[immutable.hash_key] = immutable
 
     async def aretrieve_immutable(self, hash_key: str) -> Immutable:

@@ -1,4 +1,3 @@
-# pylint: disable=protected-access
 """
 The Forum class is the main entry point for the agentforum library. It is used to create a forum, register agents in
 it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ImmutableStorage
@@ -7,27 +6,28 @@ for that).
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Optional, List, Dict, AsyncIterator
+from typing import Optional, List, Dict, AsyncIterator, Union
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from agentforum.models import Message, Freeform, AgentCallMsg, Immutable
-from agentforum.promises import MessagePromise, MessageSequence, DetachedAgentCallMsgPromise, DetachedMsgPromise
+from agentforum.models import Message, Immutable
+from agentforum.promises import MessagePromise, MessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage import ImmutableStorage
-from agentforum.typing import AgentFunction, MessageType, SingleMessageType
+from agentforum.typing import AgentFunction, MessageType
+from agentforum.utils import Sentinel, NO_VALUE
 
 USER_ALIAS = "USER"
 
 
 class ConversationTracker:
-    """An object that tracks the tip of a conversation branch."""
+    """
+    An object that tracks the tip of a conversation branch.
 
-    # TODO Oleksandr: Introduce the concept of MessagePlaceholder instead of MessagePromise
-    #  (composition instead of polymorphism) and move most of the logic from ConversationTracker to MessagePlaceholder.
-    #  This way it will become possible to delay the decision of whether any given message is eligible for
-    #  "do_not_forward_if_possible".
+    If `branch_from` is set to NO_VALUE then it means that whether this conversation is branched off of an existing
+    branch of messages or not will be determined by the messages that are passed into this conversation later.
+    """
 
-    def __init__(self, forum: "Forum", branch_from: Optional[MessagePromise] = None) -> None:
+    def __init__(self, forum: "Forum", branch_from: Optional[Union[MessagePromise, Sentinel]] = None) -> None:
         self.forum = forum
         self._latest_msg_promise = branch_from
 
@@ -36,91 +36,53 @@ class ConversationTracker:
         """Check if there is prior history in this conversation."""
         return bool(self._latest_msg_promise)
 
-    def new_message_promise(self, content: SingleMessageType, sender_alias: str, **metadata) -> "MessagePromise":
-        """
-        Create a new, detached message promise in the forum. "Detached message promise" means that this message
-        promise may be a reply to another message promise that may or may not be "materialized" yet.
-        """
-        if isinstance(content, str):
-            forward_of = None
-        elif isinstance(content, Message):
-            forward_of = MessagePromise(forum=self.forum, materialized_msg=content)
-            # TODO Oleksandr: should we store the materialized_msg ?
-            #  (the promise will not store it since it is already "materialized")
-            #  or do we trust that something else already stored it ?
-            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
-        elif isinstance(content, MessagePromise):
-            forward_of = content
-            content = ""  # this is a hack (the content will actually be taken from the forwarded message)
-        else:
-            raise ValueError(f"Unexpected message content type: {type(content)}")
-
-        msg_promise = DetachedMsgPromise(
-            forum=self.forum,
-            branch_from=self._latest_msg_promise,
-            forward_of=forward_of,
-            detached_msg=Message(
-                content=content,
-                sender_alias=sender_alias,
-                metadata=Freeform(**metadata),
-            ),
-        )
-        self._latest_msg_promise = msg_promise
-        return msg_promise
-
     async def aappend_zero_or_more_messages(
-        self, content: MessageType, sender_alias: str, do_not_forward_if_possible: bool = True, **metadata
+        self,
+        content: MessageType,
+        default_sender_alias: str,
+        override_sender_alias: Optional[str] = None,
+        do_not_forward_if_possible: bool = True,
+        **metadata,
     ) -> AsyncIterator[MessagePromise]:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
-        if do_not_forward_if_possible and not self.has_prior_history and not metadata:
-            # if there is no prior history (and no extra metadata) we can just append the original message
-            # (or sequence of messages) instead of creating message forwards
-            # TODO Oleksandr: move this logic into the future MessagePlaceholder class, because right now it works in
-            #  quite an unpredictable and hard to comprehend way
-
-            if isinstance(content, MessageSequence):
-                async for msg_promise in content:
-                    self._latest_msg_promise = msg_promise
-                    # TODO Oleksandr: other parallel tasks may submit messages to the same conversation which will
-                    #  mess it up (because we are not doing forwards here) - how to protect from this ?
-                    yield msg_promise
-                return
-            if isinstance(content, MessagePromise):
-                self._latest_msg_promise = content
-                yield content
-                return
-            if isinstance(content, Message):
-                self._latest_msg_promise = MessagePromise(forum=self.forum, materialized_msg=content)
-                yield self._latest_msg_promise
-                return
-
-        # if it's not a plain string then it should be forwarded (either because prior history in this conversation
-        # should be maintained or because there is extra metadata)
-
-        if isinstance(content, (str, Message, MessagePromise)):
-            yield self.new_message_promise(
+        if isinstance(content, (str, Message, StreamedMessage, MessagePromise)):
+            msg_promise = MessagePromise(
+                forum=self.forum,
                 content=content,
-                sender_alias=sender_alias,
+                default_sender_alias=default_sender_alias,
+                override_sender_alias=override_sender_alias,
+                do_not_forward_if_possible=do_not_forward_if_possible,
+                branch_from=self._latest_msg_promise,
                 **metadata,
             )
+            self._latest_msg_promise = msg_promise
+            yield msg_promise
 
         elif hasattr(content, "__iter__"):
-            for msg in content:
+            # this is not a single message, this is a collection of messages
+            for sub_msg in content:
                 async for msg_promise in self.aappend_zero_or_more_messages(
-                    content=msg,
-                    sender_alias=sender_alias,
+                    content=sub_msg,
+                    default_sender_alias=default_sender_alias,
+                    override_sender_alias=override_sender_alias,
+                    do_not_forward_if_possible=do_not_forward_if_possible,
                     **metadata,
                 ):
+                    self._latest_msg_promise = msg_promise
                     yield msg_promise
         elif hasattr(content, "__aiter__"):
-            async for msg in content:
+            # this is not a single message, this is an asynchronous collection of messages
+            async for sub_msg in content:
                 async for msg_promise in self.aappend_zero_or_more_messages(
-                    content=msg,
-                    sender_alias=sender_alias,
+                    content=sub_msg,
+                    default_sender_alias=default_sender_alias,
+                    override_sender_alias=override_sender_alias,
+                    do_not_forward_if_possible=do_not_forward_if_possible,
                     **metadata,
                 ):
+                    self._latest_msg_promise = msg_promise
                     yield msg_promise
         else:
             raise ValueError(f"Unexpected message content type: {type(content)}")
@@ -137,6 +99,7 @@ class Forum(BaseModel):
         """A decorator that registers an agent function in the forum."""
         return Agent(self, func)
 
+    # @lru_cache(maxsize=1000)  # TODO Oleksandr: implement caching (lru_cache says "unhashable type: 'Forum'")
     async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
         message = await self.immutable_storage.aretrieve_immutable(hash_key)
@@ -146,7 +109,7 @@ class Forum(BaseModel):
         return MessagePromise(forum=self, materialized_msg=message)
 
     def get_conversation(
-        self, descriptor: Immutable, branch_from_if_new: Optional["MessagePromise"] = None
+        self, descriptor: Immutable, branch_from_if_new: Optional[Union[MessagePromise, Sentinel]] = None
     ) -> ConversationTracker:
         """
         Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
@@ -213,7 +176,7 @@ class Agent:
             if conversation.has_prior_history and force_new_conversation:
                 raise ValueError("Cannot force a new conversation when there is prior history in ConversationTracker")
         else:
-            conversation = ConversationTracker(self.forum)
+            conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
 
         agent_call = AgentCall(
             self.forum, conversation, self, do_not_forward_if_possible=not force_new_conversation, **function_kwargs
@@ -223,12 +186,13 @@ class Agent:
         # TODO Oleksandr: get rid of this if-statement by making Forum a context manager too and making sure all the
         #  "seed" agent calls are done within the context of the forum ?
         if parent_ctx:
-            parent_ctx._child_agent_calls.append(agent_call)
+            parent_ctx._child_agent_calls.append(agent_call)  # pylint: disable=protected-access
 
         asyncio.create_task(self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs))
         return agent_call
 
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
+        # pylint: disable=protected-access
         with agent_call._response_producer:
             with InteractionContext(
                 forum=self.forum,
@@ -315,7 +279,7 @@ class AgentCall:
         conversation: ConversationTracker,
         receiving_agent: Agent,
         do_not_forward_if_possible: bool = True,
-        **kwargs,
+        **function_kwargs,
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
@@ -331,16 +295,11 @@ class AgentCall:
         )
         self._request_producer = MessageSequence._MessageProducer(self._request_messages)
 
-        # TODO Oleksandr: extract this into a separate method of ConversationTracker
-        agent_call_msg_promise = DetachedAgentCallMsgPromise(
+        agent_call_msg_promise = AgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,
-            detached_agent_call_msg=AgentCallMsg(
-                content=self.receiving_agent.agent_alias,
-                # we keep agent calls anonymous to be able to cache call results for multiple caller agents to reuse
-                sender_alias="",
-                metadata=Freeform(**kwargs),
-            ),
+            receiving_agent_alias=self.receiving_agent.agent_alias,
+            **function_kwargs,
         )
         conversation._latest_msg_promise = agent_call_msg_promise
 

@@ -4,10 +4,10 @@ from typing import TypeVar, Callable, Awaitable, Union, Iterable, Any, AsyncIter
 
 if typing.TYPE_CHECKING:
     from agentforum.forum import InteractionContext
-    from agentforum.promises import MessagePromise
+    from agentforum.promises import StreamedMessage, MessagePromise
     from agentforum.models import Message
 
-    SingleMessageType = Union[str, Message, MessagePromise, BaseException]
+    SingleMessageType = Union[str, StreamedMessage, Message, MessagePromise, BaseException]
     AgentFunction = Callable[[InteractionContext, ...], Awaitable[None]]
 else:
     SingleMessageType = Union[Any]

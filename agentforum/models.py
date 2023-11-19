@@ -15,7 +15,7 @@ class Immutable(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    af_model_: str  # AgentForum model name
+    af_model_: str  # AgentForum model name  # TODO Oleksandr: rename to im_model_
 
     @cached_property
     def hash_key(self) -> str:
@@ -24,7 +24,7 @@ class Immutable(BaseModel):
         #   json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True)
         #  instead of
         #   self.model_dump_json()
-        #  to ensure that the hash key is independent of the order of the fields in the JSON representation ?
+        #  to ensure that the hash key is independent of the order of the fields in the JSON representation
         return hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
 
     # noinspection PyNestedDecorators
@@ -140,13 +140,10 @@ class AgentCallMsg(Message):
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
 
 
-class Token(Immutable):  # TODO Oleksandr: rename to MessageChunk or ContentChunk and don't extend Immutable
-    """
-    A token. This class is used by MessagePromise (when the message is streamed token by token instead of being
-    returned all at once).
-    """
+class ContentChunk(Immutable):
+    """A chunk of message content. For ex. a token if the message is streamed token by token."""
 
-    af_model_: Literal["token"] = "token"
+    af_model_: Literal["chunk"] = "chunk"
     text: str
 
 
@@ -155,8 +152,8 @@ class MessageParameters(BaseModel):
     A set of parameters that can be converted into one or more messages or message promises.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     content: Any  # TODO Oleksandr: a newer version of Pydantic doesn't seem work with `MessageType` for some reason
     override_sender_alias: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Freeform = Freeform()  # empty metadata by default
