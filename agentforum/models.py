@@ -15,7 +15,7 @@ class Immutable(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    af_model_: str  # AgentForum model name  # TODO Oleksandr: rename to im_model_
+    im_model_: str  # immutable model type
 
     @cached_property
     def hash_key(self) -> str:
@@ -63,12 +63,12 @@ class Freeform(Immutable):
     """
 
     model_config = ConfigDict(extra="allow")
-    af_model_: Literal["freeform"] = "freeform"
+    im_model_: Literal["freeform"] = "freeform"
 
     @cached_property
     def as_kwargs(self) -> Dict[str, Any]:
         """Get the fields of the object as a dictionary of keyword arguments."""
-        return self.model_dump(exclude={"af_model_"})
+        return self.model_dump(exclude={"im_model_"})
 
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
@@ -81,7 +81,7 @@ _TYPES_ALLOWED_IN_FREEFORM = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Freeform
 class Message(Immutable):
     """A message."""
 
-    af_model_: Literal["message"] = "message"
+    im_model_: Literal["message"] = "message"
     content: str
     sender_alias: str
     metadata: Freeform = Freeform()  # empty metadata by default
@@ -99,7 +99,7 @@ class Message(Immutable):
 class ForwardedMessage(Message):
     """A subtype of Message that represents a message forwarded by an agent."""
 
-    af_model_: Literal["message"] = "forward"
+    im_model_: Literal["message"] = "forward"
     original_msg_hash_key: str
 
     _original_msg: Optional["Message"] = None
@@ -123,7 +123,7 @@ class ForwardedMessage(Message):
 class AgentCallMsg(Message):
     """A subtype of Message that represents a call to an agent."""
 
-    af_model_: Literal["call"] = "call"
+    im_model_: Literal["call"] = "call"
     msg_seq_start_hash_key: Optional[str] = None
 
     @property
@@ -143,7 +143,7 @@ class AgentCallMsg(Message):
 class ContentChunk(Immutable):
     """A chunk of message content. For ex. a token if the message is streamed token by token."""
 
-    af_model_: Literal["chunk"] = "chunk"
+    im_model_: Literal["chunk"] = "chunk"
     text: str
 
 
