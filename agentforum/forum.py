@@ -20,11 +20,14 @@ USER_ALIAS = "USER"
 
 
 class ConversationTracker:
-    """An object that tracks the tip of a conversation branch."""
+    """
+    An object that tracks the tip of a conversation branch.
+
+    If `branch_from` is set to NO_VALUE then it means that whether this conversation is branched off of an existing
+    branch of messages or not will be determined by the messages that are passed into this conversation later.
+    """
 
     def __init__(self, forum: "Forum", branch_from: Optional[Union[MessagePromise, Sentinel]] = None) -> None:
-        # branch_from=NO_VALUE would mean that whether this conversation is branched off of an existing conversation
-        # branch or not will be determined by the messages that are passed into this conversation later
         self.forum = forum
         self._latest_msg_promise = branch_from
 
@@ -106,7 +109,7 @@ class Forum(BaseModel):
         return MessagePromise(forum=self, materialized_msg=message)
 
     def get_conversation(
-        self, descriptor: Immutable, branch_from_if_new: Optional["MessagePromise"] = None
+        self, descriptor: Immutable, branch_from_if_new: Optional[Union[MessagePromise, Sentinel]] = None
     ) -> ConversationTracker:
         """
         Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
