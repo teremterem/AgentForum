@@ -93,6 +93,7 @@ class Forum(BaseModel):
         """A decorator that registers an agent function in the forum."""
         return Agent(self, func)
 
+    # @lru_cache(maxsize=1000)  # TODO Oleksandr: implement caching (lru_cache says "unhashable type: 'Forum'")
     async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
         message = await self.immutable_storage.aretrieve_immutable(hash_key)
