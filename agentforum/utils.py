@@ -12,6 +12,7 @@ class Sentinel:
 
 
 END_OF_QUEUE = Sentinel()
+NO_VALUE = Sentinel()
 
 
 class AsyncStreamable(Generic[IN, OUT]):

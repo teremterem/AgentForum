@@ -6,7 +6,7 @@ for that).
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Optional, List, Dict, AsyncIterator
+from typing import Optional, List, Dict, AsyncIterator, Union
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -14,6 +14,7 @@ from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, MessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage import ImmutableStorage
 from agentforum.typing import AgentFunction, MessageType
+from agentforum.utils import Sentinel
 
 USER_ALIAS = "USER"
 
@@ -21,7 +22,7 @@ USER_ALIAS = "USER"
 class ConversationTracker:
     """An object that tracks the tip of a conversation branch."""
 
-    def __init__(self, forum: "Forum", branch_from: Optional[MessagePromise] = None) -> None:
+    def __init__(self, forum: "Forum", branch_from: Optional[Union[MessagePromise, Sentinel]] = None) -> None:
         self.forum = forum
         self._latest_msg_promise = branch_from
 

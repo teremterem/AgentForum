@@ -241,25 +241,46 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
 
 @pytest.mark.parametrize("force_new_conversation", [True, False])
+@pytest.mark.parametrize("materialize_beforehand", [True, False])
+@pytest.mark.parametrize("dont_send_promises", [True, False])
 @pytest.mark.asyncio
-async def test_agent_force_new_conversation(forum: Forum, force_new_conversation: bool) -> None:
+async def test_agent_force_new_conversation(
+    forum: Forum, force_new_conversation: bool, materialize_beforehand: bool, dont_send_promises: bool
+) -> None:
     """
     Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
     history is recorded according to the `force_new_conversation` flag (if `force_new_conversation` is True then the
     conversation history for the _agent1 starts from the response of _agent2 and not from the user's greeting).
+
+    If agent interaction mechanism is implemented correctly then materialize_beforehand and dont_send_promises should
+    not affect the conversation history.
     """
 
     @forum.agent
     async def _agent1(ctx: InteractionContext) -> None:
-        ctx.respond(ctx.request_messages)
+        if materialize_beforehand:
+            await ctx.request_messages.amaterialize_all()
+
+        request_messages = ctx.request_messages
+        if dont_send_promises:
+            request_messages = await request_messages.amaterialize_all()
+
+        # echoing the request messages back
+        ctx.respond(request_messages)
 
     @forum.agent
     async def _agent2(ctx: InteractionContext) -> None:
-        ctx.respond("agent2 says hello")
+        if materialize_beforehand:
+            await ctx.request_messages.amaterialize_all()
 
-    responses1 = _agent1.quick_call(
-        _agent2.quick_call("user says hello"), force_new_conversation=force_new_conversation
-    )
+        ctx.respond("agent2 says hello")
+        ctx.respond("agent2 says hello again")
+
+    responses2 = _agent2.quick_call("user says hello")
+    if dont_send_promises:
+        responses2 = await responses2.amaterialize_all()
+
+    responses1 = _agent1.quick_call(responses2, force_new_conversation=force_new_conversation)
 
     if force_new_conversation:
         assert await arepresent_conversation_with_dicts(responses1) == [
@@ -273,10 +294,19 @@ async def test_agent_force_new_conversation(forum: Forum, force_new_conversation
                 },
             },
             {
+                "af_model_": "forward",
+                "sender_alias": "USER",
+                "original_msg": {
+                    "af_model_": "message",
+                    "sender_alias": "_agent2",
+                    "content": "agent2 says hello again",
+                },
+            },
+            {
                 "af_model_": "call",
                 "sender_alias": "",
                 "content": "_agent1",
-                "messages_in_request": 1,
+                "messages_in_request": 2,
             },
             {
                 "af_model_": "forward",
@@ -288,6 +318,19 @@ async def test_agent_force_new_conversation(forum: Forum, force_new_conversation
                         "af_model_": "message",
                         "sender_alias": "_agent2",
                         "content": "agent2 says hello",
+                    },
+                },
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "_agent1",
+                "original_msg": {
+                    "af_model_": "forward",
+                    "sender_alias": "USER",
+                    "original_msg": {
+                        "af_model_": "message",
+                        "sender_alias": "_agent2",
+                        "content": "agent2 says hello again",
                     },
                 },
             },
@@ -311,10 +354,15 @@ async def test_agent_force_new_conversation(forum: Forum, force_new_conversation
                 "content": "agent2 says hello",
             },
             {
+                "af_model_": "message",
+                "sender_alias": "_agent2",
+                "content": "agent2 says hello again",
+            },
+            {
                 "af_model_": "call",
                 "sender_alias": "",
                 "content": "_agent1",
-                "messages_in_request": 1,
+                "messages_in_request": 2,
             },
             {
                 "af_model_": "forward",
@@ -323,6 +371,15 @@ async def test_agent_force_new_conversation(forum: Forum, force_new_conversation
                     "af_model_": "message",
                     "sender_alias": "_agent2",
                     "content": "agent2 says hello",
+                },
+            },
+            {
+                "af_model_": "forward",
+                "sender_alias": "_agent1",
+                "original_msg": {
+                    "af_model_": "message",
+                    "sender_alias": "_agent2",
+                    "content": "agent2 says hello again",
                 },
             },
         ]
