@@ -1,4 +1,4 @@
-# pylint: disable=wrong-import-position,import-outside-toplevel
+# pylint: disable=wrong-import-position,duplicate-code
 """Chat with OpenAI ChatGPT using the AgentForum library."""
 import asyncio
 
@@ -14,9 +14,8 @@ from openai import AsyncOpenAI
 from openai.types.beta import Thread, Assistant
 
 from agentforum.forum import Forum, InteractionContext, ConversationTracker
-from agentforum.storage import InMemoryStorage
 
-forum = Forum(immutable_storage=InMemoryStorage())
+forum = Forum()
 
 async_openai_client = AsyncOpenAI()
 
@@ -30,8 +29,8 @@ latest_oai_msg_id: Optional[str] = None
 async def openai_assistant(ctx: InteractionContext) -> None:
     """The first agent that uses OpenAI ChatGPT. It sends the full chat history to the OpenAI API."""
     # TODO Oleksandr: resolve OpenAI Thread based on the descriptor of the current ConversationTracker
-    global latest_oai_msg_id
-    for msg in await ctx.request_messages.amaterialize_all():
+    global latest_oai_msg_id  # pylint: disable=global-statement
+    for msg in await ctx.request_messages.amaterialize_as_list():
         openai_msg = await async_openai_client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
@@ -75,7 +74,7 @@ async def user_proxy_agent(ctx: InteractionContext) -> None:
 
 async def main() -> None:
     """The chat loop."""
-    global conversation, thread, assistant
+    global conversation, thread, assistant  # pylint: disable=global-statement
 
     conversation = ConversationTracker(forum)
     thread = await async_openai_client.beta.threads.create()
@@ -89,7 +88,7 @@ async def main() -> None:
             # the following line is needed in order to wait until the previous back-and-forth is processed
             # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
             # TODO Oleksandr: how to turn this hack into something more elegant ?
-            await user_requests.amaterialize_all()
+            await user_requests.amaterialize_as_list()
 
             assistant_responses = openai_assistant.quick_call(user_requests)
     except KeyboardInterrupt:

@@ -8,11 +8,11 @@ import contextvars
 from contextvars import ContextVar
 from typing import Optional, List, Dict, AsyncIterator, Union
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
 from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
-from agentforum.storage import ImmutableStorage
+from agentforum.storage import ImmutableStorage, InMemoryStorage
 from agentforum.typing import AgentFunction, MessageType
 from agentforum.utils import Sentinel, NO_VALUE
 
@@ -92,7 +92,7 @@ class Forum(BaseModel):
     """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    immutable_storage: ImmutableStorage
+    immutable_storage: ImmutableStorage = Field(default_factory=InMemoryStorage)
     _conversations: Dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
     def agent(self, func: AgentFunction) -> "Agent":
@@ -102,7 +102,7 @@ class Forum(BaseModel):
     # @lru_cache(maxsize=1000)  # TODO Oleksandr: implement caching (lru_cache says "unhashable type: 'Forum'")
     async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
-        message = await self.immutable_storage.aretrieve_immutable(hash_key)
+        message = await self.immutable_storage.aretrieve_immutable(hash_key)  # pylint: disable=no-member
         if not isinstance(message, Message):
             # TODO Oleksandr: introduce a custom exception for this case ?
             raise ValueError(f"Expected a Message, got a {type(message)}")

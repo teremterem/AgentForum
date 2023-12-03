@@ -259,11 +259,11 @@ async def test_agent_force_new_conversation(
     @forum.agent
     async def _agent1(ctx: InteractionContext) -> None:
         if materialize_beforehand:
-            await ctx.request_messages.amaterialize_all()
+            await ctx.request_messages.amaterialize_as_list()
 
         request_messages = ctx.request_messages
         if dont_send_promises:
-            request_messages = await request_messages.amaterialize_all()
+            request_messages = await request_messages.amaterialize_as_list()
 
         # echoing the request messages back
         ctx.respond(request_messages)
@@ -271,14 +271,14 @@ async def test_agent_force_new_conversation(
     @forum.agent
     async def _agent2(ctx: InteractionContext) -> None:
         if materialize_beforehand:
-            await ctx.request_messages.amaterialize_all()
+            await ctx.request_messages.amaterialize_as_list()
 
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
     responses2 = _agent2.quick_call("user says hello")
     if dont_send_promises:
-        responses2 = await responses2.amaterialize_all()
+        responses2 = await responses2.amaterialize_as_list()
 
     responses1 = _agent1.quick_call(responses2, force_new_conversation=force_new_conversation)
 

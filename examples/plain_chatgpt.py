@@ -1,4 +1,4 @@
-# pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-position,duplicate-code
 """Chat with OpenAI ChatGPT using the AgentForum library."""
 import asyncio
 
@@ -18,9 +18,8 @@ warnings.filterwarnings("ignore", module="pydantic")
 
 from agentforum.ext.llms.openai import openai_chat_completion
 from agentforum.forum import Forum, InteractionContext
-from agentforum.storage import InMemoryStorage
 
-forum = Forum(immutable_storage=InMemoryStorage())
+forum = Forum()
 async_openai_client = promptlayer.openai.AsyncOpenAI()
 
 
@@ -56,7 +55,7 @@ async def main() -> None:
             # the following line is needed in order to wait until the previous back-and-forth is processed
             # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
             # TODO Oleksandr: how to turn this hack into something more elegant ?
-            await user_requests.amaterialize_all()
+            await user_requests.amaterialize_as_list()
 
             assistant_responses = openai_agent.quick_call(
                 user_requests,

@@ -45,7 +45,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         """Get the last message in the sequence, but return a Message object instead of a MessagePromise object."""
         return await (await self.aget_concluding_msg_promise(raise_if_none=raise_if_none)).amaterialize()
 
-    async def amaterialize_all(self) -> List["Message"]:
+    async def amaterialize_as_list(self) -> List["Message"]:
         """
         Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
         """
@@ -343,7 +343,7 @@ class AgentCallMsgPromise(MessagePromise):
         return True
 
     async def _amaterialize_impl(self) -> Message:
-        messages = await self._request_messages.amaterialize_all()
+        messages = await self._request_messages.amaterialize_as_list()
         if messages:
             msg_seq_start_hash_key = messages[0].hash_key
             msg_seq_end_hash_key = messages[-1].hash_key

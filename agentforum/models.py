@@ -1,5 +1,6 @@
 """Data models."""
 import hashlib
+import json
 from functools import cached_property
 from typing import Dict, Any, Literal, Type, Tuple, Optional
 
@@ -20,12 +21,9 @@ class Immutable(BaseModel):
     @cached_property
     def hash_key(self) -> str:
         """Get the hash key for this object. It is a hash of the JSON representation of the object."""
-        # TODO Oleksandr: use
-        #   json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True)
-        #  instead of
-        #   self.model_dump_json()
-        #  to ensure that the hash key is independent of the order of the fields in the JSON representation
-        return hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
+        return hashlib.sha256(
+            json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
 
     # noinspection PyNestedDecorators
     @model_validator(mode="before")
