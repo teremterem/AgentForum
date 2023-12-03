@@ -1,4 +1,4 @@
-# pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-position,duplicate-code
 """Chat with OpenAI ChatGPT using the AgentForum library."""
 import asyncio
 
@@ -18,9 +18,8 @@ warnings.filterwarnings("ignore", module="pydantic")
 
 from agentforum.ext.llms.openai import openai_chat_completion
 from agentforum.forum import Forum, InteractionContext
-from agentforum.storage import InMemoryStorage
 
-forum = Forum(immutable_storage=InMemoryStorage())
+forum = Forum()
 async_openai_client = promptlayer.openai.AsyncOpenAI()
 
 
