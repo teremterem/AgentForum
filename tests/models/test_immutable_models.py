@@ -58,10 +58,11 @@ def test_immutable_hash_key() -> None:
         some_req_field="test", sub_immutable=SampleImmutable(some_req_field="юнікод", some_opt_field=3)
     )
 
-    # print(sample.model_dump_json())
+    # print(json.dumps(sample.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"im_model_":"sample_immutable","some_req_field":"test","some_opt_field":2,"sub_immutable":{"im_model_":'
-        '"sample_immutable","some_req_field":"юнікод","some_opt_field":3,"sub_immutable":null}}'.encode("utf-8")
+        '{"im_model_": "sample_immutable", "some_opt_field": 2, "some_req_field": "test", "sub_immutable": '
+        '{"im_model_": "sample_immutable", "some_opt_field": 3, "some_req_field": "юнікод", '
+        '"sub_immutable": null}}'.encode("utf-8")
     ).hexdigest()
     assert sample.hash_key == expected_hash_key
 
@@ -69,18 +70,18 @@ def test_immutable_hash_key() -> None:
 def test_message_hash_key() -> None:
     """Test the `Message.hash_key` property."""
     message = Message(content="test", sender_alias="user", metadata=Freeform(role="user"))
-    # print(message.model_dump_json())
+    # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"im_model_":"message","content":"test","sender_alias":"user","metadata":'
-        '{"im_model_":"freeform","role":"user"},"prev_msg_hash_key":null}'.encode("utf-8")
+        '{"content": "test", "im_model_": "message", "metadata": {"im_model_": "freeform", "role": "user"}, '
+        '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
     message = Message(content="test", sender_alias="user")
-    # print(message.model_dump_json())
+    # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"im_model_":"message","content":"test","sender_alias":"user","metadata":'
-        '{"im_model_":"freeform"},"prev_msg_hash_key":null}'.encode("utf-8")
+        '{"content": "test", "im_model_": "message", "metadata": {"im_model_": "freeform"}, '
+        '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
@@ -95,11 +96,11 @@ def test_forwarded_message_hash_key() -> None:
     message = ForwardedMessage(content="test", sender_alias="user", original_msg_hash_key=original_msg.hash_key)
     message._original_msg = original_msg  # pylint: disable=protected-access
 
-    # print(message.model_dump_json())
+    # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"im_model_":"forward","content":"test","sender_alias":"user","metadata":'
-        '{"im_model_":"freeform"},"prev_msg_hash_key":null,'
-        '"original_msg_hash_key":"232775ce70f49313b3b8ddfea368ed77a706623a45e967100353149e7a778b8a"}'.encode("utf-8")
+        '{"content": "test", "im_model_": "forward", "metadata": {"im_model_": "freeform"}, '
+        '"original_msg_hash_key": "f8ad8f09928df3f757688280182fef522950236120e88dada21607d8b5b3aba0", '
+        '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
@@ -131,8 +132,19 @@ def test_immutable_hash_key_calculated_once() -> None:
         sample = SampleImmutable(some_req_field="test")
         mock_sha256.assert_not_called()  # not calculated yet
 
-        assert sample.hash_key == "9f2c02d6f1e96f13ace0f0b61b66ec255e29da764f1cc690ab708dfa602db5f5"
+        assert sample.hash_key == "c9fb7f94ae479c289eeb08f071642f3a43332a33b6d152b703f22e8e9764b5fa"
         mock_sha256.assert_called_once()  # calculated once
 
-        assert sample.hash_key == "9f2c02d6f1e96f13ace0f0b61b66ec255e29da764f1cc690ab708dfa602db5f5"
+        assert sample.hash_key == "c9fb7f94ae479c289eeb08f071642f3a43332a33b6d152b703f22e8e9764b5fa"
         mock_sha256.assert_called_once()  # check that it wasn't calculated again
+
+
+def test_freeform_hash_key_vs_key_ordering() -> None:
+    """
+    Test that hash_key of Freeform (a class that is used to store metadata and allows arbitrary fields) is not
+    affected by the ordering of its fields.
+    """
+    freeform1 = Freeform(some_req_field="test", some_opt_field=2)
+    freeform2 = Freeform(some_opt_field=2, some_req_field="test")
+
+    assert freeform1.hash_key == freeform2.hash_key
