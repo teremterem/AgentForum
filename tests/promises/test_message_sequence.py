@@ -32,7 +32,7 @@ async def test_nested_message_sequences(forum: Forum) -> None:
         level2_producer.send_zero_or_more_messages(level3_sequence)
         level2_producer.send_zero_or_more_messages("message 5")
 
-    actual_messages = await level1_sequence.amaterialize_all()
+    actual_messages = await level1_sequence.amaterialize_as_list()
     actual_texts = [msg.content for msg in actual_messages]
     assert actual_texts == [
         "message 1",

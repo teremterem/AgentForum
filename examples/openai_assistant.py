@@ -30,7 +30,7 @@ async def openai_assistant(ctx: InteractionContext) -> None:
     """The first agent that uses OpenAI ChatGPT. It sends the full chat history to the OpenAI API."""
     # TODO Oleksandr: resolve OpenAI Thread based on the descriptor of the current ConversationTracker
     global latest_oai_msg_id  # pylint: disable=global-statement
-    for msg in await ctx.request_messages.amaterialize_all():
+    for msg in await ctx.request_messages.amaterialize_as_list():
         openai_msg = await async_openai_client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
@@ -88,7 +88,7 @@ async def main() -> None:
             # the following line is needed in order to wait until the previous back-and-forth is processed
             # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
             # TODO Oleksandr: how to turn this hack into something more elegant ?
-            await user_requests.amaterialize_all()
+            await user_requests.amaterialize_as_list()
 
             assistant_responses = openai_assistant.quick_call(user_requests)
     except KeyboardInterrupt:
