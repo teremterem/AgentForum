@@ -137,7 +137,7 @@ class Agent:
 
     def quick_call(
         self,
-        content: Optional[MessageType],
+        content: Optional[MessageType] = None,
         override_sender_alias: Optional[str] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
