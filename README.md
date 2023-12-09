@@ -8,7 +8,7 @@ An asynchronous framework for building LLM-based multi-agent systems in Python, 
 - **Message promises and the possibility of token streaming.** `MessagePromise` objects are returned before the
   messages are fully generated. Token streaming is supported regardless of the number of nested levels of agents.
 
-**NOTE:** While this framework is designed with LLMs in mind, it can be used with any kind of agents.
+*NOTE: While this framework is designed with LLMs in mind, it can be used with any kind of agents.*
 
 ## 🧩 Features
 
