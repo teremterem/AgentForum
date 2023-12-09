@@ -33,3 +33,7 @@ under the hood.
   special type of messages and will be part of the message branches those agents were on when they were raised.
 - **Optional caching of agent responses (enabled by default).** When the same sequence of messages is sent to an agent,
   the framework will respond with the same sequence of response messages without actually calling the agent.
+- **Cancellation of agent execution.** In the future, it will be possible to cancel the execution of agents before
+  they finish.
+
+***⚠️ NOTE: These plans are tentative and may change in the future. ⚠️***
