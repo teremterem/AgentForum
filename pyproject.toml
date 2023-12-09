@@ -3,7 +3,7 @@ line-length = 119
 
 [tool.poetry]
 name = "agentforum"
-version = "0.0.4"
+version = "0.0.5"
 description = """\
 An asynchronous framework for building LLM-based multi-agent systems in Python, \
 with a focus on trees of immutable messages and token streaming.\
