@@ -157,7 +157,7 @@ class Agent:
         )
         if content is not None:
             agent_call.send_request(content, override_sender_alias=override_sender_alias)
-        return agent_call.finish()
+        return agent_call.response_sequence()
 
     def call(
         self,
@@ -261,7 +261,7 @@ class InteractionContext:
         """Restore the context that was current before this one."""
         for child_agent_call in self._child_agent_calls:
             # just in case any of the child agent calls weren't explicitly finished, finish them now
-            child_agent_call.finish()
+            child_agent_call.response_sequence()
         self._current_context.reset(self._previous_ctx_token)
         self._previous_ctx_token = None
 
@@ -317,7 +317,11 @@ class AgentCall:
         )
         return self
 
-    def finish(self) -> "AsyncMessageSequence":
-        """Finish the agent call and return the agent's response(s)."""
+    def response_sequence(self) -> "AsyncMessageSequence":
+        """
+        Finish the agent call and return the agent's response(s).
+
+        NOTE: After this method is called it is not possible to send any more requests to this AgentCall object.
+        """
         self._request_producer.close()
         return self._response_messages
