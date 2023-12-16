@@ -17,6 +17,9 @@ An asynchronous framework for building LLM-based multi-agent systems in Python, 
 
 ## 💡 Philosophy
 
+- **Agents run as concurrently as possible.** When an agent is called with `.call()` or `.quick_call()` a task is
+  scheduled and `AgentCall` or `AsyncMessageSequence` objects are returned immediately. The actual processing will
+  happen upon a task switch.
 - **Stateless agents are encouraged.** This is not a hard requirement, but ideally the agents should produce the same
   output when they are given the same input (the same sequence of messages from a message branch).
 
