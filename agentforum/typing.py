@@ -13,6 +13,7 @@ else:
     SingleMessageType = Union[Any]
     AgentFunction = Callable
 
+# TODO Oleksandr: why not allow Iterable and AsyncIterable of MessageType itself ?
 MessageType = Union[SingleMessageType, Iterable[SingleMessageType], AsyncIterable[SingleMessageType]]
 
 IN = TypeVar("IN")

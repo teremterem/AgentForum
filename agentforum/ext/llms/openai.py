@@ -1,6 +1,6 @@
 """OpenAI API extension for AgentForum."""
 import asyncio
-from typing import List, Dict, Any, Set, Union, Optional, AsyncIterator
+from typing import Dict, Any, Set, Union, Optional, AsyncIterator, Iterable
 
 from pydantic import BaseModel
 
@@ -10,8 +10,8 @@ from agentforum.promises import MessagePromise, StreamedMessage
 
 
 def openai_chat_completion(
-    # TODO Oleksandr: switch `prompt` to a combination of MessageType and a list of dicts ?
-    prompt: List[Union[MessagePromise, Message]],
+    # TODO Oleksandr: allow MessageType ? there should be amaterialize_message_type utility function then
+    prompt: Iterable[Union[MessagePromise, Message, Dict[str, Any]]],
     async_openai_client: Optional[Any] = None,
     stream: bool = False,
     n: int = 1,
@@ -33,15 +33,7 @@ def openai_chat_completion(
         # pylint: disable=protected-access
         # noinspection PyProtectedMember
         with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
-            messages = [await msg.amaterialize() if isinstance(msg, MessagePromise) else msg for msg in prompt]
-            message_dicts = [
-                {
-                    # TODO Oleksandr: introduce a lambda function to derive roles from messages
-                    "role": getattr(msg.metadata, "openai_role", "user"),
-                    "content": msg.content,
-                }
-                for msg in messages
-            ]
+            message_dicts = [await _message_to_openai_dict(msg) for msg in prompt]
 
             # noinspection PyTypeChecker
             response = await async_openai_client.chat.completions.create(
@@ -59,6 +51,18 @@ def openai_chat_completion(
     return streamed_message
 
 
+async def _message_to_openai_dict(message: Union[MessagePromise, Message, Dict[str, Any]]) -> Dict[str, Any]:
+    if isinstance(message, MessagePromise):
+        message = await message.amaterialize()
+    if isinstance(message, Message):
+        message = {
+            # TODO Oleksandr: introduce a lambda function to derive roles from messages ?
+            "role": getattr(message.metadata, "openai_role", "user"),
+            "content": message.content,
+        }
+    return message
+
+
 class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
     """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
@@ -73,7 +77,7 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
         if token_text:
             yield ContentChunk(text=token_text)
 
-        # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full message is built
+        # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full message is built ?
         for k, v in _build_openai_metadata_dict(incoming_item.model_dump()).items():
             if v is not None:
                 self._metadata[k] = v
