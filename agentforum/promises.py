@@ -234,7 +234,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         if isinstance(self._content, (str, StreamedMessage)):
             if isinstance(self._content, StreamedMessage):
-                msg_content = "".join([token.text async for token in self._content])
+                msg_content = await self._content.amaterialize_content()
                 # let's merge the metadata from the stream with the metadata provided to the constructor
                 metadata = Freeform(**self._content.build_metadata(), **self._metadata)
             else:
