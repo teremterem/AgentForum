@@ -131,6 +131,11 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         """
         return {**self._metadata, **self._override_metadata}
 
+    async def amaterialize_content(self) -> str:
+        """Get the full content of the message as a string."""
+        # TODO Oleksandr: cache this ?
+        return "".join([token.text async for token in self])
+
 
 class MessagePromise:  # pylint: disable=too-many-instance-attributes
     """A promise to materialize a message."""
