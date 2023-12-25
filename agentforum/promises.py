@@ -45,6 +45,10 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         """Get the last message in the sequence, but return a Message object instead of a MessagePromise object."""
         return await (await self.aget_concluding_msg_promise(raise_if_none=raise_if_none)).amaterialize()
 
+    async def amaterialize_concluding_content(self, raise_if_none: bool = True) -> str:
+        """Get the content of the last message in the sequence as a string."""
+        return (await self.amaterialize_concluding_message(raise_if_none=raise_if_none)).content
+
     async def amaterialize_as_list(self) -> List["Message"]:
         """
         Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
@@ -212,6 +216,10 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     self._metadata = None
 
         return self._materialized_msg
+
+    async def amaterialize_content(self) -> str:
+        """Get the full content of the message as a string."""
+        return (await self.amaterialize()).content
 
     async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous MessagePromise in this conversation branch."""
