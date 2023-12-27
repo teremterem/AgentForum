@@ -6,7 +6,7 @@ for that).
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Optional, List, Dict, AsyncIterator, Union
+from typing import Optional, List, Dict, AsyncIterator, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
@@ -95,9 +95,23 @@ class Forum(BaseModel):
     immutable_storage: ImmutableStorage = Field(default_factory=InMemoryStorage)
     _conversations: Dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
-    def agent(self, func: AgentFunction) -> "Agent":
+    def agent(
+        self,
+        func: Optional[AgentFunction] = None,
+        alias: Optional[str] = None,
+        description: Optional[str] = None,
+        uppercase_func_name: bool = True,
+    ) -> Union["Agent", Callable[[AgentFunction], "Agent"]]:
         """A decorator that registers an agent function in the forum."""
-        return Agent(self, func)
+        if func is None:
+            # the decorator `@forum.agent(...)` was used with arguments
+            def _decorator(f: AgentFunction) -> "Agent":
+                return Agent(self, f, alias=alias, description=description, uppercase_func_name=uppercase_func_name)
+
+            return _decorator
+
+        # the decorator `@forum.agent` was used either without arguments or as a direct function call
+        return Agent(self, func, alias=alias, description=description, uppercase_func_name=uppercase_func_name)
 
     # @lru_cache(maxsize=1000)  # TODO Oleksandr: implement caching (lru_cache says "unhashable type: 'Forum'")
     async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
@@ -130,10 +144,27 @@ class Forum(BaseModel):
 class Agent:
     """A wrapper for an agent function that allows calling the agent."""
 
-    def __init__(self, forum: Forum, func: AgentFunction) -> None:
+    def __init__(  # pylint: disable=too-many-arguments
+        self,
+        forum: Forum,
+        func: AgentFunction,
+        alias: Optional[str] = None,
+        description: Optional[str] = None,
+        uppercase_func_name: bool = True,
+    ) -> None:
         self.forum = forum
-        self.agent_alias = func.__name__
         self._func = func
+
+        self.agent_alias = alias
+        if self.agent_alias is None:
+            self.agent_alias = func.__name__
+            if uppercase_func_name:
+                self.agent_alias = self.agent_alias.upper()
+
+        self.agent_description = description
+        if self.agent_description:
+            # replace all {AGENT_ALIAS} entries in the description with the actual agent alias
+            self.agent_description.format(AGENT_ALIAS=self.agent_alias)
 
     def quick_call(
         self,
