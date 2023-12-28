@@ -95,23 +95,38 @@ class Forum(BaseModel):
     immutable_storage: ImmutableStorage = Field(default_factory=InMemoryStorage)
     _conversations: Dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
-    def agent(
+    def agent(  # pylint: disable=too-many-arguments
         self,
         func: Optional[AgentFunction] = None,
         alias: Optional[str] = None,
         description: Optional[str] = None,
         uppercase_func_name: bool = True,
+        normalize_spaces_in_docstring: bool = True,
     ) -> Union["Agent", Callable[[AgentFunction], "Agent"]]:
         """A decorator that registers an agent function in the forum."""
         if func is None:
             # the decorator `@forum.agent(...)` was used with arguments
             def _decorator(f: AgentFunction) -> "Agent":
-                return Agent(self, f, alias=alias, description=description, uppercase_func_name=uppercase_func_name)
+                return Agent(
+                    self,
+                    f,
+                    alias=alias,
+                    description=description,
+                    uppercase_func_name=uppercase_func_name,
+                    normalize_spaces_in_docstring=normalize_spaces_in_docstring,
+                )
 
             return _decorator
 
         # the decorator `@forum.agent` was used either without arguments or as a direct function call
-        return Agent(self, func, alias=alias, description=description, uppercase_func_name=uppercase_func_name)
+        return Agent(
+            self,
+            func,
+            alias=alias,
+            description=description,
+            uppercase_func_name=uppercase_func_name,
+            normalize_spaces_in_docstring=normalize_spaces_in_docstring,
+        )
 
     # @lru_cache(maxsize=1000)  # TODO Oleksandr: implement caching (lru_cache says "unhashable type: 'Forum'")
     async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
@@ -151,6 +166,7 @@ class Agent:
         alias: Optional[str] = None,
         description: Optional[str] = None,
         uppercase_func_name: bool = True,
+        normalize_spaces_in_docstring: bool = True,
     ) -> None:
         self.forum = forum
         self._func = func
@@ -164,6 +180,10 @@ class Agent:
                 self.agent_alias = self.agent_alias.upper()
 
         self.agent_description = description
+        if self.agent_description is None:
+            self.agent_description = func.__doc__
+            if self.agent_description and normalize_spaces_in_docstring:
+                self.agent_description = " ".join(self.agent_description.split())
         if self.agent_description:
             # replace all {AGENT_ALIAS} entries in the description with the actual agent alias
             self.agent_description.format(AGENT_ALIAS=self.agent_alias)
