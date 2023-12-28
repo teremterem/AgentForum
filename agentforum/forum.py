@@ -155,6 +155,8 @@ class Agent:
         self.forum = forum
         self._func = func
 
+        # TODO Oleksandr: change the following two properties to just "alias" and "description" ?
+
         self.agent_alias = alias
         if self.agent_alias is None:
             self.agent_alias = func.__name__
