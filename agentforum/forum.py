@@ -188,6 +188,9 @@ class Agent:
             # replace all {AGENT_ALIAS} entries in the description with the actual agent alias
             self.agent_description.format(AGENT_ALIAS=self.agent_alias)
 
+        self.__name__ = self.agent_alias
+        self.__doc__ = self.agent_description
+
     def quick_call(
         self,
         content: Optional[MessageType] = None,
