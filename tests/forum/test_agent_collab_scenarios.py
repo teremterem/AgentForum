@@ -40,12 +40,12 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             {
                 "im_model_": "call",
                 "sender_alias": "",
-                "content": "_reminder_api",
+                "content": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_reminder_api",
+                "sender_alias": "_REMINDER_API",
                 "content": "api error: invalid date format",
             },
         ]
@@ -63,23 +63,23 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 {
                     "im_model_": "call",
                     "sender_alias": "",
-                    "content": "_reminder_api",
+                    "content": "_REMINDER_API",
                     "messages_in_request": 1,
                 },
                 {
                     "im_model_": "message",
-                    "sender_alias": "_reminder_api",
+                    "sender_alias": "_REMINDER_API",
                     "content": "api error: invalid date format",
                 },
                 {
                     "im_model_": "call",
                     "sender_alias": "",
-                    "content": "_critic",
+                    "content": "_CRITIC",
                     "messages_in_request": 1,
                 },
                 {
                     "im_model_": "message",
-                    "sender_alias": "_critic",
+                    "sender_alias": "_CRITIC",
                     "content": "try swapping the month and day",
                 },
             ]
@@ -95,34 +95,34 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             {
                 "im_model_": "call",
                 "sender_alias": "",
-                "content": "_reminder_api",
+                "content": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_reminder_api",
+                "sender_alias": "_REMINDER_API",
                 "content": "api error: invalid date format",
             },
             {
                 "im_model_": "call",
                 "sender_alias": "",
-                "content": "_critic",
+                "content": "_CRITIC",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_critic",
+                "sender_alias": "_CRITIC",
                 "content": "try swapping the month and day",
             },
             {
                 "im_model_": "call",
                 "sender_alias": "",
-                "content": "_reminder_api",
+                "content": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_reminder_api",
+                "sender_alias": "_REMINDER_API",
                 "content": "success: reminder set",
             },
         ]
@@ -131,7 +131,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     @forum.agent
     async def _reminder_api(ctx: InteractionContext) -> None:
-        if (await ctx.request_messages.amaterialize_concluding_message()).get_original_msg().sender_alias == "_critic":
+        if (await ctx.request_messages.amaterialize_concluding_message()).get_original_msg().sender_alias == "_CRITIC":
             ctx.respond("success: reminder set")
         else:
             ctx.respond("api error: invalid date format")
@@ -152,15 +152,15 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         {
             "im_model_": "call",
             "sender_alias": "",
-            "content": "_assistant",
+            "content": "_ASSISTANT",
             "messages_in_request": 1,
         },
         {
             "im_model_": "forward",
-            "sender_alias": "_assistant",
+            "sender_alias": "_ASSISTANT",
             "original_msg": {
                 "im_model_": "message",
-                "sender_alias": "_reminder_api",
+                "sender_alias": "_REMINDER_API",
                 "content": "success: reminder set",
             },
         },
@@ -211,30 +211,30 @@ async def test_two_nested_agents(forum: Forum) -> None:
         {
             "im_model_": "call",
             "sender_alias": "",
-            "content": "_agent1",
+            "content": "_AGENT1",
             "messages_in_request": 1,
         },
         {
             "im_model_": "forward",
-            "sender_alias": "_agent1",
+            "sender_alias": "_AGENT1",
             "original_msg": {
                 "im_model_": "message",
-                "sender_alias": "_agent2",
+                "sender_alias": "_AGENT2",
                 "content": "agent2 says hello",
             },
         },
         {
             "im_model_": "forward",
-            "sender_alias": "_agent1",
+            "sender_alias": "_AGENT1",
             "original_msg": {
                 "im_model_": "message",
-                "sender_alias": "_agent2",
+                "sender_alias": "_AGENT2",
                 "content": "agent2 says hello again",
             },
         },
         {
             "im_model_": "message",
-            "sender_alias": "_agent1",
+            "sender_alias": "_AGENT1",
             "content": "agent1 also says hello",
         },
     ]
@@ -289,7 +289,7 @@ async def test_agent_force_new_conversation(
                 "sender_alias": "USER",
                 "original_msg": {
                     "im_model_": "message",
-                    "sender_alias": "_agent2",
+                    "sender_alias": "_AGENT2",
                     "content": "agent2 says hello",
                 },
             },
@@ -298,38 +298,38 @@ async def test_agent_force_new_conversation(
                 "sender_alias": "USER",
                 "original_msg": {
                     "im_model_": "message",
-                    "sender_alias": "_agent2",
+                    "sender_alias": "_AGENT2",
                     "content": "agent2 says hello again",
                 },
             },
             {
                 "im_model_": "call",
                 "sender_alias": "",
-                "content": "_agent1",
+                "content": "_AGENT1",
                 "messages_in_request": 2,
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "_agent1",
+                "sender_alias": "_AGENT1",
                 "original_msg": {
                     "im_model_": "forward",
                     "sender_alias": "USER",
                     "original_msg": {
                         "im_model_": "message",
-                        "sender_alias": "_agent2",
+                        "sender_alias": "_AGENT2",
                         "content": "agent2 says hello",
                     },
                 },
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "_agent1",
+                "sender_alias": "_AGENT1",
                 "original_msg": {
                     "im_model_": "forward",
                     "sender_alias": "USER",
                     "original_msg": {
                         "im_model_": "message",
-                        "sender_alias": "_agent2",
+                        "sender_alias": "_AGENT2",
                         "content": "agent2 says hello again",
                     },
                 },
@@ -345,40 +345,40 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "call",
                 "sender_alias": "",
-                "content": "_agent2",
+                "content": "_AGENT2",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_agent2",
+                "sender_alias": "_AGENT2",
                 "content": "agent2 says hello",
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_agent2",
+                "sender_alias": "_AGENT2",
                 "content": "agent2 says hello again",
             },
             {
                 "im_model_": "call",
                 "sender_alias": "",
-                "content": "_agent1",
+                "content": "_AGENT1",
                 "messages_in_request": 2,
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "_agent1",
+                "sender_alias": "_AGENT1",
                 "original_msg": {
                     "im_model_": "message",
-                    "sender_alias": "_agent2",
+                    "sender_alias": "_AGENT2",
                     "content": "agent2 says hello",
                 },
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "_agent1",
+                "sender_alias": "_AGENT1",
                 "original_msg": {
                     "im_model_": "message",
-                    "sender_alias": "_agent2",
+                    "sender_alias": "_AGENT2",
                     "content": "agent2 says hello again",
                 },
             },

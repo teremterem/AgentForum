@@ -173,23 +173,23 @@ class Agent:
 
         # TODO Oleksandr: change the following two properties to just "alias" and "description" ?
 
-        self.agent_alias = alias
-        if self.agent_alias is None:
-            self.agent_alias = func.__name__
+        self.alias = alias
+        if self.alias is None:
+            self.alias = func.__name__
             if uppercase_func_name:
-                self.agent_alias = self.agent_alias.upper()
+                self.alias = self.alias.upper()
 
-        self.agent_description = description
-        if self.agent_description is None:
-            self.agent_description = func.__doc__
-            if self.agent_description and normalize_spaces_in_docstring:
-                self.agent_description = " ".join(self.agent_description.split())
-        if self.agent_description:
+        self.description = description
+        if self.description is None:
+            self.description = func.__doc__
+            if self.description and normalize_spaces_in_docstring:
+                self.description = " ".join(self.description.split())
+        if self.description:
             # replace all {AGENT_ALIAS} entries in the description with the actual agent alias
-            self.agent_description.format(AGENT_ALIAS=self.agent_alias)
+            self.description.format(AGENT_ALIAS=self.alias)
 
-        self.__name__ = self.agent_alias
-        self.__doc__ = self.agent_description
+        self.__name__ = self.alias
+        self.__doc__ = self.description
 
     def quick_call(
         self,
@@ -303,7 +303,7 @@ class InteractionContext:
         """Get the sender alias from the current InteractionContext object."""
         ctx = cls.get_current_context()
         if ctx:
-            return ctx.this_agent.agent_alias
+            return ctx.this_agent.alias
         return USER_ALIAS
 
     def __enter__(self) -> "InteractionContext":
@@ -354,14 +354,12 @@ class AgentCall:
         agent_call_msg_promise = AgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,
-            receiving_agent_alias=self.receiving_agent.agent_alias,
+            receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,
         )
         conversation._latest_msg_promise = agent_call_msg_promise
 
-        self._response_messages = AsyncMessageSequence(
-            conversation, default_sender_alias=self.receiving_agent.agent_alias
-        )
+        self._response_messages = AsyncMessageSequence(conversation, default_sender_alias=self.receiving_agent.alias)
         self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
 
     def send_request(
