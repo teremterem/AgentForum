@@ -308,7 +308,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         return None if self._branch_from is NO_VALUE else self._branch_from
 
-    async def aget_history(
+    async def aget_history(  # TODO Oleksandr: rename to aget_full_history
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List["MessagePromise"]:
         """
@@ -323,7 +323,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         result.reverse()
         return result
 
-    async def amaterialize_history(
+    async def amaterialize_history(  # TODO Oleksandr: rename to amaterialize_full_history
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List[Message]:
         """
