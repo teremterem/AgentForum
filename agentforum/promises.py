@@ -61,7 +61,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         """Get the full chat history of the conversation branch up to the last message in the sequence."""
         concluding_msg_promise = await self.aget_concluding_msg_promise(raise_if_none=False)
         if concluding_msg_promise:
-            return await concluding_msg_promise.aget_history(
+            return await concluding_msg_promise.aget_full_history(
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         return []
@@ -308,7 +308,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         return None if self._branch_from is NO_VALUE else self._branch_from
 
-    async def aget_history(  # TODO Oleksandr: rename to aget_full_history
+    async def aget_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List["MessagePromise"]:
         """
@@ -323,7 +323,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         result.reverse()
         return result
 
-    async def amaterialize_history(  # TODO Oleksandr: rename to amaterialize_full_history
+    async def amaterialize_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List[Message]:
         """
@@ -332,7 +332,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         """
         return [
             await msg_promise.amaterialize()
-            for msg_promise in await self.aget_history(
+            for msg_promise in await self.aget_full_history(
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         ]
