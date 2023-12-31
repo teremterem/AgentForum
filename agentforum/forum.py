@@ -34,7 +34,7 @@ class ConversationTracker:
     @property
     def has_prior_history(self) -> bool:
         """Check if there is prior history in this conversation."""
-        return bool(self._latest_msg_promise)
+        return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
 
     async def aappend_zero_or_more_messages(
         self,
@@ -189,10 +189,11 @@ class Agent:
         self.__name__ = self.alias
         self.__doc__ = self.description
 
-    def quick_call(
+    def quick_call(  # pylint: disable=too-many-arguments
         self,
         content: Optional[MessageType] = None,
         override_sender_alias: Optional[str] = None,
+        branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -205,6 +206,7 @@ class Agent:
         from those messages, in other words).
         """
         agent_call = self.call(
+            branch_from=branch_from,
             conversation=conversation,
             force_new_conversation=force_new_conversation,
             **function_kwargs,
@@ -215,6 +217,7 @@ class Agent:
 
     def call(
         self,
+        branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -226,6 +229,11 @@ class Agent:
         branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
         from those messages, in other words).
         """
+        if branch_from and conversation:
+            raise ValueError("Cannot specify both conversation and branch_from in Agent.call() or Agent.quick_call()")
+        if branch_from:
+            conversation = ConversationTracker(self.forum, branch_from=branch_from)
+
         if conversation:
             if conversation.has_prior_history and force_new_conversation:
                 raise ValueError("Cannot force a new conversation when there is prior history in ConversationTracker")
