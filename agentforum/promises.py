@@ -54,6 +54,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
     async def amaterialize_as_list(self) -> List["Message"]:
         """
         Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
+        TODO Oleksandr: emphasize the difference between this method and amaterialize_full_history
         """
         return [await msg.amaterialize() async for msg in self]
 
