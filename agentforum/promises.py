@@ -3,6 +3,8 @@ import asyncio
 import typing
 from typing import Optional, List, Dict, Any, AsyncIterator, Union
 
+from pydantic import BaseModel
+
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
 from agentforum.typing import IN, MessageType, SingleMessageType
 from agentforum.utils import AsyncStreamable, NO_VALUE
@@ -107,7 +109,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
             self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
         ) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
-            if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
+            if not isinstance(content, (str, tuple, BaseModel)) and hasattr(content, "__iter__"):
                 content = tuple(content)
             self.send(
                 MessageParameters(
