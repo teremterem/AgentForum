@@ -184,7 +184,7 @@ class Agent:
                 self.description = " ".join(self.description.split())
         if self.description:
             # replace all {AGENT_ALIAS} entries in the description with the actual agent alias
-            self.description.format(AGENT_ALIAS=self.alias)
+            self.description = self.description.format(AGENT_ALIAS=self.alias)
 
         self.__name__ = self.alias
         self.__doc__ = self.description
