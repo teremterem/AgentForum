@@ -78,29 +78,30 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
             yield ContentChunk(text=token_text)
 
         # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full message is built ?
-        for k, v in _build_openai_metadata_dict(incoming_item.model_dump()).items():
-            if v is not None:
-                self._metadata[k] = v
+        self._update_openai_metadata_dict(incoming_item.model_dump())
 
+    def _update_openai_metadata_dict(self, openai_response: Dict[str, Any]) -> None:
+        # TODO Oleksandr: put everything under a single "openai" key instead of "openai_*" for each field separately ?
+        self._metadata.update(_build_openai_dict(openai_response, skip_keys={"choices", "usage"}))
 
-def _build_openai_metadata_dict(openai_response: Dict[str, Any]) -> Dict[str, Any]:
-    # TODO Oleksandr: put everything under a single "openai" key instead of "openai_*" for each field separately ?
-    result = _build_openai_dict(openai_response, skip_keys={"choices", "usage"})
+        self._metadata.update(
+            _build_openai_dict(openai_response["choices"][0], skip_keys={"index", "message", "delta", "logprobs"})
+        )
+        self._metadata.update(
+            _build_openai_dict(openai_response["choices"][0].get("delta", {}), skip_keys={"content"})
+        )
+        self._metadata.update(
+            _build_openai_dict(openai_response["choices"][0].get("message", {}), skip_keys={"content"})
+        )
 
-    result.update(
-        _build_openai_dict(openai_response["choices"][0], skip_keys={"index", "message", "delta", "logprobs"})
-    )
-    result.update(_build_openai_dict(openai_response["choices"][0].get("delta", {}), skip_keys={"content"}))
-    result.update(_build_openai_dict(openai_response["choices"][0].get("message", {}), skip_keys={"content"}))
+        logprobs = openai_response["choices"][0].get("logprobs")
+        if logprobs is not None:
+            self._metadata.setdefault("openai_logprobs", []).extend(logprobs["content"])
 
-    logprobs = openai_response["choices"][0].get("logprobs")
-    if logprobs:
-        result.setdefault("openai_logprobs", []).extend(logprobs["content"])
-
-    result.setdefault("openai_usage", {}).update(openai_response.get("usage", {}))
-
-    return result
+        usage = openai_response.get("usage")
+        if usage is not None:
+            self._metadata.setdefault("openai_usage", {}).update({k: v for k, v in usage.items() if v is not None})
 
 
 def _build_openai_dict(openai_response: Dict[str, Any], skip_keys: Set[str] = ()) -> Dict[str, Any]:
-    return {f"openai_{k}": v for k, v in openai_response.items() if k not in skip_keys}
+    return {f"openai_{k}": v for k, v in openai_response.items() if v is not None and k not in skip_keys}
