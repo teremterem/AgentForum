@@ -130,18 +130,27 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         self._metadata = {}
         self._override_metadata = override_metadata or {}
 
-    def build_metadata(self) -> Dict[str, Any]:
+        self._aggregated_content: Optional[str] = None
+        self._aggregated_metadata: Optional[Freeform] = None
+
+    async def amaterialize_content(self) -> str:
+        """Get the full content of the message as a string."""
+        if self._aggregated_content is None:
+            # TODO Oleksandr: is asyncio.Lock needed here or we can tolerate occasion redundancy ?
+            self._aggregated_content = "".join([token.text async for token in self])
+        return self._aggregated_content
+
+    async def amaterialize_metadata(self) -> Freeform:
         """
         Build metadata from the metadata provided to the constructor and the metadata collected during streaming.
         Metadata provided to the constructor (override_metadata) takes precedence over the metadata collected during
         streaming.
         """
-        return {**self._metadata, **self._override_metadata}
-
-    async def amaterialize_content(self) -> str:
-        """Get the full content of the message as a string."""
-        # TODO Oleksandr: cache this ?
-        return "".join([token.text async for token in self])
+        if self._aggregated_metadata is None:
+            # TODO Oleksandr: is asyncio.Lock needed here or we can tolerate occasion redundancy ?
+            await self.amaterialize_content()  # make sure all the tokens are collected
+            self._aggregated_metadata = Freeform(**self._metadata, **self._override_metadata)
+        return self._aggregated_metadata
 
 
 class MessagePromise:  # pylint: disable=too-many-instance-attributes
@@ -255,7 +264,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
                 # let's merge the metadata from the stream with the metadata provided to the constructor
-                metadata = Freeform(**self._content.build_metadata(), **self._metadata)
+                metadata = Freeform(**(await self._content.amaterialize_metadata()).as_kwargs, **self._metadata)
             else:
                 msg_content = self._content
                 metadata = Freeform(**self._metadata)
