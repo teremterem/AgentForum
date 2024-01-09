@@ -84,17 +84,23 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
 
 
 def _build_openai_metadata_dict(openai_response: Dict[str, Any]) -> Dict[str, Any]:
+    # TODO Oleksandr: put everything under a single "openai" key instead of "openai_*" for each field separately ?
     result = _build_openai_dict(openai_response, skip_keys={"choices", "usage"})
-    result.update(_build_openai_dict(openai_response.get("usage", {}), key_suffix="usage"))
-    result.update(_build_openai_dict(openai_response["choices"][0], skip_keys={"index", "message", "delta"}))
+
+    result.update(
+        _build_openai_dict(openai_response["choices"][0], skip_keys={"index", "message", "delta", "logprobs"})
+    )
     result.update(_build_openai_dict(openai_response["choices"][0].get("delta", {}), skip_keys={"content"}))
     result.update(_build_openai_dict(openai_response["choices"][0].get("message", {}), skip_keys={"content"}))
+
+    logprobs = openai_response["choices"][0].get("logprobs")
+    if logprobs:
+        result.setdefault("openai_logprobs", []).extend(logprobs["content"])
+
+    result.setdefault("openai_usage", {}).update(openai_response.get("usage", {}))
+
     return result
 
 
-def _build_openai_dict(
-    openai_response: Dict[str, Any], key_suffix: str = "", skip_keys: Set[str] = ()
-) -> Dict[str, Any]:
-    if key_suffix:
-        key_suffix += "_"
-    return {f"openai_{key_suffix}{k}": v for k, v in openai_response.items() if k not in skip_keys}
+def _build_openai_dict(openai_response: Dict[str, Any], skip_keys: Set[str] = ()) -> Dict[str, Any]:
+    return {f"openai_{k}": v for k, v in openai_response.items() if k not in skip_keys}

@@ -224,6 +224,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         """Get the full content of the message as a string."""
         return (await self.amaterialize()).content
 
+    async def amaterialize_sender_alias(self) -> str:
+        """Get the sender alias of the message as a string."""
+        return (await self.amaterialize()).sender_alias
+
+    async def amaterialize_metadata(self) -> Freeform:
+        """Get the metadata of the message as a Freeform object."""
+        return (await self.amaterialize()).metadata
+
     async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous MessagePromise in this conversation branch."""
         prev_msg_promise = await self._aget_previous_msg_promise_try_materialized()
