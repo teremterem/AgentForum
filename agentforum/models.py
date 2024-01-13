@@ -78,7 +78,7 @@ class Freeform(Immutable):
 _TYPES_ALLOWED_IN_FREEFORM = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Freeform
 
 
-class Message(Immutable):
+class Message(Freeform):
     """A message."""
 
     im_model_: Literal["message"] = "message"
