@@ -1,5 +1,6 @@
 """Tests for the Immutable models."""
 import hashlib
+import json
 from typing import Literal, Optional
 from unittest.mock import patch
 
@@ -80,7 +81,7 @@ def test_message_hash_key() -> None:
     message = Message(content="test", sender_alias="user")
     # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "message", "metadata": {"im_model_": "freeform"}, '
+        '{"content": "test", "im_model_": "message", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -96,10 +97,10 @@ def test_forwarded_message_hash_key() -> None:
     message = ForwardedMessage(content="test", sender_alias="user", original_msg_hash_key=original_msg.hash_key)
     message._original_msg = original_msg  # pylint: disable=protected-access
 
-    # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "forward", "metadata": {"im_model_": "freeform"}, '
-        '"original_msg_hash_key": "f8ad8f09928df3f757688280182fef522950236120e88dada21607d8b5b3aba0", '
+        '{"content": "test", "im_model_": "forward", '
+        '"original_msg_hash_key": "f2487bd3261d29745e4c47ae8f0256845a7eae939b437a5409258310486cd80a", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key

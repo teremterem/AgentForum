@@ -84,7 +84,6 @@ class Message(Freeform):
     im_model_: Literal["message"] = "message"
     content: str
     sender_alias: str
-    metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
 
     def get_original_msg(self, return_self_if_none: bool = True) -> Optional["Message"]:
