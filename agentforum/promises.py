@@ -125,6 +125,8 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
     content (as a stream of tokens) and metadata. It does not maintain sender_alias, prev_msg_hash_key, etc.
     """
 
+    # TODO TODO TODO Oleksandr: should this class be merged with MessagePromise somehow ? probably not
+
     def __init__(self, *args, override_metadata: Optional[Dict[str, Any]] = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._metadata = {}
@@ -140,7 +142,7 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
             self._aggregated_content = "".join([token.text async for token in self])
         return self._aggregated_content
 
-    async def amaterialize_metadata(self) -> Freeform:
+    async def amaterialize_metadata(self) -> Freeform:  # TODO TODO TODO Oleksandr: unpack into instance fields too ?
         """
         Build metadata from the metadata provided to the constructor and the metadata collected during streaming.
         Metadata provided to the constructor (override_metadata) takes precedence over the metadata collected during
@@ -149,6 +151,7 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         if self._aggregated_metadata is None:
             # TODO Oleksandr: is asyncio.Lock needed here or we can tolerate occasion redundancy ?
             await self.amaterialize_content()  # make sure all the tokens are collected
+            # TODO TODO TODO Oleksandr: is it ok to return Freeform from here ?
             self._aggregated_metadata = Freeform(**self._metadata, **self._override_metadata)
         return self._aggregated_metadata
 
@@ -165,14 +168,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         do_not_forward_if_possible: bool = True,
         branch_from: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
-        **metadata,
+        **metadata,  # TODO TODO TODO Oleksandr: keep it this way for now ? forever ?
     ) -> None:
         if materialized_msg and (  # pylint: disable=too-many-boolean-expressions
             content is not None or default_sender_alias or override_sender_alias or branch_from or metadata
         ):
             raise ValueError(
                 "If materialized_msg is provided, content, default_sender_alias, override_sender_alias, "
-                "branch_from and metadata must not be provided."
+                "branch_from and metadata must not be provided."  # TODO TODO TODO
             )
 
         self.forum = forum
@@ -237,7 +240,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         """Get the sender alias of the message as a string."""
         return (await self.amaterialize()).sender_alias
 
-    async def amaterialize_metadata(self) -> Freeform:
+    async def amaterialize_metadata(self) -> Freeform:  # TODO TODO TODO Oleksandr: this is not needed anymore
         """Get the metadata of the message as a Freeform object."""
         return (await self.amaterialize()).metadata
 
@@ -264,15 +267,17 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
                 # let's merge the metadata from the stream with the metadata provided to the constructor
+                # TODO TODO TODO
                 metadata = Freeform(**(await self._content.amaterialize_metadata()).as_kwargs, **self._metadata)
             else:
                 msg_content = self._content
+                # TODO TODO TODO
                 metadata = Freeform(**self._metadata)
 
             return Message(
                 content=msg_content,
                 sender_alias=sender_alias,
-                metadata=metadata,
+                metadata=metadata,  # TODO TODO TODO
                 prev_msg_hash_key=prev_msg_hash_key,
             )
 
@@ -296,7 +301,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=sender_alias,
                     # let's merge the metadata from the original message with the metadata provided to the constructor
-                    metadata=Freeform(**original_msg.metadata.as_kwargs, **self._metadata),
+                    metadata=Freeform(**original_msg.metadata.as_kwargs, **self._metadata),  # TODO TODO TODO
                     prev_msg_hash_key=prev_msg_hash_key,
                 )
                 forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
@@ -387,7 +392,7 @@ class AgentCallMsgPromise(MessagePromise):
         return AgentCallMsg(
             content=self._content,  # receiving_agent_alias
             sender_alias="",  # we keep agent calls anonymous, so they could be cached and reused by other agents
-            metadata=Freeform(**self._metadata),  # function_kwargs
+            metadata=Freeform(**self._metadata),  # function_kwargs  # TODO TODO TODO
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent call gets attached to the end of the request messages
             msg_seq_start_hash_key=msg_seq_start_hash_key,
         )

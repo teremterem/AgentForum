@@ -57,7 +57,7 @@ async def _message_to_openai_dict(message: Union[MessagePromise, Message, Dict[s
     if isinstance(message, Message):
         message = {
             # TODO Oleksandr: introduce a lambda function to derive roles from messages ?
-            "role": getattr(message.metadata, "openai_role", "user"),
+            "role": getattr(message.metadata, "openai_role", "user"),  # TODO TODO TODO
             "content": message.content,
         }
     return message

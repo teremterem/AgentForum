@@ -392,7 +392,7 @@ async def arepresent_conversation_with_dicts(
 
     def _get_msg_dict(msg_: Message) -> Dict[str, Any]:
         msg_dict_ = msg_.model_dump(exclude={"prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"})
-        if msg_dict_["metadata"] == {"im_model_": "freeform"}:
+        if msg_dict_["metadata"] == {"im_model_": "freeform"}:  # TODO TODO TODO
             # metadata is empty - remove it to reduce verbosity
             del msg_dict_["metadata"]
 

@@ -131,9 +131,10 @@ class AgentCallMsg(Message):
         return self.content
 
     @property
-    def kwargs(self) -> Dict[str, Any]:
+    def function_kwargs(self) -> Dict[str, Any]:  # TODO TODO TODO Oleksandr: you renamed it - did you break anything ?
         """Get the keyword arguments for the agent call."""
-        return self.metadata.as_kwargs
+        # TODO TODO TODO Oleksandr: separate custom fields from the predefined ones
+        return self.as_kwargs
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
@@ -156,4 +157,4 @@ class MessageParameters(BaseModel):
 
     content: Any  # TODO Oleksandr: a newer version of Pydantic doesn't seem work with `MessageType` for some reason
     override_sender_alias: Optional[str] = None
-    metadata: Freeform = Freeform()  # empty metadata by default
+    metadata: Freeform = Freeform()  # empty metadata by default  # TODO TODO TODO Oleksandr: keep as separate field ?
