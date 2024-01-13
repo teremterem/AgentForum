@@ -1,6 +1,5 @@
 """Tests for the Immutable models."""
 import hashlib
-import json
 from typing import Literal, Optional
 from unittest.mock import patch
 
@@ -70,10 +69,10 @@ def test_immutable_hash_key() -> None:
 
 def test_message_hash_key() -> None:
     """Test the `Message.hash_key` property."""
-    message = Message(content="test", sender_alias="user", metadata=Freeform(role="user"))
+    message = Message(content="test", sender_alias="user", custom_field={"role": "user"})
     # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "message", "metadata": {"im_model_": "freeform", "role": "user"}, '
+        '{"content": "test", "custom_field": {"im_model_": "freeform", "role": "user"}, "im_model_": "message", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -97,7 +96,7 @@ def test_forwarded_message_hash_key() -> None:
     message = ForwardedMessage(content="test", sender_alias="user", original_msg_hash_key=original_msg.hash_key)
     message._original_msg = original_msg  # pylint: disable=protected-access
 
-    print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
+    # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
         '{"content": "test", "im_model_": "forward", '
         '"original_msg_hash_key": "f2487bd3261d29745e4c47ae8f0256845a7eae939b437a5409258310486cd80a", '
@@ -116,10 +115,11 @@ def test_nested_object_not_copied() -> None:
 
 def test_nested_message_freeform_not_copied() -> None:
     """Test that Freeform nested in Message is not copied."""
-    metadata = Freeform(role="assistant")
-    message = Message(content="test", sender_alias="user", metadata=metadata)
+    # TODO Oleksandr: not sure if we still need this test - there are cases when nested objects have to be copied
+    custom_field = Freeform(role="assistant", blah={"blah": "blah"})
+    message = Message(content="test", sender_alias="user", custom_field=custom_field)
 
-    assert message.metadata is metadata
+    assert message.custom_field is custom_field
 
 
 def test_immutable_hash_key_calculated_once() -> None:
