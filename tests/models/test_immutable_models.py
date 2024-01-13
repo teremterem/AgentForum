@@ -142,8 +142,8 @@ def test_immutable_hash_key_calculated_once() -> None:
 
 def test_freeform_hash_key_vs_key_ordering() -> None:
     """
-    Test that hash_key of Freeform (a class that is used to store metadata and allows arbitrary fields) is not
-    affected by the ordering of its fields.
+    Test that hash_key of Freeform (a Pydantic model that allows arbitrary metadata fields and is a parent class for
+    Message) is not affected by the ordering of its fields.
     """
     freeform1 = Freeform(some_req_field="test", some_opt_field=2)
     freeform2 = Freeform(some_opt_field=2, some_req_field="test")
