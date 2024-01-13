@@ -6,7 +6,7 @@ for that).
 import asyncio
 import contextvars
 from contextvars import ContextVar
-from typing import Optional, List, Dict, AsyncIterator, Union
+from typing import Optional, List, Dict, AsyncIterator, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
@@ -34,7 +34,7 @@ class ConversationTracker:
     @property
     def has_prior_history(self) -> bool:
         """Check if there is prior history in this conversation."""
-        return bool(self._latest_msg_promise)
+        return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
 
     async def aappend_zero_or_more_messages(
         self,
@@ -95,9 +95,38 @@ class Forum(BaseModel):
     immutable_storage: ImmutableStorage = Field(default_factory=InMemoryStorage)
     _conversations: Dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
-    def agent(self, func: AgentFunction) -> "Agent":
+    def agent(  # pylint: disable=too-many-arguments
+        self,
+        func: Optional[AgentFunction] = None,
+        alias: Optional[str] = None,
+        description: Optional[str] = None,
+        uppercase_func_name: bool = True,
+        normalize_spaces_in_docstring: bool = True,
+    ) -> Union["Agent", Callable[[AgentFunction], "Agent"]]:
         """A decorator that registers an agent function in the forum."""
-        return Agent(self, func)
+        if func is None:
+            # the decorator `@forum.agent(...)` was used with arguments
+            def _decorator(f: AgentFunction) -> "Agent":
+                return Agent(
+                    self,
+                    f,
+                    alias=alias,
+                    description=description,
+                    uppercase_func_name=uppercase_func_name,
+                    normalize_spaces_in_docstring=normalize_spaces_in_docstring,
+                )
+
+            return _decorator
+
+        # the decorator `@forum.agent` was used either without arguments or as a direct function call
+        return Agent(
+            self,
+            func,
+            alias=alias,
+            description=description,
+            uppercase_func_name=uppercase_func_name,
+            normalize_spaces_in_docstring=normalize_spaces_in_docstring,
+        )
 
     # @lru_cache(maxsize=1000)  # TODO Oleksandr: implement caching (lru_cache says "unhashable type: 'Forum'")
     async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
@@ -130,15 +159,41 @@ class Forum(BaseModel):
 class Agent:
     """A wrapper for an agent function that allows calling the agent."""
 
-    def __init__(self, forum: Forum, func: AgentFunction) -> None:
+    def __init__(  # pylint: disable=too-many-arguments
+        self,
+        forum: Forum,
+        func: AgentFunction,
+        alias: Optional[str] = None,
+        description: Optional[str] = None,
+        uppercase_func_name: bool = True,
+        normalize_spaces_in_docstring: bool = True,
+    ) -> None:
         self.forum = forum
-        self.agent_alias = func.__name__
         self._func = func
 
-    def quick_call(
+        self.alias = alias
+        if self.alias is None:
+            self.alias = func.__name__
+            if uppercase_func_name:
+                self.alias = self.alias.upper()
+
+        self.description = description
+        if self.description is None:
+            self.description = func.__doc__
+            if self.description and normalize_spaces_in_docstring:
+                self.description = " ".join(self.description.split())
+        if self.description:
+            # replace all {AGENT_ALIAS} entries in the description with the actual agent alias
+            self.description = self.description.format(AGENT_ALIAS=self.alias)
+
+        self.__name__ = self.alias
+        self.__doc__ = self.description
+
+    def quick_call(  # pylint: disable=too-many-arguments
         self,
         content: Optional[MessageType] = None,
         override_sender_alias: Optional[str] = None,
+        branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -151,6 +206,7 @@ class Agent:
         from those messages, in other words).
         """
         agent_call = self.call(
+            branch_from=branch_from,
             conversation=conversation,
             force_new_conversation=force_new_conversation,
             **function_kwargs,
@@ -161,6 +217,7 @@ class Agent:
 
     def call(
         self,
+        branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -172,6 +229,11 @@ class Agent:
         branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
         from those messages, in other words).
         """
+        if branch_from and conversation:
+            raise ValueError("Cannot specify both conversation and branch_from in Agent.call() or Agent.quick_call()")
+        if branch_from:
+            conversation = ConversationTracker(self.forum, branch_from=branch_from)
+
         if conversation:
             if conversation.has_prior_history and force_new_conversation:
                 raise ValueError("Cannot force a new conversation when there is prior history in ConversationTracker")
@@ -247,7 +309,7 @@ class InteractionContext:
         """Get the sender alias from the current InteractionContext object."""
         ctx = cls.get_current_context()
         if ctx:
-            return ctx.this_agent.agent_alias
+            return ctx.this_agent.alias
         return USER_ALIAS
 
     def __enter__(self) -> "InteractionContext":
@@ -298,14 +360,12 @@ class AgentCall:
         agent_call_msg_promise = AgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,
-            receiving_agent_alias=self.receiving_agent.agent_alias,
+            receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,
         )
         conversation._latest_msg_promise = agent_call_msg_promise
 
-        self._response_messages = AsyncMessageSequence(
-            conversation, default_sender_alias=self.receiving_agent.agent_alias
-        )
+        self._response_messages = AsyncMessageSequence(conversation, default_sender_alias=self.receiving_agent.alias)
         self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
 
     def send_request(

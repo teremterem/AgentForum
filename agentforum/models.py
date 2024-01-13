@@ -6,7 +6,7 @@ from typing import Dict, Any, Literal, Type, Tuple, Optional
 
 from pydantic import BaseModel, model_validator, ConfigDict
 
-_PRIMITIVES_ALLOWED_IN_IMMUTABLE = (str, int, float, bool, type(None))
+_PRIMITIVES_ALLOWED_IN_IMMUTABLE = (type(None), str, int, float, bool, tuple, list, dict)
 
 
 class Immutable(BaseModel):
@@ -31,20 +31,22 @@ class Immutable(BaseModel):
     def _validate_immutable_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Recursively make sure that the field values of the object are immutable."""
         for key, value in values.items():
-            cls._validate_value(key, value)
+            values[key] = cls._validate_value(key, value)
         return values
 
     @classmethod
-    def _validate_value(cls, key: str, value: Any) -> None:
+    def _validate_value(cls, key: str, value: Any) -> Any:
         """Recursively make sure that the field value is immutable."""
-        if isinstance(value, tuple):
-            for sub_value in value:
-                cls._validate_value(key, sub_value)
-        elif not isinstance(value, cls._allowed_value_types()):
+        if isinstance(value, (tuple, list)):
+            return tuple(cls._validate_value(key, sub_value) for sub_value in value)
+        if isinstance(value, dict):
+            return Freeform(**value)
+        if not isinstance(value, cls._allowed_value_types()):
             raise ValueError(
                 f"only {{{', '.join([t.__name__ for t in cls._allowed_value_types()])}}} "
                 f"are allowed as field values in {cls.__name__}, got {type(value).__name__} in `{key}`"
             )
+        return value
 
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:

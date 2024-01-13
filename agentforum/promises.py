@@ -3,6 +3,8 @@ import asyncio
 import typing
 from typing import Optional, List, Dict, Any, AsyncIterator, Union
 
+from pydantic import BaseModel
+
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
 from agentforum.typing import IN, MessageType, SingleMessageType
 from agentforum.utils import AsyncStreamable, NO_VALUE
@@ -45,9 +47,14 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         """Get the last message in the sequence, but return a Message object instead of a MessagePromise object."""
         return await (await self.aget_concluding_msg_promise(raise_if_none=raise_if_none)).amaterialize()
 
+    async def amaterialize_concluding_content(self, raise_if_none: bool = True) -> str:
+        """Get the content of the last message in the sequence as a string."""
+        return (await self.amaterialize_concluding_message(raise_if_none=raise_if_none)).content
+
     async def amaterialize_as_list(self) -> List["Message"]:
         """
         Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
+        TODO Oleksandr: emphasize the difference between this method and amaterialize_full_history
         """
         return [await msg.amaterialize() async for msg in self]
 
@@ -57,7 +64,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         """Get the full chat history of the conversation branch up to the last message in the sequence."""
         concluding_msg_promise = await self.aget_concluding_msg_promise(raise_if_none=False)
         if concluding_msg_promise:
-            return await concluding_msg_promise.aget_history(
+            return await concluding_msg_promise.aget_full_history(
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         return []
@@ -103,7 +110,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
             self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
         ) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
-            if not isinstance(content, (str, tuple)) and hasattr(content, "__iter__"):
+            if not isinstance(content, (str, tuple, BaseModel)) and hasattr(content, "__iter__"):
                 content = tuple(content)
             self.send(
                 MessageParameters(
@@ -123,13 +130,27 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         self._metadata = {}
         self._override_metadata = override_metadata or {}
 
-    def build_metadata(self) -> Dict[str, Any]:
+        self._aggregated_content: Optional[str] = None
+        self._aggregated_metadata: Optional[Freeform] = None
+
+    async def amaterialize_content(self) -> str:
+        """Get the full content of the message as a string."""
+        if self._aggregated_content is None:
+            # TODO Oleksandr: is asyncio.Lock needed here or we can tolerate occasion redundancy ?
+            self._aggregated_content = "".join([token.text async for token in self])
+        return self._aggregated_content
+
+    async def amaterialize_metadata(self) -> Freeform:
         """
         Build metadata from the metadata provided to the constructor and the metadata collected during streaming.
         Metadata provided to the constructor (override_metadata) takes precedence over the metadata collected during
         streaming.
         """
-        return {**self._metadata, **self._override_metadata}
+        if self._aggregated_metadata is None:
+            # TODO Oleksandr: is asyncio.Lock needed here or we can tolerate occasion redundancy ?
+            await self.amaterialize_content()  # make sure all the tokens are collected
+            self._aggregated_metadata = Freeform(**self._metadata, **self._override_metadata)
+        return self._aggregated_metadata
 
 
 class MessagePromise:  # pylint: disable=too-many-instance-attributes
@@ -208,6 +229,18 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         return self._materialized_msg
 
+    async def amaterialize_content(self) -> str:
+        """Get the full content of the message as a string."""
+        return (await self.amaterialize()).content
+
+    async def amaterialize_sender_alias(self) -> str:
+        """Get the sender alias of the message as a string."""
+        return (await self.amaterialize()).sender_alias
+
+    async def amaterialize_metadata(self) -> Freeform:
+        """Get the metadata of the message as a Freeform object."""
+        return (await self.amaterialize()).metadata
+
     async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous MessagePromise in this conversation branch."""
         prev_msg_promise = await self._aget_previous_msg_promise_try_materialized()
@@ -229,9 +262,9 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         if isinstance(self._content, (str, StreamedMessage)):
             if isinstance(self._content, StreamedMessage):
-                msg_content = "".join([token.text async for token in self._content])
+                msg_content = await self._content.amaterialize_content()
                 # let's merge the metadata from the stream with the metadata provided to the constructor
-                metadata = Freeform(**self._content.build_metadata(), **self._metadata)
+                metadata = Freeform(**(await self._content.amaterialize_metadata()).as_kwargs, **self._metadata)
             else:
                 msg_content = self._content
                 metadata = Freeform(**self._metadata)
@@ -295,7 +328,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         return None if self._branch_from is NO_VALUE else self._branch_from
 
-    async def aget_history(
+    async def aget_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List["MessagePromise"]:
         """
@@ -310,7 +343,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         result.reverse()
         return result
 
-    async def amaterialize_history(
+    async def amaterialize_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> List[Message]:
         """
@@ -319,7 +352,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         """
         return [
             await msg_promise.amaterialize()
-            for msg_promise in await self.aget_history(
+            for msg_promise in await self.aget_full_history(
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         ]

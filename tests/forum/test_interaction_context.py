@@ -61,7 +61,7 @@ def _create_interaction_context(agent_alias: str) -> InteractionContext:
     """Create an interaction context with the given agent alias."""
     return InteractionContext(
         forum=MagicMock(),
-        agent=MagicMock(agent_alias=agent_alias),
+        agent=MagicMock(alias=agent_alias),
         request_messages=MagicMock(),
         response_producer=MagicMock(),
     )
