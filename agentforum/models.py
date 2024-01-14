@@ -66,7 +66,7 @@ class Freeform(Immutable):
     im_model_: Literal["freeform"] = "freeform"
 
     @cached_property
-    def as_kwargs(self) -> Dict[str, Any]:
+    def as_dict(self) -> Dict[str, Any]:
         """Get the fields of the object as a dictionary of keyword arguments."""
         return self.model_dump(exclude={"im_model_"})
 
@@ -86,6 +86,14 @@ class Message(Freeform):
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
 
+    @cached_property
+    def metadata_as_dict(self) -> Dict[str, Any]:
+        """
+        Get the metadata from a Message instance as a dictionary. All the custom fields (those which are not defined
+        on the model) are considered metadata
+        """
+        return self.model_dump(exclude=set(self.model_fields))
+
     def get_original_msg(self, return_self_if_none: bool = True) -> Optional["Message"]:
         """
         Get the original message that this message is a forward of. Because this is not a ForwardedMessage, it always
@@ -93,6 +101,8 @@ class Message(Freeform):
         ForwardedMessage).
         """
         return self if return_self_if_none else None
+
+    # TODO TODO TODO Oleksandr: introduce get_ultimate_original_msg ?
 
 
 class ForwardedMessage(Message):

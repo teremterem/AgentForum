@@ -95,7 +95,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
                 default_sender_alias=self._default_sender_alias,
                 override_sender_alias=incoming_item.override_sender_alias,
                 do_not_forward_if_possible=self._do_not_forward_if_possible,
-                **incoming_item.metadata.as_kwargs,
+                **incoming_item.metadata.as_dict,
             ):
                 yield msg_promise
 
@@ -263,7 +263,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
                 # let's merge the metadata from the stream with the metadata provided to the constructor
-                metadata = {**(await self._content.amaterialize_metadata()).as_kwargs, **self._metadata}
+                metadata = {**(await self._content.amaterialize_metadata()).as_dict, **self._metadata}
             else:
                 msg_content = self._content
                 metadata = self._metadata
@@ -296,7 +296,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     sender_alias=sender_alias,
                     prev_msg_hash_key=prev_msg_hash_key,
                     # let's merge the metadata from the original message with the metadata provided to the constructor
-                    # **original_msg.metadata.as_kwargs,  # TODO TODO TODO Oleksandr: extract non-standard fields ?
+                    **original_msg.metadata_as_dict,
                     **self._metadata,
                 )
                 forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
