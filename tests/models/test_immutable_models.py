@@ -44,12 +44,12 @@ def test_message_frozen() -> None:
 
 def test_freeform_frozen() -> None:
     """Test that the `Freeform` class is frozen."""
-    metadata = Freeform(some_field="some value")
+    freeform = Freeform(some_field="some value")
 
     with pytest.raises(ValidationError):
-        metadata.content = "some other value"
+        freeform.content = "some other value"
 
-    assert metadata.some_field == "some value"
+    assert freeform.some_field == "some value"
 
 
 def test_immutable_hash_key() -> None:
@@ -72,7 +72,7 @@ def test_message_hash_key() -> None:
     message = Message(content="test", sender_alias="user", custom_field={"role": "user"})
     # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "custom_field": {"im_model_": "freeform", "role": "user"}, "im_model_": "message", '
+        '{"content": "test", "custom_field": {"role": "user"}, "im_model_": "message", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -149,3 +149,12 @@ def test_freeform_hash_key_vs_key_ordering() -> None:
     freeform2 = Freeform(some_opt_field=2, some_req_field="test")
 
     assert freeform1.hash_key == freeform2.hash_key
+
+
+def test_message_metadata_as_dict() -> None:
+    """
+    Test that the `Message.metadata_as_dict` method returns only the custom fields as a dict.
+    """
+    message = Message(content="test", sender_alias="user", custom_field={"role": "user"})
+
+    assert message.metadata_as_dict == {"custom_field": {"role": "user"}}

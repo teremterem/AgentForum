@@ -16,7 +16,6 @@ class Immutable(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    im_model_: str  # immutable model type
 
     @cached_property
     def hash_key(self) -> str:
@@ -63,7 +62,6 @@ class Freeform(Immutable):
     """
 
     model_config = ConfigDict(extra="allow")
-    im_model_: Literal["freeform"] = "freeform"
 
     @cached_property
     def as_dict(self) -> Dict[str, Any]:
