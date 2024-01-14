@@ -123,18 +123,13 @@ class AgentCallMsg(Message):
     """A subtype of Message that represents a call to an agent."""
 
     im_model_: Literal["call"] = "call"
+    function_kwargs: Freeform = Freeform()
     msg_seq_start_hash_key: Optional[str] = None
 
     @property
     def receiver_alias(self) -> str:
         """Get the alias of the agent that is being called."""
-        return self.content
-
-    @property
-    def function_kwargs(self) -> Dict[str, Any]:  # TODO TODO TODO Oleksandr: you renamed it - did you break anything ?
-        """Get the keyword arguments for the agent call."""
-        # TODO TODO TODO Oleksandr: separate custom fields from the predefined ones
-        return self.as_kwargs
+        return self.content  # TODO TODO TODO Oleksandr: stop using `content` as `receiver_alias` ?
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
