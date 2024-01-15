@@ -21,7 +21,6 @@ pydantic = ">=2.0.0,<3.0.0"
 
 [tool.poetry.dev-dependencies]
 black = "*"
-coverage = "*"
 ipython = "*"
 jupyterlab = "*"
 notebook = "*"
@@ -31,6 +30,7 @@ promptlayer = "*"
 pylint = "*"
 pytest = "*"
 pytest-asyncio = "*"
+pytest-cov = "*"
 python-dotenv = "*"
 
 [build-system]
