@@ -290,7 +290,8 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
                     forum_trees=self.forum.forum_trees,
-                    content=original_msg.content,  # duplicate the original content in the forwarded message
+                    # TODO TODO TODO Oleksandr: stop duplicating original content in forwarded messages ?
+                    content=original_msg.content,
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=sender_alias,
                     prev_msg_hash_key=prev_msg_hash_key,
