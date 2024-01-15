@@ -100,7 +100,12 @@ class Message(Freeform):
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
 
-    # TODO TODO TODO Oleksandr: traverse bare Message objects
+    async def aget_previous_message(self) -> Optional["Message"]:
+        """Get the previous message in the forum."""
+        # TODO TODO TODO Oleksandr: skip_agent_calls: bool = True
+        if self.prev_msg_hash_key is None:
+            return None
+        return await self.forum_trees.aretrieve_message(self.prev_msg_hash_key)
 
     @cached_property
     def metadata_as_dict(self) -> Dict[str, Any]:
