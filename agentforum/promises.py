@@ -218,7 +218,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             async with self._lock:
                 if not self._materialized_msg:
                     self._materialized_msg = await self._amaterialize_impl()
-                    await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
+                    await self.forum.forum_trees.astore_immutable(self._materialized_msg)
 
                     # from now on the source of truth is self._materialized_msg
                     self._content = None
@@ -266,6 +266,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 metadata = self._metadata
 
             return Message(
+                forum_trees=self.forum.forum_trees,
                 content=msg_content,
                 sender_alias=sender_alias,
                 prev_msg_hash_key=prev_msg_hash_key,
@@ -288,6 +289,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 # the only way to attach metadata to a message), or the original message is branched from a different
                 # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
+                    forum_trees=self.forum.forum_trees,
                     content=original_msg.content,  # duplicate the original content in the forwarded message
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=sender_alias,
@@ -382,6 +384,7 @@ class AgentCallMsgPromise(MessagePromise):
             msg_seq_end_hash_key = None
 
         return AgentCallMsg(
+            forum_trees=self.forum.forum_trees,
             content=self._content,  # receiving_agent_alias
             sender_alias="",  # we keep agent calls anonymous, so they could be cached and reused by other agents
             function_kwargs=self._metadata,

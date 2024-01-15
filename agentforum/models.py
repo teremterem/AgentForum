@@ -2,9 +2,11 @@
 import hashlib
 import json
 from functools import cached_property
-from typing import Dict, Any, Literal, Type, Tuple, Optional
+from typing import Dict, Any, Literal, Type, Tuple, Optional, Set
 
 from pydantic import BaseModel, model_validator, ConfigDict
+
+from agentforum.storage.trees import ForumTrees
 
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (type(None), str, int, float, bool, tuple, list, dict)
 
@@ -21,8 +23,17 @@ class Immutable(BaseModel):
     def hash_key(self) -> str:
         """Get the hash key for this object. It is a hash of the JSON representation of the object."""
         return hashlib.sha256(
-            json.dumps(self.model_dump(), ensure_ascii=False, sort_keys=True).encode("utf-8")
+            json.dumps(self.model_dump(exclude=self._exclude_from_hash()), ensure_ascii=False, sort_keys=True).encode(
+                "utf-8"
+            )
         ).hexdigest()
+
+    @cached_property
+    def as_dict(self) -> Dict[str, Any]:
+        """
+        Get the fields of the object as a dictionary. Omits im_model_ field (which may be defined in subclasses).
+        """
+        return self.model_dump(exclude=self._exclude_from_dict() | self._exclude_from_hash())
 
     # noinspection PyNestedDecorators
     @model_validator(mode="before")
@@ -51,6 +62,13 @@ class Immutable(BaseModel):
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
         return _TYPES_ALLOWED_IN_IMMUTABLE
 
+    # noinspection PyMethodMayBeStatic
+    def _exclude_from_dict(self) -> Set[str]:
+        return {"im_model_"}
+
+    def _exclude_from_hash(self) -> Set[str]:
+        return set()
+
 
 _TYPES_ALLOWED_IN_IMMUTABLE = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Immutable
 
@@ -63,11 +81,6 @@ class Freeform(Immutable):
 
     model_config = ConfigDict(extra="allow")
 
-    @cached_property
-    def as_dict(self) -> Dict[str, Any]:
-        """Get the fields of the object as a dictionary of keyword arguments."""
-        return self.model_dump(exclude={"im_model_"})
-
     @classmethod
     def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
         return _TYPES_ALLOWED_IN_FREEFORM
@@ -79,7 +92,10 @@ _TYPES_ALLOWED_IN_FREEFORM = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Freeform
 class Message(Freeform):
     """A message."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     im_model_: Literal["message"] = "message"
+    forum_trees: ForumTrees
     content: str
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
@@ -101,6 +117,17 @@ class Message(Freeform):
         return self if return_self_if_none else None
 
     # TODO Oleksandr: introduce get_ultimate_original_msg ?
+
+    def _exclude_from_hash(self):
+        return super()._exclude_from_hash() | {"forum_trees"}
+
+    @classmethod
+    def _validate_value(cls, key: str, value: Any) -> Any:
+        if key == "forum_trees":
+            if not isinstance(value, ForumTrees):
+                raise ValueError(f"`forum_trees` must be an instance of ForumTrees, got `{type(value).__name__}`")
+            return value
+        return super()._validate_value(key, value)
 
 
 class ForwardedMessage(Message):
