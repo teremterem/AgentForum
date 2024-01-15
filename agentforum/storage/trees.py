@@ -36,5 +36,5 @@ class ForumTrees(ABC):
 
         message = await self.aretrieve_immutable(hash_key)
         if not isinstance(message, Message):
-            raise WrongHashKeyError(f"Expected a Message, got a {type(message)}, hash_key={hash_key}")
+            raise WrongHashKeyError(f"Expected a Message, got a {type(message)} - hash_key={hash_key}")
         return message
