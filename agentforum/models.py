@@ -65,7 +65,9 @@ class Freeform(Immutable):
 
     @cached_property
     def as_dict(self) -> Dict[str, Any]:
-        """Get the fields of the object as a dictionary of keyword arguments."""
+        """
+        Get the fields of the object as a dictionary. Omits im_model_ field (which may be defined in subclasses).
+        """
         return self.model_dump(exclude={"im_model_"})
 
     @classmethod
