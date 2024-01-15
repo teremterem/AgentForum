@@ -100,12 +100,19 @@ class Message(Freeform):
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
 
-    async def aget_previous_message(self) -> Optional["Message"]:
+    async def aget_previous_msg(self, skip_agent_calls: bool = True) -> Optional["Message"]:
         """Get the previous message in the forum."""
-        # TODO TODO TODO Oleksandr: skip_agent_calls: bool = True
         if self.prev_msg_hash_key is None:
             return None
-        return await self.forum_trees.aretrieve_message(self.prev_msg_hash_key)
+        previous_message = await self.forum_trees.aretrieve_message(self.prev_msg_hash_key)
+
+        if skip_agent_calls:
+            while previous_message and isinstance(previous_message, AgentCallMsg):
+                previous_message = await previous_message.aget_previous_message(
+                    skip_agent_calls=False  # let's avoid further recursion - we have a loop instead
+                )
+
+        return previous_message
 
     @cached_property
     def metadata_as_dict(self) -> Dict[str, Any]:
