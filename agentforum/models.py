@@ -108,7 +108,7 @@ class Message(Freeform):
 
         if skip_agent_calls:
             while previous_message and isinstance(previous_message, AgentCallMsg):
-                previous_message = await previous_message.aget_previous_message(
+                previous_message = await previous_message.aget_previous_msg(
                     skip_agent_calls=False  # let's avoid further recursion - we have a loop instead
                 )
 
