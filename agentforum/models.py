@@ -130,7 +130,7 @@ class Message(Freeform):
         """
         return self if return_self_if_none else None
 
-    # TODO TODO TODO Oleksandr: introduce get_ultimate_original_msg ?
+    # TODO Oleksandr: introduce get_ultimate_original_msg ?
 
     def _exclude_from_hash(self):
         return super()._exclude_from_hash() | {"forum_trees"}
@@ -178,7 +178,7 @@ class AgentCallMsg(Message):
     @property
     def receiver_alias(self) -> str:
         """Get the alias of the agent that is being called."""
-        return self.content  # TODO TODO TODO Oleksandr: stop using `content` for this purpose ?
+        return self.content  # TODO Oleksandr: stop using `content` for this purpose ?
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)

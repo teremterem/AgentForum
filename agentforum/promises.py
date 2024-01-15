@@ -290,7 +290,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
                     forum_trees=self.forum.forum_trees,
-                    # TODO TODO TODO Oleksandr: stop duplicating original content in forwarded messages ?
+                    # TODO Oleksandr: stop duplicating original content in forwarded messages ?
                     content=original_msg.content,
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=sender_alias,
@@ -310,7 +310,8 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
     async def _aget_previous_msg_promise_try_materialized(self) -> Optional["MessagePromise"]:
         if self._materialized_msg:
             if self._materialized_msg.prev_msg_hash_key:
-                return await self.forum.afind_message_promise(self._materialized_msg.prev_msg_hash_key)
+                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.prev_msg_hash_key)
+                return MessagePromise(forum=self.forum, materialized_msg=message)
             return None
         return await self._aget_previous_msg_promise_impl()
 
@@ -324,7 +325,8 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 return await self._content.aget_previous_msg_promise(skip_agent_calls=False)
 
             if isinstance(self._content, Message):
-                return await self.forum.afind_message_promise(self._content.prev_msg_hash_key)
+                message = await self.forum.forum_trees.aretrieve_message(self._content.prev_msg_hash_key)
+                return MessagePromise(forum=self.forum, materialized_msg=message)
 
         return None if self._branch_from is NO_VALUE else self._branch_from
 
