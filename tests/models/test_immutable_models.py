@@ -157,4 +157,5 @@ def test_message_metadata_as_dict() -> None:
     """
     message = Message(content="test", sender_alias="user", custom_field={"role": "user"})
 
+    assert isinstance(message.custom_field, Freeform)  # make sure it wasn't stored as plain dict
     assert message.metadata_as_dict == {"custom_field": {"role": "user"}}
