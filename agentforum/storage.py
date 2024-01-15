@@ -5,9 +5,10 @@ from typing import Dict, Tuple
 from agentforum.models import Immutable
 
 
-class ImmutableStorage(ABC):
+class ForumTrees(ABC):
     """
-    "Write Once Read Many" storage. Can only accept Immutable objects. Once an object is stored, it cannot be changed.
+    "Write Once Read Many" storage for the message trees. Can only accept Immutable objects. Once an object is stored,
+    it cannot be changed.
     """
 
     @abstractmethod
@@ -19,7 +20,7 @@ class ImmutableStorage(ABC):
         """Retrieve an Immutable object."""
 
 
-class InMemoryStorage(ImmutableStorage):
+class InMemoryTrees(ForumTrees):
     """An in-memory storage."""
 
     def __init__(self) -> None:

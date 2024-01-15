@@ -218,7 +218,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             async with self._lock:
                 if not self._materialized_msg:
                     self._materialized_msg = await self._amaterialize_impl()
-                    await self.forum.immutable_storage.astore_immutable(self._materialized_msg)
+                    await self.forum.forum_trees.astore_immutable(self._materialized_msg)
 
                     # from now on the source of truth is self._materialized_msg
                     self._content = None

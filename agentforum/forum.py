@@ -1,6 +1,6 @@
 """
 The Forum class is the main entry point for the agentforum library. It is used to create a forum, register agents in
-it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ImmutableStorage
+it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ForumTrees
 for that).
 """
 import asyncio
@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
 from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
-from agentforum.storage import ImmutableStorage, InMemoryStorage
+from agentforum.storage import ForumTrees, InMemoryTrees
 from agentforum.typing import AgentFunction, MessageType
 from agentforum.utils import Sentinel, NO_VALUE
 
@@ -92,7 +92,7 @@ class Forum(BaseModel):
     """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    immutable_storage: ImmutableStorage = Field(default_factory=InMemoryStorage)
+    forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
     _conversations: Dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
     def agent(  # pylint: disable=too-many-arguments
@@ -131,7 +131,7 @@ class Forum(BaseModel):
     # @lru_cache(maxsize=1000)  # TODO Oleksandr: implement caching (lru_cache says "unhashable type: 'Forum'")
     async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
         """Find a message in the forum."""
-        message = await self.immutable_storage.aretrieve_immutable(hash_key)  # pylint: disable=no-member
+        message = await self.forum_trees.aretrieve_immutable(hash_key)  # pylint: disable=no-member
         if not isinstance(message, Message):
             # TODO Oleksandr: introduce a custom exception for this case ?
             raise ValueError(f"Expected a Message, got a {type(message)}")
