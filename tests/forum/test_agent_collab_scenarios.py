@@ -414,11 +414,11 @@ async def arepresent_conversation_with_dicts(
 
         if isinstance(msg, AgentCallMsg):
             messages_in_request = 0
-            if msg.msg_seq_start_hash_key:
-                for prev_idx in range(idx - 1, -1, -1):
-                    if conversation[prev_idx].hash_key == msg.msg_seq_start_hash_key:
-                        messages_in_request = idx - prev_idx
-                        break
+            assert msg.msg_seq_start_hash_key  # this should always be set for AgentCallMsg
+            for prev_idx in range(idx - 1, -1, -1):
+                if conversation[prev_idx].hash_key == msg.msg_seq_start_hash_key:
+                    messages_in_request = idx - prev_idx
+                    break
             msg_dict["messages_in_request"] = messages_in_request
 
         conversation_dicts.append(msg_dict)
