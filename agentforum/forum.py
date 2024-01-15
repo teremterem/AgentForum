@@ -12,7 +12,8 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
 from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
-from agentforum.storage import ForumTrees, InMemoryTrees
+from agentforum.storage.trees import ForumTrees
+from agentforum.storage.trees_impl import InMemoryTrees
 from agentforum.typing import AgentFunction, MessageType
 from agentforum.utils import Sentinel, NO_VALUE
 

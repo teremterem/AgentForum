@@ -6,6 +6,8 @@ from typing import Dict, Any, Literal, Type, Tuple, Optional
 
 from pydantic import BaseModel, model_validator, ConfigDict
 
+from agentforum.storage.trees import ForumTrees
+
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (type(None), str, int, float, bool, tuple, list, dict)
 
 
@@ -82,6 +84,7 @@ class Message(Freeform):
     """A message."""
 
     im_model_: Literal["message"] = "message"
+    # forum_trees: ForumTrees
     content: str
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
