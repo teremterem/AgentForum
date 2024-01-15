@@ -1,6 +1,9 @@
 [tool.black]
 line-length = 119
 
+[tool.coverage.run]
+branch = true
+
 [tool.poetry]
 name = "agentforum"
 version = "0.0.6"
@@ -27,6 +30,7 @@ promptlayer = "*"
 pylint = "*"
 pytest = "*"
 pytest-asyncio = "*"
+pytest-cov = "*"
 python-dotenv = "*"
 
 [build-system]

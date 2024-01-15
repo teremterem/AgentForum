@@ -1,13 +1,14 @@
+# pylint: disable=redefined-outer-name,unidiomatic-typecheck
 """Tests for the Immutable models."""
 import hashlib
-from typing import Literal, Optional
+from typing import Literal, Optional, Awaitable
 from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
 
 from agentforum.forum import Forum
-from agentforum.models import Immutable, Freeform, Message, ForwardedMessage
+from agentforum.models import Immutable, Freeform, Message, ForwardedMessage, AgentCallMsg
 
 
 class SampleImmutable(Immutable):
@@ -168,3 +169,68 @@ def test_message_metadata_as_dict(forum: Forum) -> None:
 
     assert isinstance(message.custom_field, Freeform)  # make sure it wasn't stored as plain dict
     assert message.metadata_as_dict == {"custom_field": {"role": "user"}}
+
+
+@pytest.fixture
+async def amessage_on_branch(forum: Forum) -> Message:
+    """A message on a branch."""
+    message = Message(forum_trees=forum.forum_trees, content="message 1", sender_alias="user")
+    await forum.forum_trees.astore_immutable(message)
+    message = AgentCallMsg(
+        forum_trees=forum.forum_trees,
+        content="call 1",
+        sender_alias="",
+        prev_msg_hash_key=message.hash_key,
+    )
+    await forum.forum_trees.astore_immutable(message)
+    message = AgentCallMsg(
+        forum_trees=forum.forum_trees,
+        content="call 2",
+        sender_alias="",
+        prev_msg_hash_key=message.hash_key,
+    )
+    await forum.forum_trees.astore_immutable(message)
+    message = Message(
+        forum_trees=forum.forum_trees,
+        content="message 2",
+        sender_alias="user",
+        prev_msg_hash_key=message.hash_key,
+    )
+    await forum.forum_trees.astore_immutable(message)
+
+    return message
+
+
+@pytest.mark.asyncio
+async def test_message_aget_previous_msg(amessage_on_branch: Awaitable[Message]) -> None:
+    """
+    Test that the `Message.aget_previous_msg` method returns the previous message if it exists.
+    """
+    message = await amessage_on_branch
+    assert message.content == "message 2"  # a sanity check
+    previous_message = await message.aget_previous_msg()
+
+    # all the agent call messages were skipped by default
+    assert previous_message.content == "message 1"
+    assert type(previous_message) is Message
+
+    # no more previous messages
+    assert await previous_message.aget_previous_msg() is None
+
+
+@pytest.mark.asyncio
+async def test_message_aget_previous_msg_dont_skip_calls(amessage_on_branch: Awaitable[Message]) -> None:
+    """
+    Test that the `Message.aget_previous_msg` method returns the previous message if it exists, even if it's an agent
+    call message.
+    """
+    message = await amessage_on_branch
+    assert message.content == "message 2"  # a sanity check
+    previous_message = await message.aget_previous_msg(skip_agent_calls=False)
+
+    # agent calls were NOT skipped
+    assert previous_message.content == "call 2"
+    assert type(previous_message) is AgentCallMsg
+
+    # more previous messages exist
+    assert await previous_message.aget_previous_msg() is not None

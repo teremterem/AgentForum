@@ -129,15 +129,6 @@ class Forum(BaseModel):
             normalize_spaces_in_docstring=normalize_spaces_in_docstring,
         )
 
-    # @lru_cache(maxsize=1000)  # TODO Oleksandr: implement caching (lru_cache says "unhashable type: 'Forum'")
-    async def afind_message_promise(self, hash_key: str) -> "MessagePromise":
-        """Find a message in the forum."""
-        message = await self.forum_trees.aretrieve_immutable(hash_key)  # pylint: disable=no-member
-        if not isinstance(message, Message):
-            # TODO Oleksandr: introduce a custom exception for this case ?
-            raise ValueError(f"Expected a Message, got a {type(message)}")
-        return MessagePromise(forum=self, materialized_msg=message)
-
     def get_conversation(
         self, descriptor: Immutable, branch_from_if_new: Optional[Union[MessagePromise, Sentinel]] = None
     ) -> ConversationTracker:
