@@ -100,7 +100,7 @@ class Message(Freeform):
         """
         return self if return_self_if_none else None
 
-    # TODO TODO TODO Oleksandr: introduce get_ultimate_original_msg ?
+    # TODO Oleksandr: introduce get_ultimate_original_msg ?
 
 
 class ForwardedMessage(Message):
@@ -137,7 +137,7 @@ class AgentCallMsg(Message):
     @property
     def receiver_alias(self) -> str:
         """Get the alias of the agent that is being called."""
-        return self.content  # TODO TODO TODO Oleksandr: stop using `content` as `receiver_alias` ?
+        return self.content
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
@@ -160,4 +160,4 @@ class MessageParameters(BaseModel):
 
     content: Any  # TODO Oleksandr: a newer version of Pydantic doesn't seem work with `MessageType` for some reason
     override_sender_alias: Optional[str] = None
-    metadata: Freeform = Freeform()  # empty metadata by default  # TODO TODO TODO Oleksandr: keep as separate field ?
+    metadata: Freeform = Freeform()  # empty metadata by default

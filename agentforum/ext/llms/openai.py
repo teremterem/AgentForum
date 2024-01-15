@@ -57,11 +57,9 @@ async def _message_to_openai_dict(message: Union[MessagePromise, Message, Dict[s
     if isinstance(message, Message):
         # TODO Oleksandr: introduce a lambda function to derive roles from messages ?
         try:
-            # TODO TODO TODO Oleksandr: should `openai_role` take precedence over `role` ? should there even be such
-            #  a thing as `openai_role` ?
-            role = message.openai_role
+            role = message.role
         except AttributeError:
-            role = getattr(message, "role", "user")
+            role = getattr(message, "openai_role", "user")
         message = {
             "role": role,
             "content": message.content,

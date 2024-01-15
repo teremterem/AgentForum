@@ -125,8 +125,6 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
     content (as a stream of tokens) and metadata. It does not maintain sender_alias, prev_msg_hash_key, etc.
     """
 
-    # TODO TODO TODO Oleksandr: should this class be merged with MessagePromise somehow ? probably not
-
     def __init__(self, *args, override_metadata: Optional[Dict[str, Any]] = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._metadata = {}
@@ -142,7 +140,7 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
             self._aggregated_content = "".join([token.text async for token in self])
         return self._aggregated_content
 
-    async def amaterialize_metadata(self) -> Freeform:  # TODO TODO TODO Oleksandr: unpack into instance fields too ?
+    async def amaterialize_metadata(self) -> Freeform:
         """
         Build metadata from the metadata provided to the constructor and the metadata collected during streaming.
         Metadata provided to the constructor (override_metadata) takes precedence over the metadata collected during
@@ -151,7 +149,6 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         if self._aggregated_metadata is None:
             # TODO Oleksandr: is asyncio.Lock needed here or we can tolerate occasion redundancy ?
             await self.amaterialize_content()  # make sure all the tokens are collected
-            # TODO TODO TODO Oleksandr: is it ok to return Freeform from here ?
             self._aggregated_metadata = Freeform(**self._metadata, **self._override_metadata)
         return self._aggregated_metadata
 
@@ -168,14 +165,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         do_not_forward_if_possible: bool = True,
         branch_from: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
-        **metadata,  # TODO TODO TODO Oleksandr: keep it this way for now ? forever ?
+        **metadata,
     ) -> None:
         if materialized_msg and (  # pylint: disable=too-many-boolean-expressions
             content is not None or default_sender_alias or override_sender_alias or branch_from or metadata
         ):
             raise ValueError(
                 "If materialized_msg is provided, content, default_sender_alias, override_sender_alias, "
-                "branch_from and metadata must not be provided."  # TODO TODO TODO
+                "branch_from and metadata must not be provided."
             )
 
         self.forum = forum
@@ -184,7 +181,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         self._override_sender_alias = override_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
         self._branch_from = branch_from
-        self._metadata = metadata  # TODO TODO TODO
+        self._metadata = metadata
 
         self._materialized_msg: Optional[Message] = materialized_msg
         self._lock = asyncio.Lock()
