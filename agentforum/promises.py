@@ -95,7 +95,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
                 default_sender_alias=self._default_sender_alias,
                 override_sender_alias=incoming_item.override_sender_alias,
                 do_not_forward_if_possible=self._do_not_forward_if_possible,
-                **incoming_item.metadata.as_kwargs,
+                **incoming_item.metadata.as_dict,
             ):
                 yield msg_promise
 
@@ -237,10 +237,6 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         """Get the sender alias of the message as a string."""
         return (await self.amaterialize()).sender_alias
 
-    async def amaterialize_metadata(self) -> Freeform:
-        """Get the metadata of the message as a Freeform object."""
-        return (await self.amaterialize()).metadata
-
     async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """Get the previous MessagePromise in this conversation branch."""
         prev_msg_promise = await self._aget_previous_msg_promise_try_materialized()
@@ -264,16 +260,16 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
                 # let's merge the metadata from the stream with the metadata provided to the constructor
-                metadata = Freeform(**(await self._content.amaterialize_metadata()).as_kwargs, **self._metadata)
+                metadata = {**(await self._content.amaterialize_metadata()).as_dict, **self._metadata}
             else:
                 msg_content = self._content
-                metadata = Freeform(**self._metadata)
+                metadata = self._metadata
 
             return Message(
                 content=msg_content,
                 sender_alias=sender_alias,
-                metadata=metadata,
                 prev_msg_hash_key=prev_msg_hash_key,
+                **metadata,
             )
 
         if isinstance(self._content, (Message, MessagePromise)):
@@ -295,9 +291,10 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     content=original_msg.content,  # duplicate the original content in the forwarded message
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=sender_alias,
-                    # let's merge the metadata from the original message with the metadata provided to the constructor
-                    metadata=Freeform(**original_msg.metadata.as_kwargs, **self._metadata),
                     prev_msg_hash_key=prev_msg_hash_key,
+                    # let's merge the metadata from the original message with the metadata provided to the constructor
+                    **original_msg.metadata_as_dict,
+                    **self._metadata,
                 )
                 forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
                 return forwarded_msg
@@ -387,7 +384,7 @@ class AgentCallMsgPromise(MessagePromise):
         return AgentCallMsg(
             content=self._content,  # receiving_agent_alias
             sender_alias="",  # we keep agent calls anonymous, so they could be cached and reused by other agents
-            metadata=Freeform(**self._metadata),  # function_kwargs
+            function_kwargs=self._metadata,
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent call gets attached to the end of the request messages
             msg_seq_start_hash_key=msg_seq_start_hash_key,
         )

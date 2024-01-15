@@ -44,12 +44,12 @@ def test_message_frozen() -> None:
 
 def test_freeform_frozen() -> None:
     """Test that the `Freeform` class is frozen."""
-    metadata = Freeform(some_field="some value")
+    freeform = Freeform(some_field="some value")
 
     with pytest.raises(ValidationError):
-        metadata.content = "some other value"
+        freeform.content = "some other value"
 
-    assert metadata.some_field == "some value"
+    assert freeform.some_field == "some value"
 
 
 def test_immutable_hash_key() -> None:
@@ -69,10 +69,10 @@ def test_immutable_hash_key() -> None:
 
 def test_message_hash_key() -> None:
     """Test the `Message.hash_key` property."""
-    message = Message(content="test", sender_alias="user", metadata=Freeform(role="user"))
+    message = Message(content="test", sender_alias="user", custom_field={"role": "user"})
     # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "message", "metadata": {"im_model_": "freeform", "role": "user"}, '
+        '{"content": "test", "custom_field": {"role": "user"}, "im_model_": "message", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -80,7 +80,7 @@ def test_message_hash_key() -> None:
     message = Message(content="test", sender_alias="user")
     # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "message", "metadata": {"im_model_": "freeform"}, '
+        '{"content": "test", "im_model_": "message", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -98,8 +98,8 @@ def test_forwarded_message_hash_key() -> None:
 
     # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "forward", "metadata": {"im_model_": "freeform"}, '
-        '"original_msg_hash_key": "f8ad8f09928df3f757688280182fef522950236120e88dada21607d8b5b3aba0", '
+        '{"content": "test", "im_model_": "forward", '
+        '"original_msg_hash_key": "f2487bd3261d29745e4c47ae8f0256845a7eae939b437a5409258310486cd80a", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -115,10 +115,11 @@ def test_nested_object_not_copied() -> None:
 
 def test_nested_message_freeform_not_copied() -> None:
     """Test that Freeform nested in Message is not copied."""
-    metadata = Freeform(role="assistant")
-    message = Message(content="test", sender_alias="user", metadata=metadata)
+    # TODO Oleksandr: not sure if we still need this test - there are cases when nested objects have to be copied
+    custom_field = Freeform(role="assistant", blah={"blah": "blah"})
+    message = Message(content="test", sender_alias="user", custom_field=custom_field)
 
-    assert message.metadata is metadata
+    assert message.custom_field is custom_field
 
 
 def test_immutable_hash_key_calculated_once() -> None:
@@ -141,10 +142,19 @@ def test_immutable_hash_key_calculated_once() -> None:
 
 def test_freeform_hash_key_vs_key_ordering() -> None:
     """
-    Test that hash_key of Freeform (a class that is used to store metadata and allows arbitrary fields) is not
-    affected by the ordering of its fields.
+    Test that hash_key of Freeform (a Pydantic model that allows arbitrary metadata fields and is a parent class for
+    Message) is not affected by the ordering of its fields.
     """
     freeform1 = Freeform(some_req_field="test", some_opt_field=2)
     freeform2 = Freeform(some_opt_field=2, some_req_field="test")
 
     assert freeform1.hash_key == freeform2.hash_key
+
+
+def test_message_metadata_as_dict() -> None:
+    """
+    Test that the `Message.metadata_as_dict` method returns only the custom fields as a dict.
+    """
+    message = Message(content="test", sender_alias="user", custom_field={"role": "user"})
+
+    assert message.metadata_as_dict == {"custom_field": {"role": "user"}}

@@ -16,7 +16,6 @@ class Immutable(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    im_model_: str  # immutable model type
 
     @cached_property
     def hash_key(self) -> str:
@@ -63,10 +62,9 @@ class Freeform(Immutable):
     """
 
     model_config = ConfigDict(extra="allow")
-    im_model_: Literal["freeform"] = "freeform"
 
     @cached_property
-    def as_kwargs(self) -> Dict[str, Any]:
+    def as_dict(self) -> Dict[str, Any]:
         """Get the fields of the object as a dictionary of keyword arguments."""
         return self.model_dump(exclude={"im_model_"})
 
@@ -78,14 +76,21 @@ class Freeform(Immutable):
 _TYPES_ALLOWED_IN_FREEFORM = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Freeform
 
 
-class Message(Immutable):
+class Message(Freeform):
     """A message."""
 
     im_model_: Literal["message"] = "message"
     content: str
     sender_alias: str
-    metadata: Freeform = Freeform()  # empty metadata by default
     prev_msg_hash_key: Optional[str] = None
+
+    @cached_property
+    def metadata_as_dict(self) -> Dict[str, Any]:
+        """
+        Get the metadata from a Message instance as a dictionary. All the custom fields (those which are not defined
+        on the model) are considered metadata
+        """
+        return self.model_dump(exclude=set(self.model_fields))
 
     def get_original_msg(self, return_self_if_none: bool = True) -> Optional["Message"]:
         """
@@ -94,6 +99,8 @@ class Message(Immutable):
         ForwardedMessage).
         """
         return self if return_self_if_none else None
+
+    # TODO Oleksandr: introduce get_ultimate_original_msg ?
 
 
 class ForwardedMessage(Message):
@@ -124,17 +131,13 @@ class AgentCallMsg(Message):
     """A subtype of Message that represents a call to an agent."""
 
     im_model_: Literal["call"] = "call"
+    function_kwargs: Freeform = Freeform()
     msg_seq_start_hash_key: Optional[str] = None
 
     @property
     def receiver_alias(self) -> str:
         """Get the alias of the agent that is being called."""
         return self.content
-
-    @property
-    def kwargs(self) -> Dict[str, Any]:
-        """Get the keyword arguments for the agent call."""
-        return self.metadata.as_kwargs
 
 
 # TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
