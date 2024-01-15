@@ -1,6 +1,7 @@
 """Storage classes of the AgentForum."""
 from typing import Dict, Tuple
 
+from agentforum.errors import ImmutableDoesNotExist
 from agentforum.models import Immutable
 from agentforum.storage.trees import ForumTrees
 
@@ -21,4 +22,7 @@ class InMemoryTrees(ForumTrees):
         self._immutable_data[immutable.hash_key] = immutable
 
     async def aretrieve_immutable(self, hash_key: str) -> Immutable:
-        return self._immutable_data[hash_key]
+        try:
+            return self._immutable_data[hash_key]
+        except KeyError as exc:
+            raise ImmutableDoesNotExist(hash_key) from exc

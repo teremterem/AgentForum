@@ -13,7 +13,13 @@ class SendClosedError(AgentForumError):
     """
 
 
-class WrongHashKeyError(AgentForumError):
+class ImmutableDoesNotExist(AgentForumError):
     """
-    Raised when a hash key is either not found in the storage or refers to an object of a wrong type.
+    Raised when an Immutable object does not exist.
+    """
+
+
+class WrongImmutableTypeError(AgentForumError):
+    """
+    Raised when an Immutable object is of the wrong type.
     """

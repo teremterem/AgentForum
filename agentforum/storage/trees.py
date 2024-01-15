@@ -3,7 +3,7 @@
 import typing
 from abc import ABC, abstractmethod
 
-from agentforum.errors import WrongHashKeyError
+from agentforum.errors import WrongImmutableTypeError
 
 if typing.TYPE_CHECKING:
     from agentforum.models import Immutable, Message
@@ -36,5 +36,5 @@ class ForumTrees(ABC):
 
         message = await self.aretrieve_immutable(hash_key)
         if not isinstance(message, Message):
-            raise WrongHashKeyError(f"Expected a Message, got a {type(message)} - hash_key={hash_key}")
+            raise WrongImmutableTypeError(f"Expected a Message, got a {type(message)} - hash_key={hash_key}")
         return message
