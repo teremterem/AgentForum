@@ -100,6 +100,8 @@ class Message(Freeform):
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
 
+    # TODO TODO TODO Oleksandr: traverse bare Message objects
+
     @cached_property
     def metadata_as_dict(self) -> Dict[str, Any]:
         """
