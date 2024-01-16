@@ -18,7 +18,7 @@ from agentforum.storage.trees_impl import InMemoryTrees
 from agentforum.utils import Sentinel, NO_VALUE
 
 if typing.TYPE_CHECKING:
-    from agentforum.typing.advanced import AgentFunction, MessageType
+    from agentforum.typing import AgentFunction, MessageType
 
 USER_ALIAS = "USER"
 

@@ -6,12 +6,11 @@ from typing import Optional, List, Dict, Any, AsyncIterator, Union
 from pydantic import BaseModel
 
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
-from agentforum.typing import IN
-from agentforum.utils import AsyncStreamable, NO_VALUE
+from agentforum.utils import AsyncStreamable, NO_VALUE, IN
 
 if typing.TYPE_CHECKING:
     from agentforum.forum import Forum, ConversationTracker
-    from agentforum.typing.advanced import MessageType, SingleMessageType
+    from agentforum.typing import MessageType, SingleMessageType
 
 
 class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):

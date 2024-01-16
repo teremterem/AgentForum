@@ -1,10 +1,12 @@
 """Utility functions and classes for the AgentForum framework."""
 import asyncio
 from types import TracebackType
-from typing import Optional, Iterable, List, AsyncIterator, Generic, Union, Type
+from typing import Optional, Iterable, List, AsyncIterator, Generic, Union, Type, TypeVar
 
 from agentforum.errors import SendClosedError
-from agentforum.typing import IN, OUT
+
+IN = TypeVar("IN")
+OUT = TypeVar("OUT")
 
 
 class Sentinel:
