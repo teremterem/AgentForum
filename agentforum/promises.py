@@ -1,7 +1,7 @@
 """This module contains wrappers for the pydantic models that turn those models into asynchronous promises."""
 import asyncio
 import typing
-from typing import Optional, List, Dict, Any, AsyncIterator, Union
+from typing import Optional, Any, AsyncIterator, Union
 
 from pydantic import BaseModel
 
@@ -51,7 +51,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         """Get the content of the last message in the sequence as a string."""
         return (await self.amaterialize_concluding_message(raise_if_none=raise_if_none)).content
 
-    async def amaterialize_as_list(self) -> List["Message"]:
+    async def amaterialize_as_list(self) -> list["Message"]:
         """
         Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
         TODO Oleksandr: emphasize the difference between this method and amaterialize_full_history
@@ -60,7 +60,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
 
     async def aget_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> List["MessagePromise"]:
+    ) -> list["MessagePromise"]:
         """Get the full chat history of the conversation branch up to the last message in the sequence."""
         concluding_msg_promise = await self.aget_concluding_msg_promise(raise_if_none=False)
         if concluding_msg_promise:
@@ -71,7 +71,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
 
     async def amaterialize_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> List["Message"]:
+    ) -> list["Message"]:
         """
         Get the full chat history of the conversation branch up to the last message in the sequence, but return a list
         of Message objects instead of MessagePromise objects.
@@ -125,7 +125,7 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
     content (as a stream of tokens) and metadata. It does not maintain sender_alias, prev_msg_hash_key, etc.
     """
 
-    def __init__(self, *args, override_metadata: Optional[Dict[str, Any]] = None, **kwargs) -> None:
+    def __init__(self, *args, override_metadata: Optional[dict[str, Any]] = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._metadata = {}
         self._override_metadata = override_metadata or {}
@@ -188,7 +188,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
     def __aiter__(self) -> AsyncIterator[ContentChunk]:
         if isinstance(self._content, (StreamedMessage, MessagePromise)):
-            return self._content.__aiter__()
+            return aiter(self._content)  # pylint: disable=undefined-variable
 
         async def _aiter() -> AsyncIterator[ContentChunk]:
             """Return only one element - the whole message."""
@@ -332,7 +332,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
     async def aget_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> List["MessagePromise"]:
+    ) -> list["MessagePromise"]:
         """
         Get the full chat history of the conversation branch up to this message. Returns a list of MessagePromise
         objects.
@@ -347,7 +347,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
     async def amaterialize_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> List[Message]:
+    ) -> list[Message]:
         """
         Get the full chat history of the conversation branch up to this message, but return a list of Message objects
         instead of MessagePromise objects.

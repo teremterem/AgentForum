@@ -1,6 +1,4 @@
 """Storage classes of the AgentForum."""
-from typing import Dict, Tuple
-
 from agentforum.errors import ImmutableDoesNotExist
 from agentforum.models import Immutable
 from agentforum.storage.trees import ForumTrees
@@ -10,8 +8,7 @@ class InMemoryTrees(ForumTrees):
     """An in-memory storage."""
 
     def __init__(self) -> None:
-        self._immutable_data: Dict[str, Immutable] = {}
-        self._string_data: Dict[Tuple[str, ...], str] = {}
+        self._immutable_data: dict[str, Immutable] = {}
 
     async def astore_immutable(self, immutable: Immutable) -> None:
         # TODO Oleksandr: uncomment the following lines when messages that evaded forwarding

@@ -1,6 +1,6 @@
 """OpenAI API extension for AgentForum."""
 import asyncio
-from typing import Dict, Any, Set, Union, Optional, AsyncIterator, Iterable
+from typing import Iterable, Any, Union, Optional, AsyncIterator
 
 from pydantic import BaseModel
 
@@ -11,7 +11,7 @@ from agentforum.promises import MessagePromise, StreamedMessage
 
 def openai_chat_completion(
     # TODO Oleksandr: allow MessageType ? there should be amaterialize_message_type utility function then
-    prompt: Iterable[Union[MessagePromise, Message, Dict[str, Any]]],
+    prompt: Iterable[Union[MessagePromise, Message, dict[str, Any]]],
     async_openai_client: Optional[Any] = None,
     stream: bool = False,
     n: int = 1,
@@ -51,7 +51,7 @@ def openai_chat_completion(
     return streamed_message
 
 
-async def _message_to_openai_dict(message: Union[MessagePromise, Message, Dict[str, Any]]) -> Dict[str, Any]:
+async def _message_to_openai_dict(message: Union[MessagePromise, Message, dict[str, Any]]) -> dict[str, Any]:
     if isinstance(message, MessagePromise):
         message = await message.amaterialize()
     if isinstance(message, Message):
@@ -84,7 +84,7 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
         # TODO Oleksandr: postpone compiling metadata until all tokens are collected and the full message is built ?
         self._update_openai_metadata_dict(incoming_item.model_dump())
 
-    def _update_openai_metadata_dict(self, openai_response: Dict[str, Any]) -> None:
+    def _update_openai_metadata_dict(self, openai_response: dict[str, Any]) -> None:
         # TODO Oleksandr: put everything under a single "openai" key instead of "openai_*" for each field separately ?
         self._metadata.update(_build_openai_dict(openai_response, skip_keys={"choices", "usage"}))
 
@@ -107,5 +107,5 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
             self._metadata.setdefault("openai_usage", {}).update({k: v for k, v in usage.items() if v is not None})
 
 
-def _build_openai_dict(openai_response: Dict[str, Any], skip_keys: Set[str] = ()) -> Dict[str, Any]:
+def _build_openai_dict(openai_response: dict[str, Any], skip_keys: set[str] = ()) -> dict[str, Any]:
     return {f"openai_{k}": v for k, v in openai_response.items() if v is not None and k not in skip_keys}

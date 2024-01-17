@@ -2,7 +2,7 @@
 import hashlib
 import json
 from functools import cached_property
-from typing import Dict, Any, Literal, Type, Tuple, Optional, Set
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, model_validator, ConfigDict
 
@@ -29,7 +29,7 @@ class Immutable(BaseModel):
         ).hexdigest()
 
     @cached_property
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         """
         Get the fields of the object as a dictionary. Omits im_model_ field (which may be defined in subclasses).
         """
@@ -38,7 +38,7 @@ class Immutable(BaseModel):
     # noinspection PyNestedDecorators
     @model_validator(mode="before")
     @classmethod
-    def _validate_immutable_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_immutable_fields(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Recursively make sure that the field values of the object are immutable."""
         for key, value in values.items():
             values[key] = cls._validate_value(key, value)
@@ -59,14 +59,14 @@ class Immutable(BaseModel):
         return value
 
     @classmethod
-    def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
+    def _allowed_value_types(cls) -> tuple[type[Any], ...]:
         return _TYPES_ALLOWED_IN_IMMUTABLE
 
     # noinspection PyMethodMayBeStatic
-    def _exclude_from_dict(self) -> Set[str]:
+    def _exclude_from_dict(self) -> set[str]:
         return {"im_model_"}
 
-    def _exclude_from_hash(self) -> Set[str]:
+    def _exclude_from_hash(self) -> set[str]:
         return set()
 
 
@@ -82,7 +82,7 @@ class Freeform(Immutable):
     model_config = ConfigDict(extra="allow")
 
     @classmethod
-    def _allowed_value_types(cls) -> Tuple[Type[Any], ...]:
+    def _allowed_value_types(cls) -> tuple[type[Any], ...]:
         return _TYPES_ALLOWED_IN_FREEFORM
 
 
@@ -115,7 +115,7 @@ class Message(Freeform):
         return previous_message
 
     @cached_property
-    def metadata_as_dict(self) -> Dict[str, Any]:
+    def metadata_as_dict(self) -> dict[str, Any]:
         """
         Get the metadata from a Message instance as a dictionary. All the custom fields (those which are not defined
         on the model) are considered metadata

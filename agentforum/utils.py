@@ -1,7 +1,7 @@
 """Utility functions and classes for the AgentForum framework."""
 import asyncio
 from types import TracebackType
-from typing import Optional, Iterable, List, AsyncIterator, Generic, Union, Type, TypeVar
+from typing import Optional, Iterable, AsyncIterator, Generic, Union, TypeVar
 
 from agentforum.errors import SendClosedError
 
@@ -34,7 +34,7 @@ class AsyncStreamable(Generic[IN, OUT]):
     ) -> None:
         self._send_closed: bool = completed
 
-        self._items_so_far: List[Union[OUT, BaseException]] = []
+        self._items_so_far: list[Union[OUT, BaseException]] = []
         if items_so_far:
             self._items_so_far = list(items_so_far)
 
@@ -123,7 +123,7 @@ class AsyncStreamable(Generic[IN, OUT]):
 
         def __exit__(
             self,
-            exc_type: Optional[Type[BaseException]],
+            exc_type: Optional[type[BaseException]],
             exc_value: Optional[BaseException],
             traceback: Optional[TracebackType],
         ) -> Optional[bool]:

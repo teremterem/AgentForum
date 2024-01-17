@@ -7,7 +7,7 @@ import asyncio
 import contextvars
 import typing
 from contextvars import ContextVar
-from typing import Optional, List, Dict, AsyncIterator, Union, Callable
+from typing import Optional, AsyncIterator, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
@@ -97,7 +97,7 @@ class Forum(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
-    _conversations: Dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
+    _conversations: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
     def agent(  # pylint: disable=too-many-arguments
         self,
@@ -284,7 +284,7 @@ class InteractionContext:
         self.this_agent = agent
         self.request_messages = request_messages
         self._response_producer = response_producer
-        self._child_agent_calls: List[AgentCall] = []
+        self._child_agent_calls: list[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
         # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
 
