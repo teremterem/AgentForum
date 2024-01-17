@@ -1,5 +1,5 @@
 """Test different agent collaboration scenarios."""
-from typing import List, Union, Dict, Any
+from typing import Union, Any
 
 import pytest
 
@@ -387,10 +387,10 @@ async def test_agent_force_new_conversation(
 
 async def arepresent_conversation_with_dicts(
     response: Union[MessagePromise, AsyncMessageSequence]
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
-    def _get_msg_dict(msg_: Message) -> Dict[str, Any]:
+    def _get_msg_dict(msg_: Message) -> dict[str, Any]:
         msg_dict_ = msg_.model_dump(
             exclude={"forum_trees", "prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"}
         )
