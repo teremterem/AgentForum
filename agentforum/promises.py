@@ -188,7 +188,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
     def __aiter__(self) -> AsyncIterator[ContentChunk]:
         if isinstance(self._content, (StreamedMessage, MessagePromise)):
-            return aiter(self._content)  # pylint: disable=undefined-variable
+            return self._content.__aiter__()
 
         async def _aiter() -> AsyncIterator[ContentChunk]:
             """Return only one element - the whole message."""
