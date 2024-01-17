@@ -25,7 +25,7 @@ An asynchronous framework for building LLM-based multi-agent systems in Python, 
 
 ## 🔧 Implementation details
 
-This framework supports **Python 3.8.1 or higher** and uses [asyncio](https://docs.python.org/3/library/asyncio.html)
+This framework supports **Python 3.9 or higher** and uses [asyncio](https://docs.python.org/3/library/asyncio.html)
 under the hood.
 
 ## 🌱 Future plans
