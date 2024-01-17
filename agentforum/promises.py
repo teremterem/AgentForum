@@ -6,11 +6,11 @@ from typing import Optional, List, Dict, Any, AsyncIterator, Union
 from pydantic import BaseModel
 
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
-from agentforum.typing import IN, MessageType, SingleMessageType
-from agentforum.utils import AsyncStreamable, NO_VALUE
+from agentforum.utils import AsyncStreamable, NO_VALUE, IN
 
 if typing.TYPE_CHECKING:
     from agentforum.forum import Forum, ConversationTracker
+    from agentforum.typing import MessageType, SingleMessageType
 
 
 class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
@@ -107,7 +107,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         """A context manager that allows sending messages to AsyncMessageSequence."""
 
         def send_zero_or_more_messages(
-            self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
+            self, content: "MessageType", override_sender_alias: Optional[str] = None, **metadata
         ) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
             if not isinstance(content, (str, tuple, BaseModel)) and hasattr(content, "__iter__"):
@@ -159,7 +159,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
     def __init__(  # pylint: disable=too-many-arguments
         self,
         forum: "Forum",
-        content: Optional[SingleMessageType] = None,
+        content: Optional["SingleMessageType"] = None,
         default_sender_alias: Optional[str] = None,
         override_sender_alias: Optional[str] = None,
         do_not_forward_if_possible: bool = True,

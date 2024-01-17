@@ -1,20 +1,14 @@
-"""Typing definitions for AgentForum."""
-import typing
-from typing import TypeVar, Callable, Awaitable, Union, Iterable, Any, AsyncIterable
+"""
+Typing definitions that involve imports from agentforum.
+"""
+from typing import Callable, Awaitable, Union, Iterable, AsyncIterable, Dict, Any
 
-if typing.TYPE_CHECKING:
-    from agentforum.forum import InteractionContext
-    from agentforum.promises import StreamedMessage, MessagePromise
-    from agentforum.models import Message
+from agentforum.forum import InteractionContext
+from agentforum.models import Message
+from agentforum.promises import StreamedMessage, MessagePromise
 
-    SingleMessageType = Union[str, StreamedMessage, Message, MessagePromise, BaseException]
-    AgentFunction = Callable[[InteractionContext, ...], Awaitable[None]]
-else:
-    SingleMessageType = Union[Any]
-    AgentFunction = Callable
+AgentFunction = Callable[[InteractionContext, ...], Awaitable[None]]
 
-# TODO Oleksandr: why not allow Iterable and AsyncIterable of MessageType itself ?
-MessageType = Union[SingleMessageType, Iterable[SingleMessageType], AsyncIterable[SingleMessageType]]
-
-IN = TypeVar("IN")
-OUT = TypeVar("OUT")
+# TODO Oleksandr: add documentation somewhere that explains what MessageType and SingleMessageType represent
+SingleMessageType = Union[str, Dict[str, Any], StreamedMessage, Message, MessagePromise, BaseException]
+MessageType = Union[SingleMessageType, Iterable["MessageType"], AsyncIterable["MessageType"]]

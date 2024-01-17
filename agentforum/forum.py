@@ -5,6 +5,7 @@ for that).
 """
 import asyncio
 import contextvars
+import typing
 from contextvars import ContextVar
 from typing import Optional, List, Dict, AsyncIterator, Union, Callable
 
@@ -14,8 +15,10 @@ from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
 from agentforum.storage.trees_impl import InMemoryTrees
-from agentforum.typing import AgentFunction, MessageType
 from agentforum.utils import Sentinel, NO_VALUE
+
+if typing.TYPE_CHECKING:
+    from agentforum.typing import AgentFunction, MessageType
 
 USER_ALIAS = "USER"
 
@@ -39,7 +42,7 @@ class ConversationTracker:
 
     async def aappend_zero_or_more_messages(
         self,
-        content: MessageType,
+        content: "MessageType",
         default_sender_alias: str,
         override_sender_alias: Optional[str] = None,
         do_not_forward_if_possible: bool = True,
@@ -98,16 +101,16 @@ class Forum(BaseModel):
 
     def agent(  # pylint: disable=too-many-arguments
         self,
-        func: Optional[AgentFunction] = None,
+        func: Optional["AgentFunction"] = None,
         alias: Optional[str] = None,
         description: Optional[str] = None,
         uppercase_func_name: bool = True,
         normalize_spaces_in_docstring: bool = True,
-    ) -> Union["Agent", Callable[[AgentFunction], "Agent"]]:
+    ) -> Union["Agent", Callable[["AgentFunction"], "Agent"]]:
         """A decorator that registers an agent function in the forum."""
         if func is None:
             # the decorator `@forum.agent(...)` was used with arguments
-            def _decorator(f: AgentFunction) -> "Agent":
+            def _decorator(f: "AgentFunction") -> "Agent":
                 return Agent(
                     self,
                     f,
@@ -154,7 +157,7 @@ class Agent:
     def __init__(  # pylint: disable=too-many-arguments
         self,
         forum: Forum,
-        func: AgentFunction,
+        func: "AgentFunction",
         alias: Optional[str] = None,
         description: Optional[str] = None,
         uppercase_func_name: bool = True,
@@ -183,7 +186,7 @@ class Agent:
 
     def quick_call(  # pylint: disable=too-many-arguments
         self,
-        content: Optional[MessageType] = None,
+        content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
         branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
@@ -285,7 +288,7 @@ class InteractionContext:
         self._previous_ctx_token: Optional[contextvars.Token] = None
         # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
 
-    def respond(self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata) -> None:
+    def respond(self, content: "MessageType", override_sender_alias: Optional[str] = None, **metadata) -> None:
         """Respond with a message or a sequence of messages."""
         self._response_producer.send_zero_or_more_messages(
             content, override_sender_alias=override_sender_alias, **metadata
@@ -361,7 +364,7 @@ class AgentCall:
         self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
 
     def send_request(
-        self, content: MessageType, override_sender_alias: Optional[str] = None, **metadata
+        self, content: "MessageType", override_sender_alias: Optional[str] = None, **metadata
     ) -> "AgentCall":
         """Send a request to the agent."""
         self._request_producer.send_zero_or_more_messages(
