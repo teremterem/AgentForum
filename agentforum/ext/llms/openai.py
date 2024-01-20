@@ -1,17 +1,22 @@
 """OpenAI API extension for AgentForum."""
 import asyncio
-from typing import Iterable, Any, Union, Optional, AsyncIterator
+import typing
+from typing import Any, Union, Optional, AsyncIterator
 
 from pydantic import BaseModel
 
 from agentforum.errors import AgentForumError
+from agentforum.forum import ConversationTracker, InteractionContext
 from agentforum.models import Message, ContentChunk
-from agentforum.promises import MessagePromise, StreamedMessage
+from agentforum.promises import StreamedMessage, AsyncMessageSequence
+from agentforum.utils import NO_VALUE
+
+if typing.TYPE_CHECKING:
+    from agentforum.typing import MessageType
 
 
 def openai_chat_completion(
-    # TODO Oleksandr: allow MessageType ? there should be amaterialize_message_type utility function then
-    prompt: Iterable[Union[MessagePromise, Message, dict[str, Any]]],
+    prompt: "MessageType",
     async_openai_client: Optional[Any] = None,
     stream: bool = False,
     n: int = 1,
@@ -27,13 +32,21 @@ def openai_chat_completion(
     if n != 1:
         raise AgentForumError("Only n=1 is supported by AgentForum for AsyncOpenAI().chat.completions.create()")
 
+    # TODO TODO TODO Oleksandr: make sure these messages are not persisted in the forum tree
+    # TODO TODO TODO Oleksandr: should there be an AsyncSequence that does not forward messages at all ?
+    forum = InteractionContext.get_current_context().forum
+    sequence = AsyncMessageSequence(ConversationTracker(forum, branch_from=NO_VALUE), default_sender_alias="openai")
+    # noinspection PyProtectedMember
+    with AsyncMessageSequence._MessageProducer(sequence) as producer:  # pylint: disable=protected-access
+        producer.send_zero_or_more_messages(prompt)
+
     streamed_message = _OpenAIStreamedMessage()
 
     async def _make_request() -> None:
         # pylint: disable=protected-access
         # noinspection PyProtectedMember
         with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
-            message_dicts = [await _message_to_openai_dict(msg) for msg in prompt]
+            message_dicts = [_message_to_openai_dict(msg) for msg in await sequence.amaterialize_as_list()]
 
             # noinspection PyTypeChecker
             response = await async_openai_client.chat.completions.create(
@@ -51,20 +64,16 @@ def openai_chat_completion(
     return streamed_message
 
 
-async def _message_to_openai_dict(message: Union[MessagePromise, Message, dict[str, Any]]) -> dict[str, Any]:
-    if isinstance(message, MessagePromise):
-        message = await message.amaterialize()
-    if isinstance(message, Message):
-        # TODO Oleksandr: introduce a lambda function to derive roles from messages ?
-        try:
-            role = message.role
-        except AttributeError:
-            role = getattr(message, "openai_role", "user")
-        message = {
-            "role": role,
-            "content": message.content,
-        }
-    return message
+def _message_to_openai_dict(message: Message) -> dict[str, Any]:
+    # TODO Oleksandr: introduce a lambda function to derive roles from messages ?
+    try:
+        role = message.role
+    except AttributeError:
+        role = getattr(message, "openai_role", "user")
+    return {
+        "role": role,
+        "content": message.content,
+    }
 
 
 class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
