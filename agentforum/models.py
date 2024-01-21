@@ -181,9 +181,6 @@ class AgentCallMsg(Message):
         return self.content  # TODO Oleksandr: stop using `content` for this purpose ?
 
 
-# TODO Oleksandr: introduce ErrorMessage for cases when something goes wrong (or maybe make it a part of Message ?)
-
-
 class ContentChunk(BaseModel):
     """A chunk of message content. For ex. a token if the message is streamed token by token."""
 
@@ -199,6 +196,6 @@ class MessageParameters(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
-    content: Any  # TODO Oleksandr: a newer version of Pydantic doesn't seem work with `MessageType` for some reason
+    content: Any
     override_sender_alias: Optional[str] = None
     metadata: Freeform = Freeform()  # empty metadata by default

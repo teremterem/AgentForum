@@ -34,8 +34,6 @@ def openai_chat_completion(  # TODO TODO TODO Oleksandr: create a class and make
 
     # TODO TODO TODO Oleksandr: make sure these messages are not persisted in the forum tree
     # TODO TODO TODO Oleksandr: should there be an AsyncSequence that does not forward messages at all ?
-    # TODO TODO TODO Oleksandr: there should also be a way for library users to create manipulate the forum tree
-    #  directly (add messages to it without making calls to other agents)
     forum = InteractionContext.get_current_context().forum
     sequence = AsyncMessageSequence(ConversationTracker(forum, branch_from=NO_VALUE), default_sender_alias="openai")
     # noinspection PyProtectedMember

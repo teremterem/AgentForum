@@ -54,7 +54,8 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
     async def amaterialize_as_list(self) -> list["Message"]:
         """
         Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
-        TODO Oleksandr: emphasize the difference between this method and amaterialize_full_history
+        TODO Oleksandr: emphasize the difference between this method and amaterialize_full_history (and rename it to
+          amaterialize_sequence ?)
         """
         return [await msg.amaterialize() async for msg in self]
 
@@ -100,8 +101,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
                 yield msg_promise
 
         except BaseException as exc:  # pylint: disable=broad-except
-            # TODO Oleksandr: introduce the concept of ErrorMessage
-            # TODO TODO TODO Oleksandr: how to catch it in the right agent and not upon final materialization (which
+            # TODO Oleksandr: how to catch it in the right agent and not upon final materialization (which
             #  may happen in a different agent) ?
             yield exc
 
@@ -111,7 +111,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         def send_zero_or_more_messages(
             self,
             content: "MessageType",
-            # TODO TODO TODO Oleksandr: is it a good idea to call it `override_sender_alias` everywhere ? maybe just
+            # TODO Oleksandr: is it a good idea to call it `override_sender_alias` everywhere ? maybe just
             #  `sender_alias` for consistency ? (should I do anything with `default_sender_alias` too then ?)
             override_sender_alias: Optional[str] = None,
             **metadata,
