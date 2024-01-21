@@ -111,13 +111,13 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         def send_zero_or_more_messages(
             self,
             content: "MessageType",
-            # TODO TODO TODO Oleksandr: is it a good idea to call it `override_sender_alias` everywhere ?
-            #  maybe just `sender_alias` for consistency ?
+            # TODO TODO TODO Oleksandr: is it a good idea to call it `override_sender_alias` everywhere ? maybe just
+            #  `sender_alias` for consistency ? (should I do anything with `default_sender_alias` too then ?)
             override_sender_alias: Optional[str] = None,
             **metadata,
         ) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
-            if not isinstance(content, (str, tuple, BaseModel)) and hasattr(content, "__iter__"):
+            if not isinstance(content, (str, tuple, BaseModel, dict)) and hasattr(content, "__iter__"):
                 content = tuple(content)
             self.send(
                 MessageParameters(
