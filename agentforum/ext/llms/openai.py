@@ -15,7 +15,7 @@ if typing.TYPE_CHECKING:
     from agentforum.typing import MessageType
 
 
-def openai_chat_completion(
+def openai_chat_completion(  # TODO TODO TODO Oleksandr: create a class and make this function a method of that class ?
     prompt: "MessageType",
     async_openai_client: Optional[Any] = None,
     stream: bool = False,
