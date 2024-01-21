@@ -275,9 +275,13 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             return Message(
                 forum_trees=self.forum.forum_trees,
                 content=msg_content,
-                sender_alias=sender_alias,
                 prev_msg_hash_key=prev_msg_hash_key,
-                **metadata,
+                **{
+                    # TODO TODO TODO Oleksandr: get rid of this temporary hack that resolves conflict between
+                    #  "automatic" sender alias and sender alias that comes with the incoming message
+                    "sender_alias": sender_alias,
+                    **metadata,
+                },
             )
 
         if isinstance(self._content, (Message, MessagePromise)):

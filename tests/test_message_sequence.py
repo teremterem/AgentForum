@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from agentforum.forum import Forum, ConversationTracker
+from agentforum.models import Message
 from agentforum.promises import AsyncMessageSequence
 
 
@@ -140,11 +141,13 @@ async def test_dicts_in_message_sequences(forum: Forum) -> None:
     actual_messages = await sequence.amaterialize_as_list()
     assert len(actual_messages) == 2
 
+    assert type(actual_messages[0]) is Message  # pylint: disable=unidiomatic-typecheck
     assert actual_messages[0].content == "message 1"
     assert not hasattr(actual_messages[0], "role")
     assert actual_messages[0].sender_alias == "test"
     assert actual_messages[0].prev_msg_hash_key is None
 
+    assert type(actual_messages[1]) is Message  # pylint: disable=unidiomatic-typecheck
     assert actual_messages[1].content == "message 2"
     assert actual_messages[1].role == "some_role"
     assert actual_messages[1].sender_alias == "some_alias"
