@@ -5,12 +5,15 @@ import asyncio
 import pytest
 
 from agentforum.forum import Forum, ConversationTracker
+from agentforum.models import Message
 from agentforum.promises import AsyncMessageSequence
 
 
 @pytest.mark.asyncio
 async def test_nested_message_sequences(forum: Forum) -> None:
-    """Verify that message ordering in nested message sequences is preserved."""
+    """
+    Verify that message ordering in nested message sequences is preserved.
+    """
     level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
     level2_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
@@ -119,3 +122,37 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
 
     # assert that the messages before the error were successfully processed
     assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "message 3"]
+
+
+@pytest.mark.asyncio
+async def test_dicts_in_message_sequences(forum: Forum) -> None:
+    """
+    Verify that dicts are eventually converted to Message objects when they are sent to a message sequence.
+    """
+    sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    producer = AsyncMessageSequence._MessageProducer(sequence)
+
+    with producer:
+        producer.send_zero_or_more_messages({"content": "message 1"})
+        producer.send_zero_or_more_messages(
+            {"content": "message 2", "role": "some_role", "sender_alias": "some_alias"}
+        )
+
+    actual_messages = await sequence.amaterialize_as_list()
+    assert len(actual_messages) == 2
+
+    assert type(actual_messages[0]) is Message  # pylint: disable=unidiomatic-typecheck
+    assert actual_messages[0].content == "message 1"
+    assert not hasattr(actual_messages[0], "role")
+    assert actual_messages[0].sender_alias == "test"
+    assert actual_messages[0].prev_msg_hash_key is None
+
+    assert type(actual_messages[1]) is Message  # pylint: disable=unidiomatic-typecheck
+    assert actual_messages[1].content == "message 2"
+    assert actual_messages[1].role == "some_role"
+    assert actual_messages[1].sender_alias == "some_alias"
+    assert actual_messages[1].prev_msg_hash_key == actual_messages[0].hash_key
+
+
+# TODO TODO TODO Oleksandr: come up with tests for all kinds of message format combinations being sent to a message
+#  sequence

@@ -101,16 +101,23 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
 
         except BaseException as exc:  # pylint: disable=broad-except
             # TODO Oleksandr: introduce the concept of ErrorMessage
+            # TODO TODO TODO Oleksandr: how to catch it in the right agent and not upon final materialization (which
+            #  may happen in a different agent) ?
             yield exc
 
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
         """A context manager that allows sending messages to AsyncMessageSequence."""
 
         def send_zero_or_more_messages(
-            self, content: "MessageType", override_sender_alias: Optional[str] = None, **metadata
+            self,
+            content: "MessageType",
+            # TODO TODO TODO Oleksandr: is it a good idea to call it `override_sender_alias` everywhere ? maybe just
+            #  `sender_alias` for consistency ? (should I do anything with `default_sender_alias` too then ?)
+            override_sender_alias: Optional[str] = None,
+            **metadata,
         ) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
-            if not isinstance(content, (str, tuple, BaseModel)) and hasattr(content, "__iter__"):
+            if not isinstance(content, (str, tuple, BaseModel, dict)) and hasattr(content, "__iter__"):
                 content = tuple(content)
             self.send(
                 MessageParameters(
@@ -268,9 +275,13 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             return Message(
                 forum_trees=self.forum.forum_trees,
                 content=msg_content,
-                sender_alias=sender_alias,
                 prev_msg_hash_key=prev_msg_hash_key,
-                **metadata,
+                **{
+                    # TODO TODO TODO Oleksandr: get rid of this temporary hack that resolves conflict between
+                    #  "automatic" sender alias and sender alias that comes with the incoming message
+                    "sender_alias": sender_alias,
+                    **metadata,
+                },
             )
 
         if isinstance(self._content, (Message, MessagePromise)):

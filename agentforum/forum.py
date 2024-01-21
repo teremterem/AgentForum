@@ -64,6 +64,21 @@ class ConversationTracker:
             self._latest_msg_promise = msg_promise
             yield msg_promise
 
+        elif isinstance(content, dict):
+            msg_promise = MessagePromise(
+                forum=self.forum,
+                default_sender_alias=default_sender_alias,
+                override_sender_alias=override_sender_alias,
+                do_not_forward_if_possible=do_not_forward_if_possible,
+                branch_from=self._latest_msg_promise,
+                **{
+                    **content,
+                    **metadata,  # TODO TODO TODO Oleksandr: metadata overrides content ? is this the right way ?
+                },
+            )
+            self._latest_msg_promise = msg_promise
+            yield msg_promise
+
         elif hasattr(content, "__iter__"):
             # this is not a single message, this is a collection of messages
             for sub_msg in content:

@@ -1,4 +1,4 @@
-# pylint: disable=redefined-outer-name,unidiomatic-typecheck
+# pylint: disable=redefined-outer-name
 """Tests for the Immutable models."""
 import hashlib
 from typing import Literal, Optional, Awaitable
@@ -212,7 +212,7 @@ async def test_message_aget_previous_msg(amessage_on_branch: Awaitable[Message])
 
     # all the agent call messages were skipped by default
     assert previous_message.content == "message 1"
-    assert type(previous_message) is Message
+    assert type(previous_message) is Message  # pylint: disable=unidiomatic-typecheck
 
     # no more previous messages
     assert await previous_message.aget_previous_msg() is None
@@ -230,7 +230,7 @@ async def test_message_aget_previous_msg_dont_skip_calls(amessage_on_branch: Awa
 
     # agent calls were NOT skipped
     assert previous_message.content == "call 2"
-    assert type(previous_message) is AgentCallMsg
+    assert type(previous_message) is AgentCallMsg  # pylint: disable=unidiomatic-typecheck
 
     # more previous messages exist
     assert await previous_message.aget_previous_msg() is not None
