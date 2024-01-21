@@ -149,3 +149,7 @@ async def test_dicts_in_message_sequences(forum: Forum) -> None:
     assert actual_messages[1].role == "some_role"
     assert actual_messages[1].sender_alias == "some_alias"
     assert actual_messages[1].prev_msg_hash_key == actual_messages[0].hash_key
+
+
+# TODO TODO TODO Oleksandr: come up with tests for all kinds of message format combinations being sent to a message
+#  sequence
