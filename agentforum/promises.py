@@ -72,7 +72,7 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
             )
         return []
 
-    # TODO TODO TODO Oleksandr: also introduce a method that returns a full history as an AsyncMessageSequence instead
+    # TODO TODO TODO Oleksandr: also introduce a method that returns full history as an AsyncMessageSequence instead
     #  of a ready-to-use list of MessagePromise objects ?
 
     async def amaterialize_full_history(
