@@ -35,7 +35,6 @@ async def aflatten_message_sequence(message_sequence: "MessageType") -> list["Me
     from agentforum.promises import AsyncMessageSequence
 
     ctx = InteractionContext.get_current_context()
-    # TODO TODO TODO Oleksandr: make sure these messages are not persisted in the forum tree ?
     sequence = AsyncMessageSequence(
         ConversationTracker(ctx.forum, branch_from=NO_VALUE), default_sender_alias=ctx.this_agent.alias
     )

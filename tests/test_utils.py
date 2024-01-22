@@ -57,11 +57,13 @@ async def test_arender_conversation_custom_alias_resolver(
     """
     rendered_conversation = await arender_conversation(
         await athree_message_sequence,
-        alias_resolver=lambda msg: f"{''.join([word.capitalize() for word in msg.sender_alias.split('_')])}Bot",
+        alias_resolver=lambda msg: (
+            None
+            if msg.content == "message 1"  # don't render the first message
+            else f"{''.join([word.capitalize() for word in msg.sender_alias.split('_')])}Bot"
+        ),
     )
-    assert rendered_conversation == (
-        "TestAliasBot: message 1\n\nOverriddenAliasBot: message 2\n\nTestAliasBot: message 3"
-    )
+    assert rendered_conversation == "OverriddenAliasBot: message 2\n\nTestAliasBot: message 3"
 
 
 @pytest.mark.asyncio
