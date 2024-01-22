@@ -67,9 +67,10 @@ async def arender_conversation(
     """
     conversation = await amaterialize_message_sequence(conversation)
     if isinstance(alias_resolver, str):
+        hardcoded_alias = alias_resolver
 
         def alias_resolver(_: "Message") -> str:  # pylint: disable=function-redefined
-            return alias_resolver
+            return hardcoded_alias
 
     turns = []
     for msg in conversation:
