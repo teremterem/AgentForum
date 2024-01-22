@@ -6,10 +6,9 @@ from typing import Any, Union, Optional, AsyncIterator
 from pydantic import BaseModel
 
 from agentforum.errors import AgentForumError
-from agentforum.forum import ConversationTracker, InteractionContext
 from agentforum.models import Message, ContentChunk
-from agentforum.promises import StreamedMessage, AsyncMessageSequence
-from agentforum.utils import NO_VALUE
+from agentforum.promises import StreamedMessage
+from agentforum.utils import amaterialize_message_sequence
 
 if typing.TYPE_CHECKING:
     from agentforum.typing import MessageType
@@ -32,21 +31,13 @@ def openai_chat_completion(  # TODO TODO TODO Oleksandr: create a class and make
     if n != 1:
         raise AgentForumError("Only n=1 is supported by AgentForum for AsyncOpenAI().chat.completions.create()")
 
-    # TODO TODO TODO Oleksandr: make sure these messages are not persisted in the forum tree
-    # TODO TODO TODO Oleksandr: should there be an AsyncSequence that does not forward messages at all ?
-    forum = InteractionContext.get_current_context().forum
-    sequence = AsyncMessageSequence(ConversationTracker(forum, branch_from=NO_VALUE), default_sender_alias="openai")
-    # noinspection PyProtectedMember
-    with AsyncMessageSequence._MessageProducer(sequence) as producer:  # pylint: disable=protected-access
-        producer.send_zero_or_more_messages(prompt)
-
     streamed_message = _OpenAIStreamedMessage()
 
     async def _make_request() -> None:
         # pylint: disable=protected-access
         # noinspection PyProtectedMember
         with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
-            message_dicts = [_message_to_openai_dict(msg) for msg in await sequence.amaterialize_as_list()]
+            message_dicts = [_message_to_openai_dict(msg) for msg in await amaterialize_message_sequence(prompt)]
 
             # noinspection PyTypeChecker
             response = await async_openai_client.chat.completions.create(
@@ -62,6 +53,35 @@ def openai_chat_completion(  # TODO TODO TODO Oleksandr: create a class and make
     asyncio.create_task(_make_request())
 
     return streamed_message
+
+
+async def anum_tokens_from_messages(messages: "MessageType", model: str = "gpt-3.5-turbo-0613") -> int:
+    """
+    Returns the number of tokens used by a list of messages.
+    """
+    import tiktoken  # pylint: disable=import-outside-toplevel
+
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+
+    if model == "gpt-3.5-turbo-0613":  # note: future models may deviate from this
+        num_tokens = 0
+        for message in await amaterialize_message_sequence(messages):
+            num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+            for key, value in message.items():
+                num_tokens += len(encoding.encode(value))
+                if key == "name":  # if there's a name, the role is omitted
+                    num_tokens += -1  # role is always required and always 1 token
+        num_tokens += 2  # every reply is primed with <im_start>assistant
+        return num_tokens
+
+    raise NotImplementedError(
+        f"num_tokens_from_messages() is not presently implemented for model {model}.\n"
+        "See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are "
+        "converted to tokens."
+    )
 
 
 def _message_to_openai_dict(message: Message) -> dict[str, Any]:
