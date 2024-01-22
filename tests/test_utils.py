@@ -46,3 +46,19 @@ async def test_arender_conversation_hardcoded_alias(athree_message_sequence: Awa
     """
     rendered_conversation = await arender_conversation(await athree_message_sequence, alias_resolver="HARDCODED")
     assert rendered_conversation == "HARDCODED: message 1\n\nHARDCODED: message 2\n\nHARDCODED: message 3"
+
+
+@pytest.mark.asyncio
+async def test_arender_conversation_custom_alias_resolver(
+    athree_message_sequence: Awaitable[AsyncMessageSequence],
+) -> None:
+    """
+    Test arender_conversation() with a hardcoded alias.
+    """
+    rendered_conversation = await arender_conversation(
+        await athree_message_sequence,
+        alias_resolver=lambda msg: f"{''.join([word.capitalize() for word in msg.sender_alias.split('_')])}Bot",
+    )
+    assert rendered_conversation == (
+        "TestAliasBot: message 1\n\nOverriddenAliasBot: message 2\n\nTestAliasBot: message 3"
+    )
