@@ -9,7 +9,7 @@ from agentforum.forum import Forum, InteractionContext
 @pytest.fixture
 def forum() -> Forum:
     """
-    Create a forum with in-memory storage.
+    Create a Forum instance with in-memory ForumTrees.
     """
     return Forum()
 
@@ -17,10 +17,10 @@ def forum() -> Forum:
 @pytest.fixture
 def fake_interaction_context(forum: Forum) -> None:  # pylint: disable=redefined-outer-name
     """
-    Create a fake interaction context.
+    Activate a fake InteractionContext. Needed when utility functions are tested that depend on the presence of an
+    active InteractionContext (because they need access to a Forum object and its ForumTrees to work). In the client
+    code such functions are supposed to be called from within agents.
     """
-    # TODO TODO TODO Oleksandr: we shouldn't need this fixture as soon as aflatten_message_sequence() becomes
-    #  independent of Forum
     # noinspection PyTypeChecker
     with InteractionContext(forum=forum, agent=None, request_messages=None, response_producer=None) as ctx:
         yield ctx
