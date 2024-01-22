@@ -34,10 +34,11 @@ async def aflatten_message_sequence(message_sequence: "MessageType") -> list["Me
     from agentforum.forum import InteractionContext, ConversationTracker
     from agentforum.promises import AsyncMessageSequence
 
-    # TODO TODO TODO Oleksandr: make sure these messages are not persisted in the forum tree
-    forum = InteractionContext.get_current_context().forum  # TODO TODO TODO Oleksandr: we shouldn't depend on this
-    # TODO TODO TODO Oleksandr: should there be an AsyncSequence that does not forward messages at all ?
-    sequence = AsyncMessageSequence(ConversationTracker(forum, branch_from=NO_VALUE), default_sender_alias="openai")
+    ctx = InteractionContext.get_current_context()
+    # TODO TODO TODO Oleksandr: make sure these messages are not persisted in the forum tree ?
+    sequence = AsyncMessageSequence(
+        ConversationTracker(ctx.forum, branch_from=NO_VALUE), default_sender_alias=ctx.this_agent.alias
+    )
     # noinspection PyProtectedMember
     with AsyncMessageSequence._MessageProducer(sequence) as producer:  # pylint: disable=protected-access
         producer.send_zero_or_more_messages(message_sequence)

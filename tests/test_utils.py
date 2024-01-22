@@ -53,7 +53,7 @@ async def test_arender_conversation_custom_alias_resolver(
     athree_message_sequence: Awaitable[AsyncMessageSequence],
 ) -> None:
     """
-    Test arender_conversation() with a hardcoded alias.
+    Test arender_conversation() with a custom alias_resolver function.
     """
     rendered_conversation = await arender_conversation(
         await athree_message_sequence,
@@ -61,4 +61,35 @@ async def test_arender_conversation_custom_alias_resolver(
     )
     assert rendered_conversation == (
         "TestAliasBot: message 1\n\nOverriddenAliasBot: message 2\n\nTestAliasBot: message 3"
+    )
+
+
+@pytest.mark.asyncio
+async def test_arender_conversation_with_dicts(
+    athree_message_sequence: Awaitable[AsyncMessageSequence],
+) -> None:
+    """
+    Test arender_conversation() when a list of regular dicts are passed together with AsyncMessageSequence.
+    """
+    sequence = [
+        await athree_message_sequence,
+        {
+            "content": "message 4",
+        },
+        {
+            "content": "message 5",
+            "sender_alias": "ONE_MORE_SENDER_ALIAS",
+        },
+    ]
+    rendered_conversation = await arender_conversation(sequence)
+    assert rendered_conversation == (
+        "TEST_ALIAS: message 1\n"
+        "\n"
+        "OVERRIDDEN_ALIAS: message 2\n"
+        "\n"
+        "TEST_ALIAS: message 3\n"
+        "\n"
+        "FAKE_AGENT: message 4\n"
+        "\n"
+        "ONE_MORE_SENDER_ALIAS: message 5"
     )
