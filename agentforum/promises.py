@@ -1,4 +1,6 @@
-"""This module contains wrappers for the pydantic models that turn those models into asynchronous promises."""
+"""
+This module contains wrappers for the pydantic models that turn those models into asynchronous promises.
+"""
 import asyncio
 import typing
 from typing import Optional, Any, AsyncIterator, Union

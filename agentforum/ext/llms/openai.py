@@ -1,4 +1,6 @@
-"""OpenAI API extension for AgentForum."""
+"""
+OpenAI API extension for AgentForum.
+"""
 import asyncio
 import typing
 from typing import Any, Union, Optional, AsyncIterator

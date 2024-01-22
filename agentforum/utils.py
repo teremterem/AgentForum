@@ -1,4 +1,6 @@
-"""Utility functions and classes for the AgentForum framework."""
+"""
+Utility functions and classes for the AgentForum framework.
+"""
 import asyncio
 import typing
 from types import TracebackType
@@ -33,8 +35,8 @@ async def aflatten_message_sequence(message_sequence: "MessageType") -> list["Me
     from agentforum.promises import AsyncMessageSequence
 
     # TODO TODO TODO Oleksandr: make sure these messages are not persisted in the forum tree
+    forum = InteractionContext.get_current_context().forum  # TODO TODO TODO Oleksandr: we shouldn't depend on this
     # TODO TODO TODO Oleksandr: should there be an AsyncSequence that does not forward messages at all ?
-    forum = InteractionContext.get_current_context().forum
     sequence = AsyncMessageSequence(ConversationTracker(forum, branch_from=NO_VALUE), default_sender_alias="openai")
     # noinspection PyProtectedMember
     with AsyncMessageSequence._MessageProducer(sequence) as producer:  # pylint: disable=protected-access
