@@ -1,4 +1,6 @@
-"""Tests for agentforum.promises.AsyncMessageSequence"""
+"""
+Tests for agentforum.promises.AsyncMessageSequence
+"""
 # pylint: disable=protected-access
 import asyncio
 

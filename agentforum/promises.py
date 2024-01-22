@@ -1,4 +1,6 @@
-"""This module contains wrappers for the pydantic models that turn those models into asynchronous promises."""
+"""
+This module contains wrappers for the pydantic models that turn those models into asynchronous promises.
+"""
 import asyncio
 import typing
 from typing import Optional, Any, AsyncIterator, Union
@@ -69,6 +71,9 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
                 skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
             )
         return []
+
+    # TODO TODO TODO Oleksandr: also introduce a method that returns a full history as an AsyncMessageSequence instead
+    #  of a ready-to-use list of MessagePromise objects ?
 
     async def amaterialize_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True

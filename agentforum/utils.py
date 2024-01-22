@@ -1,9 +1,17 @@
-"""Utility functions and classes for the AgentForum framework."""
+"""
+Utility functions and classes for the AgentForum framework.
+"""
 import asyncio
+import typing
 from types import TracebackType
-from typing import Optional, Iterable, AsyncIterator, Generic, Union, TypeVar
+from typing import Optional, Iterable, AsyncIterator, Generic, Union, TypeVar, Callable
 
 from agentforum.errors import SendClosedError
+
+if typing.TYPE_CHECKING:
+    from agentforum.models import Message
+    from agentforum.promises import MessagePromise, AsyncMessageSequence
+    from agentforum.typing import MessageType
 
 IN = TypeVar("IN")
 OUT = TypeVar("OUT")
@@ -15,6 +23,62 @@ class Sentinel:
 
 END_OF_QUEUE = Sentinel()
 NO_VALUE = Sentinel()
+
+
+async def aflatten_message_sequence(message_sequence: "MessageType") -> list["MessagePromise"]:
+    """
+    Flatten a message sequence (which may consist of arbitrary synchronous and asynchronous MessageType objects) into
+    a list of MessagePromise objects.
+    """
+    # pylint: disable=import-outside-toplevel
+    from agentforum.forum import InteractionContext, ConversationTracker
+    from agentforum.promises import AsyncMessageSequence
+
+    ctx = InteractionContext.get_current_context()
+    sequence = AsyncMessageSequence(
+        ConversationTracker(ctx.forum, branch_from=NO_VALUE), default_sender_alias=ctx.this_agent.alias
+    )
+    # noinspection PyProtectedMember
+    with AsyncMessageSequence._MessageProducer(sequence) as producer:  # pylint: disable=protected-access
+        producer.send_zero_or_more_messages(message_sequence)
+
+    # TODO TODO TODO Oleksandr: why don't I have a shortcut message for this ?
+    return [promise async for promise in sequence]
+
+
+async def amaterialize_message_sequence(message_sequence: "MessageType") -> list["Message"]:
+    """
+    Materialize a message sequence (which may consist of arbitrary synchronous and asynchronous MessageType objects)
+    into a flat list of concrete Message objects.
+    """
+    return [await promise.amaterialize() for promise in await aflatten_message_sequence(message_sequence)]
+
+
+async def arender_conversation(
+    conversation: "MessageType",
+    alias_resolver: Union[str, Callable[["Message"], Optional[str]]] = lambda msg: msg.sender_alias,
+    alias_delimiter: str = ": ",
+    turn_delimiter: str = "\n\n",
+) -> str:
+    """
+    Render a conversation as a string.
+
+    NOTE: Whenever alias_resolver returns None for a message, that message is skipped.
+    """
+    conversation = await amaterialize_message_sequence(conversation)
+    if isinstance(alias_resolver, str):
+        hardcoded_alias = alias_resolver
+
+        def alias_resolver(_: "Message") -> str:  # pylint: disable=function-redefined
+            return hardcoded_alias
+
+    turns = []
+    for msg in conversation:
+        alias = alias_resolver(msg)
+        if alias is None:
+            continue
+        turns.append(f"{alias}{alias_delimiter}{msg.content.strip()}")
+    return turn_delimiter.join(turns)
 
 
 class AsyncStreamable(Generic[IN, OUT]):
