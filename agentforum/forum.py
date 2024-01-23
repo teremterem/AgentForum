@@ -44,9 +44,8 @@ class ConversationTracker:
         self,
         content: "MessageType",
         default_sender_alias: str,
-        override_sender_alias: Optional[str] = None,
         do_not_forward_if_possible: bool = True,
-        **metadata,
+        **override_metadata,
     ) -> AsyncIterator[MessagePromise]:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
@@ -56,10 +55,9 @@ class ConversationTracker:
                 forum=self.forum,
                 content=content,
                 default_sender_alias=default_sender_alias,
-                override_sender_alias=override_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
-                **metadata,
+                **override_metadata,
             )
             self._latest_msg_promise = msg_promise
             yield msg_promise
@@ -68,12 +66,11 @@ class ConversationTracker:
             msg_promise = MessagePromise(
                 forum=self.forum,
                 default_sender_alias=default_sender_alias,
-                override_sender_alias=override_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
                 **{
                     **content,
-                    **metadata,  # TODO TODO TODO Oleksandr: metadata overrides content ? is this the right way ?
+                    **override_metadata,
                 },
             )
             self._latest_msg_promise = msg_promise
@@ -85,9 +82,8 @@ class ConversationTracker:
                 async for msg_promise in self.aappend_zero_or_more_messages(
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
-                    override_sender_alias=override_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    **metadata,
+                    **override_metadata,
                 ):
                     self._latest_msg_promise = msg_promise
                     yield msg_promise
@@ -97,9 +93,8 @@ class ConversationTracker:
                 async for msg_promise in self.aappend_zero_or_more_messages(
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
-                    override_sender_alias=override_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    **metadata,
+                    **override_metadata,
                 ):
                     self._latest_msg_promise = msg_promise
                     yield msg_promise
@@ -222,7 +217,10 @@ class Agent:
             **function_kwargs,
         )
         if content is not None:
-            agent_call.send_request(content, override_sender_alias=override_sender_alias)
+            if override_sender_alias:
+                agent_call.send_request(content, sender_alias=override_sender_alias)
+            else:
+                agent_call.send_request(content)
         return agent_call.response_sequence()
 
     def call(
@@ -303,11 +301,9 @@ class InteractionContext:
         self._previous_ctx_token: Optional[contextvars.Token] = None
         # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
 
-    def respond(self, content: "MessageType", override_sender_alias: Optional[str] = None, **metadata) -> None:
+    def respond(self, content: "MessageType", **metadata) -> None:
         """Respond with a message or a sequence of messages."""
-        self._response_producer.send_zero_or_more_messages(
-            content, override_sender_alias=override_sender_alias, **metadata
-        )
+        self._response_producer.send_zero_or_more_messages(content, **metadata)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -378,13 +374,9 @@ class AgentCall:
         self._response_messages = AsyncMessageSequence(conversation, default_sender_alias=self.receiving_agent.alias)
         self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
 
-    def send_request(
-        self, content: "MessageType", override_sender_alias: Optional[str] = None, **metadata
-    ) -> "AgentCall":
+    def send_request(self, content: "MessageType", **metadata) -> "AgentCall":
         """Send a request to the agent."""
-        self._request_producer.send_zero_or_more_messages(
-            content, override_sender_alias=override_sender_alias, **metadata
-        )
+        self._request_producer.send_zero_or_more_messages(content, **metadata)
         return self
 
     def response_sequence(self) -> "AsyncMessageSequence":
