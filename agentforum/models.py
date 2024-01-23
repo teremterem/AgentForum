@@ -187,15 +187,3 @@ class ContentChunk(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     text: str
-
-
-class MessageParameters(BaseModel):
-    """
-    A set of parameters that can be converted into one or more messages or message promises.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
-
-    content: Any
-    override_sender_alias: Optional[str] = None
-    metadata: Freeform = Freeform()  # empty metadata by default

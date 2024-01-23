@@ -5,9 +5,9 @@ import asyncio
 import typing
 from typing import Optional, Any, AsyncIterator, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
-from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, MessageParameters, ContentChunk
+from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, ContentChunk
 from agentforum.utils import AsyncStreamable, NO_VALUE, IN
 
 if typing.TYPE_CHECKING:
@@ -15,7 +15,7 @@ if typing.TYPE_CHECKING:
     from agentforum.typing import MessageType, SingleMessageType
 
 
-class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"]):
+class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromise"]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     AsyncStreamable and relies on internal async queues, the speed at which messages are produced and sent to the
@@ -90,19 +90,17 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
         ]
 
     async def _aconvert_incoming_item(
-        self, incoming_item: MessageParameters
+        self, incoming_item: "_MessageTypeWrapper"
     ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
         try:
-            if isinstance(incoming_item.content, BaseException):
-                raise incoming_item.content
+            if isinstance(incoming_item.zero_or_more_messages, BaseException):
+                raise incoming_item.zero_or_more_messages
 
             async for msg_promise in self._conversation.aappend_zero_or_more_messages(
-                content=incoming_item.content,
+                content=incoming_item.zero_or_more_messages,
                 default_sender_alias=self._default_sender_alias,
-                # # TODO TODO TODO TODO TODO Oleksandr: is removing this line the right way to go ?
-                # override_sender_alias=incoming_item.override_sender_alias,
                 do_not_forward_if_possible=self._do_not_forward_if_possible,
-                **incoming_item.metadata.as_dict,
+                **incoming_item.override_metadata.as_dict,
             ):
                 yield msg_promise
 
@@ -116,16 +114,15 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
 
         def send_zero_or_more_messages(self, content: "MessageType", **metadata) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
-            if not isinstance(content, (str, tuple, BaseModel, dict)) and hasattr(content, "__iter__"):
+            if isinstance(content, dict):
+                # # TODO TODO TODO Oleksandr: freeze dict using Freeform
+                # content = Freeform(**content)
+                pass
+            elif hasattr(content, "__iter__") and not isinstance(content, (str, tuple, BaseModel)):
+                # we are dealing with a "synchronous" collection of messages here - let's freeze it just in case
                 content = tuple(content)
-            self.send(
-                MessageParameters(
-                    content=content,
-                    # TODO TODO TODO TODO TODO Oleksandr: proceed from here...
-                    override_sender_alias=metadata.get("sender_alias"),
-                    metadata=Freeform(**metadata),
-                )
-            )
+            # TODO TODO TODO Oleksandr: validate `content` type manually, because in Pydantic it's just Any
+            self.send(_MessageTypeWrapper(zero_or_more_messages=content, override_metadata=Freeform(**metadata)))
 
 
 class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
@@ -413,3 +410,10 @@ class AgentCallMsgPromise(MessagePromise):
         async for msg_promise in self._request_messages:
             pass
         return msg_promise
+
+
+class _MessageTypeWrapper(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
+    zero_or_more_messages: Any  # should be MessageType but Pydantic v2 seems to be confused by it
+    override_metadata: Freeform = Freeform()

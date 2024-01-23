@@ -44,9 +44,9 @@ class ConversationTracker:
         self,
         content: "MessageType",
         default_sender_alias: str,
-        override_sender_alias: Optional[str] = None,
+        override_sender_alias: Optional[str] = None,  # TODO TODO TODO TODO TODO
         do_not_forward_if_possible: bool = True,
-        **metadata,
+        **override_metadata,
     ) -> AsyncIterator[MessagePromise]:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
@@ -59,7 +59,7 @@ class ConversationTracker:
                 override_sender_alias=override_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
-                **metadata,
+                **override_metadata,
             )
             self._latest_msg_promise = msg_promise
             yield msg_promise
@@ -73,7 +73,7 @@ class ConversationTracker:
                 branch_from=self._latest_msg_promise,
                 **{
                     **content,
-                    **metadata,  # TODO TODO TODO Oleksandr: metadata overrides content ? is this the right way ?
+                    **override_metadata,
                 },
             )
             self._latest_msg_promise = msg_promise
@@ -87,7 +87,7 @@ class ConversationTracker:
                     default_sender_alias=default_sender_alias,
                     override_sender_alias=override_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    **metadata,
+                    **override_metadata,
                 ):
                     self._latest_msg_promise = msg_promise
                     yield msg_promise
@@ -99,7 +99,7 @@ class ConversationTracker:
                     default_sender_alias=default_sender_alias,
                     override_sender_alias=override_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    **metadata,
+                    **override_metadata,
                 ):
                     self._latest_msg_promise = msg_promise
                     yield msg_promise
