@@ -44,7 +44,6 @@ class ConversationTracker:
         self,
         content: "MessageType",
         default_sender_alias: str,
-        override_sender_alias: Optional[str] = None,  # TODO TODO TODO TODO TODO
         do_not_forward_if_possible: bool = True,
         **override_metadata,
     ) -> AsyncIterator[MessagePromise]:
@@ -56,7 +55,6 @@ class ConversationTracker:
                 forum=self.forum,
                 content=content,
                 default_sender_alias=default_sender_alias,
-                override_sender_alias=override_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
                 **override_metadata,
@@ -68,7 +66,6 @@ class ConversationTracker:
             msg_promise = MessagePromise(
                 forum=self.forum,
                 default_sender_alias=default_sender_alias,
-                override_sender_alias=override_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
                 **{
@@ -85,7 +82,6 @@ class ConversationTracker:
                 async for msg_promise in self.aappend_zero_or_more_messages(
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
-                    override_sender_alias=override_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     **override_metadata,
                 ):
@@ -97,7 +93,6 @@ class ConversationTracker:
                 async for msg_promise in self.aappend_zero_or_more_messages(
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
-                    override_sender_alias=override_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     **override_metadata,
                 ):
@@ -222,7 +217,10 @@ class Agent:
             **function_kwargs,
         )
         if content is not None:
-            agent_call.send_request(content, override_sender_alias=override_sender_alias)
+            if override_sender_alias:
+                agent_call.send_request(content, sender_alias=override_sender_alias)
+            else:
+                agent_call.send_request(content)
         return agent_call.response_sequence()
 
     def call(

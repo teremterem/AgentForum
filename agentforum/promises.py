@@ -167,24 +167,20 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         forum: "Forum",
         content: Optional["SingleMessageType"] = None,
         default_sender_alias: Optional[str] = None,
-        override_sender_alias: Optional[str] = None,
         do_not_forward_if_possible: bool = True,
         branch_from: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
         **override_metadata,
     ) -> None:
-        if materialized_msg and (  # pylint: disable=too-many-boolean-expressions
-            content is not None or default_sender_alias or override_sender_alias or branch_from or override_metadata
-        ):
+        if materialized_msg and (content is not None or default_sender_alias or branch_from or override_metadata):
             raise ValueError(
-                "If materialized_msg is provided, content, default_sender_alias, override_sender_alias, "
-                "branch_from and override_metadata must not be provided."
+                "If materialized_msg is provided, content, default_sender_alias, branch_from and override_metadata "
+                "must not be provided."
             )
 
         self.forum = forum
         self._content = content
         self._default_sender_alias = default_sender_alias
-        self._override_sender_alias = override_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
         self._branch_from = branch_from
         self._override_metadata = override_metadata
@@ -229,7 +225,6 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     # from now on the source of truth is self._materialized_msg
                     self._content = None
                     self._default_sender_alias = None
-                    self._override_sender_alias = None
                     self._branch_from = None
                     self._override_metadata = None
 
@@ -255,8 +250,6 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         return prev_msg_promise
 
     async def _amaterialize_impl(self) -> Message:
-        sender_alias = self._override_sender_alias or self._default_sender_alias
-
         if self._branch_from and self._branch_from is not NO_VALUE:
             prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key
         else:
@@ -266,21 +259,24 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
                 # let's merge the metadata from the stream with the metadata provided to the constructor
-                metadata = {**(await self._content.amaterialize_metadata()).as_dict, **self._override_metadata}
+                metadata = {
+                    **(await self._content.amaterialize_metadata()).as_dict,
+                    # TODO TODO TODO Oleksandr: override "sender_alias" with metadata from StreamedMessage too ?
+                    "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
+                    **self._override_metadata,
+                }
             else:
                 msg_content = self._content
-                metadata = self._override_metadata
+                metadata = {
+                    "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
+                    **self._override_metadata,
+                }
 
             return Message(
                 forum_trees=self.forum.forum_trees,
                 content=msg_content,
                 prev_msg_hash_key=prev_msg_hash_key,
-                **{
-                    # TODO TODO TODO Oleksandr: get rid of this temporary hack that resolves conflict between
-                    #  "automatic" sender alias and sender alias that comes with the incoming message
-                    "sender_alias": sender_alias,
-                    **metadata,
-                },
+                **metadata,
             )
 
         if isinstance(self._content, (Message, MessagePromise)):
@@ -303,11 +299,10 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     # TODO Oleksandr: stop duplicating original content in forwarded messages ?
                     content=original_msg.content,
                     original_msg_hash_key=original_msg.hash_key,
-                    sender_alias=sender_alias,
                     prev_msg_hash_key=prev_msg_hash_key,
                     **{
-                        # let's merge the metadata from the original message with the metadata from the constructor
                         **original_msg.metadata_as_dict,
+                        "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                         **self._override_metadata,
                     },
                 )
