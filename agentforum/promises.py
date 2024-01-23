@@ -171,14 +171,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         do_not_forward_if_possible: bool = True,
         branch_from: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
-        **metadata,
+        **override_metadata,
     ) -> None:
         if materialized_msg and (  # pylint: disable=too-many-boolean-expressions
-            content is not None or default_sender_alias or override_sender_alias or branch_from or metadata
+            content is not None or default_sender_alias or override_sender_alias or branch_from or override_metadata
         ):
             raise ValueError(
                 "If materialized_msg is provided, content, default_sender_alias, override_sender_alias, "
-                "branch_from and metadata must not be provided."
+                "branch_from and override_metadata must not be provided."
             )
 
         self.forum = forum
@@ -187,7 +187,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         self._override_sender_alias = override_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
         self._branch_from = branch_from
-        self._metadata = metadata
+        self._override_metadata = override_metadata
 
         self._materialized_msg: Optional[Message] = materialized_msg
         self._lock = asyncio.Lock()
@@ -231,7 +231,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     self._default_sender_alias = None
                     self._override_sender_alias = None
                     self._branch_from = None
-                    self._metadata = None
+                    self._override_metadata = None
 
         return self._materialized_msg
 
@@ -266,10 +266,10 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
                 # let's merge the metadata from the stream with the metadata provided to the constructor
-                metadata = {**(await self._content.amaterialize_metadata()).as_dict, **self._metadata}
+                metadata = {**(await self._content.amaterialize_metadata()).as_dict, **self._override_metadata}
             else:
                 msg_content = self._content
-                metadata = self._metadata
+                metadata = self._override_metadata
 
             return Message(
                 forum_trees=self.forum.forum_trees,
@@ -291,7 +291,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
             if (
                 (not self._do_not_forward_if_possible)
-                or self._metadata
+                or self._override_metadata
                 or (self._branch_from is not NO_VALUE and prev_msg_hash_key != original_msg.prev_msg_hash_key)
             ):
                 # the message must be forwarded because either we are not actively trying to avoid forwarding
@@ -305,9 +305,11 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     original_msg_hash_key=original_msg.hash_key,
                     sender_alias=sender_alias,
                     prev_msg_hash_key=prev_msg_hash_key,
-                    # let's merge the metadata from the original message with the metadata provided to the constructor
-                    **original_msg.metadata_as_dict,
-                    **self._metadata,
+                    **{
+                        # let's merge the metadata from the original message with the metadata from the constructor
+                        **original_msg.metadata_as_dict,
+                        **self._override_metadata,
+                    },
                 )
                 forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
                 return forwarded_msg
@@ -400,7 +402,7 @@ class AgentCallMsgPromise(MessagePromise):
             forum_trees=self.forum.forum_trees,
             content=self._content,  # receiving_agent_alias
             sender_alias="",  # we keep agent calls anonymous, so they could be cached and reused by other agents
-            function_kwargs=self._metadata,
+            function_kwargs=self._override_metadata,  # function_kwargs from the constructor
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent call gets attached to the end of the request messages
             msg_seq_start_hash_key=msg_seq_start_hash_key,
         )
