@@ -303,11 +303,9 @@ class InteractionContext:
         self._previous_ctx_token: Optional[contextvars.Token] = None
         # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
 
-    def respond(self, content: "MessageType", override_sender_alias: Optional[str] = None, **metadata) -> None:
+    def respond(self, content: "MessageType", **metadata) -> None:
         """Respond with a message or a sequence of messages."""
-        self._response_producer.send_zero_or_more_messages(
-            content, override_sender_alias=override_sender_alias, **metadata
-        )
+        self._response_producer.send_zero_or_more_messages(content, **metadata)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -378,13 +376,9 @@ class AgentCall:
         self._response_messages = AsyncMessageSequence(conversation, default_sender_alias=self.receiving_agent.alias)
         self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
 
-    def send_request(
-        self, content: "MessageType", override_sender_alias: Optional[str] = None, **metadata
-    ) -> "AgentCall":
+    def send_request(self, content: "MessageType", **metadata) -> "AgentCall":
         """Send a request to the agent."""
-        self._request_producer.send_zero_or_more_messages(
-            content, override_sender_alias=override_sender_alias, **metadata
-        )
+        self._request_producer.send_zero_or_more_messages(content, **metadata)
         return self
 
     def response_sequence(self) -> "AsyncMessageSequence":

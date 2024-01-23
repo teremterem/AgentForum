@@ -99,7 +99,8 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
             async for msg_promise in self._conversation.aappend_zero_or_more_messages(
                 content=incoming_item.content,
                 default_sender_alias=self._default_sender_alias,
-                override_sender_alias=incoming_item.override_sender_alias,
+                # # TODO TODO TODO TODO TODO Oleksandr: is removing this line the right way to go ?
+                # override_sender_alias=incoming_item.override_sender_alias,
                 do_not_forward_if_possible=self._do_not_forward_if_possible,
                 **incoming_item.metadata.as_dict,
             ):
@@ -113,20 +114,16 @@ class AsyncMessageSequence(AsyncStreamable[MessageParameters, "MessagePromise"])
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
         """A context manager that allows sending messages to AsyncMessageSequence."""
 
-        def send_zero_or_more_messages(
-            self,
-            content: "MessageType",
-            # TODO Oleksandr: is it a good idea to call it `override_sender_alias` everywhere ? maybe just
-            #  `sender_alias` for consistency ? (should I do anything with `default_sender_alias` too then ?)
-            override_sender_alias: Optional[str] = None,
-            **metadata,
-        ) -> None:
+        def send_zero_or_more_messages(self, content: "MessageType", **metadata) -> None:
             """Send a message or messages to the sequence this producer is attached to."""
             if not isinstance(content, (str, tuple, BaseModel, dict)) and hasattr(content, "__iter__"):
                 content = tuple(content)
             self.send(
                 MessageParameters(
-                    content=content, override_sender_alias=override_sender_alias, metadata=Freeform(**metadata)
+                    content=content,
+                    # TODO TODO TODO TODO TODO Oleksandr: proceed from here...
+                    override_sender_alias=metadata.get("sender_alias"),
+                    metadata=Freeform(**metadata),
                 )
             )
 

@@ -22,7 +22,7 @@ async def athree_message_sequence(forum: Forum, fake_interaction_context: Intera
 
     with producer:
         producer.send_zero_or_more_messages("message 1")
-        producer.send_zero_or_more_messages("message 2", "OVERRIDDEN_ALIAS")
+        producer.send_zero_or_more_messages("message 2", sender_alias="OVERRIDDEN_ALIAS")
         producer.send_zero_or_more_messages("message 3")
 
     return sequence
