@@ -40,8 +40,17 @@ class Immutable(BaseModel):
     @classmethod
     def _validate_immutable_fields(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Recursively make sure that the field values of the object are immutable."""
+        values = cls._pre_process_values(values)
         for key, value in values.items():
             values[key] = cls._validate_value(key, value)
+        return values
+
+    @classmethod
+    def _pre_process_values(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """
+        Pre-process the values before validation. Subclasses may override this method to perform certain mutations on
+        the values before they are set on the model.
+        """
         return values
 
     @classmethod
