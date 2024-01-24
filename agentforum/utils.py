@@ -76,7 +76,7 @@ async def arender_conversation(
     elif isinstance(alias_resolver, str):
         hardcoded_alias = alias_resolver
 
-        def alias_resolver(_: "Message") -> str:
+        def alias_resolver(_: "Message") -> Optional[str]:
             return hardcoded_alias
 
     turns = []
