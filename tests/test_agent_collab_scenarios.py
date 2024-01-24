@@ -131,7 +131,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     @forum.agent
     async def _reminder_api(ctx: InteractionContext) -> None:
-        if (await ctx.request_messages.amaterialize_concluding_message()).get_original_msg().sender_alias == "_CRITIC":
+        if (await ctx.request_messages.amaterialize_concluding_message()).original_sender_alias == "_CRITIC":
             ctx.respond("success: reminder set")
         else:
             ctx.respond("api error: invalid date format")
@@ -158,7 +158,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         {
             "im_model_": "forward",
             "sender_alias": "_ASSISTANT",
-            "original_msg": {
+            "before_forward": {
                 "im_model_": "message",
                 "sender_alias": "_REMINDER_API",
                 "content": "success: reminder set",
@@ -217,7 +217,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         {
             "im_model_": "forward",
             "sender_alias": "_AGENT1",
-            "original_msg": {
+            "before_forward": {
                 "im_model_": "message",
                 "sender_alias": "_AGENT2",
                 "content": "agent2 says hello",
@@ -226,7 +226,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         {
             "im_model_": "forward",
             "sender_alias": "_AGENT1",
-            "original_msg": {
+            "before_forward": {
                 "im_model_": "message",
                 "sender_alias": "_AGENT2",
                 "content": "agent2 says hello again",
@@ -287,7 +287,7 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "forward",
                 "sender_alias": "USER",
-                "original_msg": {
+                "before_forward": {
                     "im_model_": "message",
                     "sender_alias": "_AGENT2",
                     "content": "agent2 says hello",
@@ -296,7 +296,7 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "forward",
                 "sender_alias": "USER",
-                "original_msg": {
+                "before_forward": {
                     "im_model_": "message",
                     "sender_alias": "_AGENT2",
                     "content": "agent2 says hello again",
@@ -311,10 +311,10 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "forward",
                 "sender_alias": "_AGENT1",
-                "original_msg": {
+                "before_forward": {
                     "im_model_": "forward",
                     "sender_alias": "USER",
-                    "original_msg": {
+                    "before_forward": {
                         "im_model_": "message",
                         "sender_alias": "_AGENT2",
                         "content": "agent2 says hello",
@@ -324,10 +324,10 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "forward",
                 "sender_alias": "_AGENT1",
-                "original_msg": {
+                "before_forward": {
                     "im_model_": "forward",
                     "sender_alias": "USER",
-                    "original_msg": {
+                    "before_forward": {
                         "im_model_": "message",
                         "sender_alias": "_AGENT2",
                         "content": "agent2 says hello again",
@@ -367,7 +367,7 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "forward",
                 "sender_alias": "_AGENT1",
-                "original_msg": {
+                "before_forward": {
                     "im_model_": "message",
                     "sender_alias": "_AGENT2",
                     "content": "agent2 says hello",
@@ -376,7 +376,7 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "forward",
                 "sender_alias": "_AGENT1",
-                "original_msg": {
+                "before_forward": {
                     "im_model_": "message",
                     "sender_alias": "_AGENT2",
                     "content": "agent2 says hello again",
@@ -392,16 +392,16 @@ async def arepresent_conversation_with_dicts(
 
     def _get_msg_dict(msg_: Message) -> dict[str, Any]:
         msg_dict_ = msg_.model_dump(
-            exclude={"forum_trees", "prev_msg_hash_key", "original_msg_hash_key", "msg_seq_start_hash_key"}
+            exclude={"forum_trees", "prev_msg_hash_key", "msg_before_forward_hash_key", "msg_seq_start_hash_key"}
         )
         if msg_dict_.get("function_kwargs") == {}:
             # function_kwargs exists, and it is empty - remove it to reduce verbosity
             del msg_dict_["function_kwargs"]
 
-        original_msg_ = msg_.get_original_msg(return_self_if_none=False)
-        if original_msg_:
-            assert msg_dict_["content"] == original_msg_.content
-            msg_dict_["original_msg"] = _get_msg_dict(original_msg_)
+        before_forward_ = msg_.get_before_forward(return_self_if_none=False)
+        if before_forward_:
+            assert msg_dict_["content"] == before_forward_.content
+            msg_dict_["before_forward"] = _get_msg_dict(before_forward_)
             del msg_dict_["content"]
         return msg_dict_
 

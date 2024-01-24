@@ -281,14 +281,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         if isinstance(self._content, (Message, MessagePromise)):
             if isinstance(self._content, MessagePromise):
-                original_msg = await self._content.amaterialize()
+                msg_before_forward = await self._content.amaterialize()
             else:
-                original_msg = self._content
+                msg_before_forward = self._content
 
             if (
                 (not self._do_not_forward_if_possible)
                 or self._override_metadata
-                or (self._branch_from is not NO_VALUE and prev_msg_hash_key != original_msg.prev_msg_hash_key)
+                or (self._branch_from is not NO_VALUE and prev_msg_hash_key != msg_before_forward.prev_msg_hash_key)
             ):
                 # the message must be forwarded because either we are not actively trying to avoid forwarding
                 # (do_not_forward_if_possible is False), or additional metadata was provided (message forwarding is
@@ -296,21 +296,21 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
                     forum_trees=self.forum.forum_trees,
-                    # TODO Oleksandr: stop duplicating original content in forwarded messages ?
-                    content=original_msg.content,
-                    original_msg_hash_key=original_msg.hash_key,
+                    content=msg_before_forward.content,
+                    msg_before_forward_hash_key=msg_before_forward.hash_key,
                     prev_msg_hash_key=prev_msg_hash_key,
                     **{
-                        **original_msg.metadata_as_dict,
+                        **msg_before_forward.metadata_as_dict,
                         "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                         **self._override_metadata,
                     },
                 )
-                forwarded_msg._original_msg = original_msg  # pylint: disable=protected-access
+                # noinspection PyProtectedMember
+                forwarded_msg._set_msg_before_forward(msg_before_forward)  # pylint: disable=protected-access
                 return forwarded_msg
 
             # TODO Oleksandr: this message is stored in the storage twice, because it is "materialized" twice
-            return original_msg
+            return msg_before_forward
 
         raise ValueError(f"Unexpected message content type: {type(self._content)}")
 

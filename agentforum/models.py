@@ -100,6 +100,21 @@ class Message(Freeform):
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
 
+    @property
+    def original_sender_alias(self) -> str:
+        """
+        Get the alias of the original sender of the message.
+        """
+        return self.sender_alias
+
+    @property
+    def final_sender_alias(self) -> str:
+        """
+        Get the alias of the final sender of the message. It may be different from the original sender if the message
+        is forwarded.
+        """
+        return self.sender_alias
+
     async def aget_previous_msg(self, skip_agent_calls: bool = True) -> Optional["Message"]:
         """Get the previous message in the forum."""
         if self.prev_msg_hash_key is None:
@@ -124,13 +139,23 @@ class Message(Freeform):
 
     def get_original_msg(self, return_self_if_none: bool = True) -> Optional["Message"]:
         """
-        Get the original message that this message is a forward of. Because this is not a ForwardedMessage, it always
-        returns either self or None, depending on return_self_if_none parameter (this implementation is overridden in
-        ForwardedMessage).
+        Get the original message if this message is forwarded one or more times. If the message is forwarded multiple
+        times (a forward of a forward of a forward and so on), this method returns the ultimate original message (all
+        the way up the forwarding chain).
+
+        For regular (not forwarded) messages, if `return_self_if_none` is True, returns self, otherwise returns None.
         """
         return self if return_self_if_none else None
 
-    # TODO Oleksandr: introduce get_ultimate_original_msg ?
+    def get_before_forward(self, return_self_if_none: bool = True) -> Optional["Message"]:
+        """
+        Get the version of the message before the very last forward if this message is forwarded one or more times.
+        This means that if, for ex., the message is a forward of a forward of a forward and so on, this method returns
+        a message that itself is also a forwarded message too (this method does only one step in the forwarding chain).
+
+        For regular (not forwarded) messages, if `return_self_if_none` is True, returns self, otherwise returns None.
+        """
+        return self if return_self_if_none else None
 
     def _exclude_from_hash(self):
         return super()._exclude_from_hash() | {"forum_trees"}
@@ -148,24 +173,32 @@ class ForwardedMessage(Message):
     """A subtype of Message that represents a message forwarded by an agent."""
 
     im_model_: Literal["message"] = "forward"
-    original_msg_hash_key: str
+    msg_before_forward_hash_key: str
 
-    _original_msg: Optional["Message"] = None
+    _msg_before_forward: Optional["Message"] = None
 
-    def get_original_msg(self, return_self_if_none: bool = True) -> Optional[Message]:
-        """
-        Get the original message that this message is a forward of. In the implementation found here in
-        ForwardedMessage class the value of return_self_if_none parameter is irrelevant - it is illegal for
-        ForwardedMessage not to have an original message.
-        """
-        if not self._original_msg:
-            raise RuntimeError("original_msg property was not initialized")
-        if self._original_msg.hash_key != self.original_msg_hash_key:
+    @cached_property
+    def original_sender_alias(self) -> str:
+        return self.get_original_msg().sender_alias
+
+    def get_original_msg(self, return_self_if_none: bool = True) -> Optional["Message"]:
+        original_msg = self
+        while before_forward := original_msg.get_before_forward(return_self_if_none=False):
+            original_msg = before_forward
+        return original_msg
+
+    def get_before_forward(self, return_self_if_none: bool = True) -> Optional["Message"]:
+        if not self._msg_before_forward:
+            raise RuntimeError("_msg_before_forward property was not initialized")
+        return self._msg_before_forward
+
+    def _set_msg_before_forward(self, msg_before_forward: Message) -> None:
+        if msg_before_forward.hash_key != self.msg_before_forward_hash_key:
             raise RuntimeError(
-                f"original_msg_hash_key does not match the hash_key of the original message: "
-                f"{self.original_msg_hash_key} != {self._original_msg.hash_key}"
+                f"msg_before_forward_hash_key (left) does not match the hash key of the actual message before "
+                f"forward (right): {self.msg_before_forward_hash_key} != {self._msg_before_forward.hash_key}"
             )
-        return self._original_msg
+        self._msg_before_forward = msg_before_forward
 
 
 class AgentCallMsg(Message):
