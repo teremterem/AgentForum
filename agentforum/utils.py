@@ -56,7 +56,8 @@ async def amaterialize_message_sequence(message_sequence: "MessageType") -> list
 
 async def arender_conversation(
     conversation: "MessageType",
-    alias_resolver: Union[str, Callable[["Message"], Optional[str]]] = lambda msg: msg.sender_alias,
+    alias_resolver: Optional[Union[str, Callable[["Message"], Optional[str]]]] = None,
+    use_original_sender: bool = True,
     alias_delimiter: str = ": ",
     turn_delimiter: str = "\n\n",
 ) -> str:
@@ -65,11 +66,17 @@ async def arender_conversation(
 
     NOTE: Whenever alias_resolver returns None for a message, that message is skipped.
     """
+    # pylint: disable=function-redefined
     conversation = await amaterialize_message_sequence(conversation)
-    if isinstance(alias_resolver, str):
+    if alias_resolver is None:
+
+        def alias_resolver(_msg: "Message") -> Optional[str]:
+            return _msg.original_sender_alias if use_original_sender else _msg.final_sender_alias
+
+    elif isinstance(alias_resolver, str):
         hardcoded_alias = alias_resolver
 
-        def alias_resolver(_: "Message") -> str:  # pylint: disable=function-redefined
+        def alias_resolver(_: "Message") -> str:
             return hardcoded_alias
 
     turns = []

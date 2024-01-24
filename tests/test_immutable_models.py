@@ -100,14 +100,17 @@ def test_forwarded_message_hash_key(forum: Forum) -> None:
     )
 
     message = ForwardedMessage(
-        forum_trees=forum.forum_trees, content="test", sender_alias="user", original_msg_hash_key=original_msg.hash_key
+        forum_trees=forum.forum_trees,
+        content="test",
+        sender_alias="user",
+        msg_before_forward_hash_key=original_msg.hash_key,
     )
     message._original_msg = original_msg  # pylint: disable=protected-access
 
     # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
         '{"content": "test", "im_model_": "forward", '
-        '"original_msg_hash_key": "f2487bd3261d29745e4c47ae8f0256845a7eae939b437a5409258310486cd80a", '
+        '"msg_before_forward_hash_key": "f2487bd3261d29745e4c47ae8f0256845a7eae939b437a5409258310486cd80a", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
