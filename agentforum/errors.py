@@ -5,7 +5,7 @@ import traceback
 import typing
 
 if typing.TYPE_CHECKING:
-    from agentforum.forum import InteractionContext
+    from agentforum.promises import MessagePromise
 
 
 class ForumErrorFormatter:
@@ -22,7 +22,8 @@ class ForumErrorFormatter:
         # noinspection PyTypeChecker
         return self
 
-    async def agenerate_error_message_content(self, ctx: "InteractionContext") -> str:
+    # noinspection PyUnusedLocal
+    async def agenerate_error_message_content(self, previous_msg_promise: "MessagePromise") -> str:
         """
         Generate the content of the error message. The default implementation outputs the error with complete
         traceback.
