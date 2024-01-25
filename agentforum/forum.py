@@ -274,7 +274,7 @@ class Agent:
                     await self._func(ctx, **function_kwargs)
                 except BaseException as exc:  # pylint: disable=broad-exception-caught
                     # catch all exceptions, including KeyboardInterrupt
-                    ctx.respond(exc)  # TODO TODO TODO TODO TODO
+                    ctx.respond(exc)
 
 
 # noinspection PyProtectedMember

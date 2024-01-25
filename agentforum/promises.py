@@ -94,6 +94,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
     ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
         try:
             if isinstance(incoming_item.zero_or_more_messages, BaseException):
+                # TODO TODO TODO TODO TODO Oleksandr: convert into a MessagePromise ?
                 raise incoming_item.zero_or_more_messages
 
             async for msg_promise in self._conversation.aappend_zero_or_more_messages(
@@ -142,7 +143,7 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
     async def amaterialize_content(self) -> str:
         """Get the full content of the message as a string."""
         if self._aggregated_content is None:
-            # TODO Oleksandr: is asyncio.Lock needed here or we can tolerate occasion redundancy ?
+            # asyncio.Lock could have been used here, but there is not much harm in running it twice in a rare case
             self._aggregated_content = "".join([token.text async for token in self])
         return self._aggregated_content
 
@@ -153,7 +154,7 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         streaming.
         """
         if self._aggregated_metadata is None:
-            # TODO Oleksandr: is asyncio.Lock needed here or we can tolerate occasion redundancy ?
+            # asyncio.Lock could have been used here, but there is not much harm in running it twice in a rare case
             await self.amaterialize_content()  # make sure all the tokens are collected
             self._aggregated_metadata = Freeform(**self._metadata, **self._override_metadata)
         return self._aggregated_metadata
