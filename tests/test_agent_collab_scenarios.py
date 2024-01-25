@@ -392,13 +392,7 @@ async def arepresent_conversation_with_dicts(
 
     def _get_msg_dict(msg_: Message) -> dict[str, Any]:
         msg_dict_ = msg_.model_dump(
-            exclude={
-                "forum_trees",
-                "prev_msg_hash_key",
-                "msg_before_forward_hash_key",
-                "msg_seq_start_hash_key",
-                "error",
-            }
+            exclude={"forum_trees", "prev_msg_hash_key", "msg_before_forward_hash_key", "msg_seq_start_hash_key"}
         )
         if msg_dict_.get("function_kwargs") == {}:
             # function_kwargs exists, and it is empty - remove it to reduce verbosity
