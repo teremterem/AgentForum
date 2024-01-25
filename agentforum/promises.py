@@ -7,6 +7,7 @@ from typing import Optional, Any, AsyncIterator, Union
 
 from pydantic import BaseModel, ConfigDict
 
+from agentforum.errors import EmptySequenceError
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, ContentChunk
 from agentforum.utils import AsyncStreamable, NO_VALUE, IN
 
@@ -41,8 +42,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
         async for concluding_message in self:
             pass
         if not concluding_message and raise_if_none:
-            # TODO Oleksandr: introduce a custom exception for this case
-            raise ValueError("AsyncMessageSequence is empty")
+            raise EmptySequenceError("AsyncMessageSequence is empty")
         return concluding_message
 
     async def amaterialize_concluding_message(self, raise_if_none: bool = True) -> Message:
@@ -56,8 +56,8 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
     async def amaterialize_as_list(self) -> list["Message"]:
         """
         Get all the messages in the sequence, but return a list of Message objects instead of MessagePromise objects.
-        TODO Oleksandr: emphasize the difference between this method and amaterialize_full_history (and rename it to
-          amaterialize_sequence ?)
+        TODO Oleksandr: emphasize the difference between this method and amaterialize_full_history (maybe
+         amaterialize_sequence vs amaterialize_sequence_with_history ?)
         """
         return [await msg.amaterialize() async for msg in self]
 
@@ -201,7 +201,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 yield ContentChunk(text=self._content.content)
             else:
                 yield ContentChunk(text=self._content)
-            # TODO Oleksandr: what to do if self._content is of type BaseException ?
+            # TODO TODO TODO TODO TODO Oleksandr: what to do if self._content is of type BaseException ?
 
         return _aiter()
 

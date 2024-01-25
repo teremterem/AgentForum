@@ -253,8 +253,8 @@ class Agent:
         )
 
         parent_ctx = InteractionContext.get_current_context()
-        # TODO Oleksandr: get rid of this if-statement by making Forum a context manager too and making sure all the
-        #  "seed" agent calls are done within the context of the forum ?
+        # TODO Oleksandr: if there is no active agent call, InteractionContext.get_current_context() should return a
+        #  default, "USER" context and not just None
         if parent_ctx:
             parent_ctx._child_agent_calls.append(agent_call)  # pylint: disable=protected-access
 

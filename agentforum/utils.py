@@ -1,3 +1,4 @@
+# pylint: disable=cyclic-import
 """
 Utility functions and classes for the AgentForum framework.
 """
@@ -42,7 +43,7 @@ async def aflatten_message_sequence(message_sequence: "MessageType") -> list["Me
     with AsyncMessageSequence._MessageProducer(sequence) as producer:  # pylint: disable=protected-access
         producer.send_zero_or_more_messages(message_sequence)
 
-    # TODO TODO TODO Oleksandr: why don't I have a shortcut message for this ?
+    # TODO TODO TODO Oleksandr: why don't I have a shortcut method for this ?
     return [promise async for promise in sequence]
 
 
@@ -200,8 +201,8 @@ class AsyncStreamable(Generic[IN, OUT]):
         ) -> Optional[bool]:
             is_send_closed_error = isinstance(exc_value, SendClosedError)
             if exc_value and not is_send_closed_error:
-                # TODO Oleksandr: is it a good idea to send this exception by context manager automatically ?
-                #  check this with the implementation of
+                # TODO TODO TODO TODO TODO Oleksandr: is it a good idea to send this exception by context manager
+                #  automatically ? check this with the implementation of
                 #  AsyncMessageSequence._MessageProducer.send_zero_or_more_messages()
                 self.send(exc_value)
             self.close()

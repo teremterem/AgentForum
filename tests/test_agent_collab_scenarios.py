@@ -51,7 +51,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         ]
 
         if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
-            # TODO Oleksandr: implement actual ErrorMessage class
+            # TODO TODO TODO TODO TODO Oleksandr: implement actual ErrorMessage class ?
             corrections = _critic.quick_call(api_responses)
 
             assert await arepresent_conversation_with_dicts(corrections) == [

@@ -23,3 +23,9 @@ class WrongImmutableTypeError(AgentForumError):
     """
     Raised when an Immutable object is of the wrong type.
     """
+
+
+class EmptySequenceError(AgentForumError):
+    """
+    Raised when a sequence is empty.
+    """
