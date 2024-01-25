@@ -35,11 +35,19 @@ class Immutable(BaseModel):
         """
         return self.model_dump(exclude=self._exclude_from_dict() | self._exclude_from_hash())
 
+    @classmethod
+    def _pre_process_values(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """
+        Pre-process the values before validation.
+        """
+        return values
+
     # noinspection PyNestedDecorators
     @model_validator(mode="before")
     @classmethod
     def _validate_immutable_fields(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Recursively make sure that the field values of the object are immutable."""
+        values = cls._pre_process_values(values)
         for key, value in values.items():
             values[key] = cls._validate_value(key, value)
         return values
@@ -98,6 +106,9 @@ class Message(Freeform):
     forum_trees: ForumTrees
     content: str
     sender_alias: str
+    # TODO TODO TODO Oleksandr: `error` can be None even if `is_error` is True, how to avoid confusion around that ?
+    error: Optional[BaseException] = None
+    is_error: bool = False
     prev_msg_hash_key: Optional[str] = None
 
     @property
@@ -158,7 +169,15 @@ class Message(Freeform):
         return self if return_self_if_none else None
 
     def _exclude_from_hash(self):
-        return super()._exclude_from_hash() | {"forum_trees"}
+        return super()._exclude_from_hash() | {"forum_trees", "error"}
+
+    @classmethod
+    def _pre_process_values(cls, values: dict[str, Any]) -> dict[str, Any]:
+        if values.get("error"):
+            if values.get("is_error") is False:
+                raise ValueError("`is_error` must be True when `error` is set")
+            values["is_error"] = True
+        return values
 
     @classmethod
     def _validate_value(cls, key: str, value: Any) -> Any:

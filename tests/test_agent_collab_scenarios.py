@@ -392,11 +392,20 @@ async def arepresent_conversation_with_dicts(
 
     def _get_msg_dict(msg_: Message) -> dict[str, Any]:
         msg_dict_ = msg_.model_dump(
-            exclude={"forum_trees", "prev_msg_hash_key", "msg_before_forward_hash_key", "msg_seq_start_hash_key"}
+            exclude={
+                "forum_trees",
+                "prev_msg_hash_key",
+                "msg_before_forward_hash_key",
+                "msg_seq_start_hash_key",
+                "error",
+            }
         )
         if msg_dict_.get("function_kwargs") == {}:
             # function_kwargs exists, and it is empty - remove it to reduce verbosity
             del msg_dict_["function_kwargs"]
+        if msg_dict_.get("is_error") is False:
+            # is_error exists, and it is False - remove it to reduce verbosity
+            del msg_dict_["is_error"]
 
         before_forward_ = msg_.get_before_forward(return_self_if_none=False)
         if before_forward_:
