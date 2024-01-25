@@ -27,9 +27,8 @@ class ForumErrorFormatter:
         Generate the content of the error message. The default implementation outputs the error with complete
         traceback.
         """
-        # pylint: disable=unused-argument
+        # pylint: disable=unused-argument,no-member
         error = self.what_to_raise()
-        # pylint: disable=no-member
         return "".join(traceback.format_exception(type(error), error, error.__traceback__))
 
 
