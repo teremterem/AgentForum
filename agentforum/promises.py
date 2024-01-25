@@ -3,7 +3,7 @@ This module contains wrappers for the pydantic models that turn those models int
 """
 import asyncio
 import typing
-from typing import Optional, Any, AsyncIterator, Union
+from typing import Optional, Any, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict
 
@@ -89,9 +89,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
             )
         ]
 
-    async def _aconvert_incoming_item(
-        self, incoming_item: "_MessageTypeWrapper"
-    ) -> AsyncIterator[Union["MessagePromise", BaseException]]:
+    async def _aconvert_incoming_item(self, incoming_item: "_MessageTypeWrapper") -> AsyncIterator["MessagePromise"]:
         try:
             if isinstance(incoming_item.zero_or_more_messages, BaseException):
                 # TODO TODO TODO TODO TODO Oleksandr: convert into a MessagePromise ?
