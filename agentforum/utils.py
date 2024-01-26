@@ -156,6 +156,7 @@ class AsyncStreamable(Generic[IN, OUT]):
                 async for item_out in self._aconvert_incoming_item(item_in):
                     yield item_out
             except BaseException as exc:  # pylint: disable=broad-except
+                # TODO TODO TODO TODO TODO
                 yield exc
 
     async def _anext_outgoing_item(self) -> OUT:
@@ -227,6 +228,7 @@ class AsyncStreamable(Generic[IN, OUT]):
                         item = await self._async_streamable._anext_outgoing_item()
 
             if isinstance(item, BaseException):
+                # TODO TODO TODO TODO TODO Oleksandr: !!!!!!! USER RECEIVES THE ERROR FROM HERE !!!!!!!
                 raise item
 
             self._index += 1

@@ -50,7 +50,20 @@ class ConversationTracker:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
-        # TODO TODO TODO TODO TODO Oleksandr: !!!!!!! do the error message content "formatting" here !!!!!!!
+        # if isinstance(content, BaseException):
+        #     # TODO TODO TODO TODO TODO Oleksandr: !!!!!!! do the error message content "formatting" here !!!!!!!
+        #     msg_promise = MessagePromise(
+        #         forum=self.forum,
+        #         content=content,
+        #         default_sender_alias=default_sender_alias,
+        #         do_not_forward_if_possible=do_not_forward_if_possible,
+        #         branch_from=self._latest_msg_promise,
+        #         **override_metadata,
+        #     )
+        #     self._latest_msg_promise = msg_promise
+        #     yield msg_promise
+        #
+        # elif isinstance(content, (str, Message, StreamedMessage, MessagePromise)):
         if isinstance(content, (str, Message, StreamedMessage, MessagePromise)):
             msg_promise = MessagePromise(
                 forum=self.forum,
