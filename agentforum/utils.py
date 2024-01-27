@@ -229,6 +229,8 @@ class AsyncStreamable(Generic[IN, OUT]):
 
             if isinstance(item, BaseException):
                 # TODO TODO TODO TODO TODO Oleksandr: !!!!!!! USER RECEIVES THE ERROR FROM HERE !!!!!!!
+                # TODO Oleksandr: how to catch it in the right agent and not upon final materialization (which
+                #  may happen in a different agent) ?
                 raise item
 
             self._index += 1

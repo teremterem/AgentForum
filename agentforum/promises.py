@@ -104,8 +104,6 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
                 yield msg_promise
 
         except BaseException as exc:  # pylint: disable=broad-except
-            # TODO Oleksandr: how to catch it in the right agent and not upon final materialization (which
-            #  may happen in a different agent) ?
             yield exc
 
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
