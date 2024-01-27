@@ -104,6 +104,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
                 yield msg_promise
 
         except BaseException as exc:  # pylint: disable=broad-except
+            # TODO TODO TODO TODO TODO
             yield exc
 
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
