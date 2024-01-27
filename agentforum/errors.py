@@ -22,7 +22,7 @@ class ForumErrorFormatter:
         self.include_stack_trace = include_stack_trace
 
     # noinspection PyUnusedLocal
-    async def agenerate_error_message_content(self, previous_msg_promise: "MessagePromise") -> str:
+    async def agenerate_error_message(self, previous_msg_promise: "MessagePromise") -> str:
         """
         Generate the content of the error message. The default implementation outputs the error with complete
         traceback.

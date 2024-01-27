@@ -118,7 +118,7 @@ class Message(Freeform):
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
     is_error: bool = False
-    _error: Optional[BaseException] = None
+    # TODO TODO TODO TODO TODO Oleksandr: _error: Optional[BaseException] = None ?
 
     @property
     def original_sender_alias(self) -> str:
