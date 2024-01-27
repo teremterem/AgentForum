@@ -3,6 +3,7 @@ AgentForum errors.
 """
 import traceback
 import typing
+from typing import Optional
 
 if typing.TYPE_CHECKING:
     from agentforum.promises import MessagePromise
@@ -13,14 +14,12 @@ class ForumErrorFormatter:
     Mixin for errors that allows to format an error message before storing it as a Message in ForumTrees.
     """
 
-    def what_to_raise(self) -> BaseException:
-        """
-        What should the framework actually raise. By default, it is assumed that the current object is the error itself
-        (this class doesn't extend Exception because it is meant to either be used as a mixin on another class that
-        actually extends BaseException or the implementation of `what_to_raise` should be overridden).
-        """
-        # noinspection PyTypeChecker
-        return self
+    def __init__(
+        self, *args, original_error: Optional[BaseException] = None, include_stack_trace: bool = False, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.original_error = original_error or self
+        self.include_stack_trace = include_stack_trace
 
     # noinspection PyUnusedLocal
     async def agenerate_error_message_content(self, previous_msg_promise: "MessagePromise") -> str:
@@ -28,9 +27,14 @@ class ForumErrorFormatter:
         Generate the content of the error message. The default implementation outputs the error with complete
         traceback.
         """
-        # pylint: disable=unused-argument,no-member
-        error = self.what_to_raise()
-        return "".join(traceback.format_exception(type(error), error, error.__traceback__))
+        # pylint: disable=unused-argument
+        if self.include_stack_trace:
+            return "".join(
+                traceback.format_exception(
+                    type(self.original_error), self.original_error, self.original_error.__traceback__
+                )
+            )
+        return "".join(traceback.format_exception_only(type(self.original_error), self.original_error))
 
 
 class AgentForumError(Exception):
