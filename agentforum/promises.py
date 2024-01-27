@@ -3,7 +3,7 @@ This module contains wrappers for the pydantic models that turn those models int
 """
 import asyncio
 import typing
-from typing import Optional, Any, AsyncIterator
+from typing import Optional, Any, AsyncIterator, Union
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,7 +16,7 @@ if typing.TYPE_CHECKING:
     from agentforum.typing import MessageType, SingleMessageType
 
 
-class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromise"]):
+class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromise"]):
     """
     An asynchronous iterable over a sequence of messages that are being produced by an agent. Because the sequence is
     AsyncStreamable and relies on internal async queues, the speed at which messages are produced and sent to the
@@ -89,23 +89,23 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
             )
         ]
 
-    async def _aconvert_incoming_item(self, incoming_item: "_MessageTypeWrapper") -> AsyncIterator["MessagePromise"]:
-        try:
-            if isinstance(incoming_item.zero_or_more_messages, BaseException):
-                # TODO TODO TODO TODO TODO Oleksandr: SEND TO CONVERSATION TRACKER TOO
-                raise incoming_item.zero_or_more_messages
+    async def _aconvert_incoming_item(
+        self, incoming_item: Union["_MessageTypeCarrier", BaseException]
+    ) -> AsyncIterator["MessagePromise"]:
+        if isinstance(incoming_item, BaseException):
+            content = incoming_item
+            override_metadata = {}
+        else:
+            content = incoming_item.zero_or_more_messages
+            override_metadata = incoming_item.override_metadata.as_dict
 
-            async for msg_promise in self._conversation.aappend_zero_or_more_messages(
-                content=incoming_item.zero_or_more_messages,
-                default_sender_alias=self._default_sender_alias,
-                do_not_forward_if_possible=self._do_not_forward_if_possible,
-                **incoming_item.override_metadata.as_dict,
-            ):
-                yield msg_promise
-
-        except BaseException as exc:  # pylint: disable=broad-except
-            # TODO TODO TODO TODO TODO Oleksandr: SEND TO CONVERSATION TRACKER TOO
-            yield exc
+        async for msg_promise in self._conversation.aappend_zero_or_more_messages(
+            content=content,
+            default_sender_alias=self._default_sender_alias,
+            do_not_forward_if_possible=self._do_not_forward_if_possible,
+            **override_metadata,
+        ):
+            yield msg_promise
 
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
         """A context manager that allows sending messages to AsyncMessageSequence."""
@@ -120,7 +120,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
                 # we are dealing with a "synchronous" collection of messages here - let's freeze it just in case
                 content = tuple(content)
             # TODO TODO TODO Oleksandr: validate `content` type manually, because in Pydantic it's just Any
-            self.send(_MessageTypeWrapper(zero_or_more_messages=content, override_metadata=Freeform(**metadata)))
+            self.send(_MessageTypeCarrier(zero_or_more_messages=content, override_metadata=Freeform(**metadata)))
 
 
 class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
@@ -199,6 +199,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             else:
                 yield ContentChunk(text=self._content)
             # TODO TODO TODO TODO TODO Oleksandr: what to do if self._content is of type BaseException ?
+            #  are you sure it will ever be BaseException, though ?
 
         return _aiter()
 
@@ -407,7 +408,7 @@ class AgentCallMsgPromise(MessagePromise):
         return msg_promise
 
 
-class _MessageTypeWrapper(BaseModel):
+class _MessageTypeCarrier(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     zero_or_more_messages: Any  # should be MessageType but Pydantic v2 seems to be confused by it

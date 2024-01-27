@@ -132,10 +132,14 @@ class AsyncStreamable(Generic[IN, OUT]):
         return self._AsyncIterator(self)
 
     # noinspection PyMethodMayBeStatic
-    async def _aconvert_incoming_item(self, incoming_item: IN) -> AsyncIterator[Union[OUT, BaseException]]:
+    async def _aconvert_incoming_item(
+        self, incoming_item: Union[IN, BaseException]
+    ) -> AsyncIterator[Union[OUT, BaseException]]:
         """
         Convert a single incoming item into ZERO OR MORE outgoing items. The default implementation just yields the
         incoming item as is. This method exists as a separate method in order to be overridden in subclasses if needed.
+
+        TODO Oleksandr: explain when BaseException can arrive instead of IN, and why
         """
         yield incoming_item
 
@@ -156,8 +160,9 @@ class AsyncStreamable(Generic[IN, OUT]):
                 async for item_out in self._aconvert_incoming_item(item_in):
                     yield item_out
             except BaseException as exc:  # pylint: disable=broad-except
-                # TODO TODO TODO TODO TODO Oleksandr: SEND TO ITEM CONVERTER TOO
-                yield exc
+                # convert the exception as if it was an incoming item
+                async for item_out in self._aconvert_incoming_item(exc):
+                    yield item_out
 
     async def _anext_outgoing_item(self) -> OUT:
         if self.completed:
@@ -228,8 +233,6 @@ class AsyncStreamable(Generic[IN, OUT]):
                         item = await self._async_streamable._anext_outgoing_item()
 
             if isinstance(item, BaseException):
-                # TODO TODO TODO TODO TODO Oleksandr: !!!!!!! USER RECEIVES THE ERROR FROM HERE !!!!!!!
-                # the first agent to iterate over a response up to the error item will get the raised error
                 raise item
 
             self._index += 1  # TODO Oleksandr: do this before raising the error ?

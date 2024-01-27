@@ -102,8 +102,11 @@ class _OpenAIStreamedMessage(StreamedMessage[BaseModel]):
     """A message that is streamed token by token from openai.ChatCompletion.acreate()."""
 
     async def _aconvert_incoming_item(
-        self, incoming_item: BaseModel
+        self, incoming_item: Union[BaseModel, BaseException]
     ) -> AsyncIterator[Union[ContentChunk, BaseException]]:
+        if isinstance(incoming_item, BaseException):
+            yield incoming_item  # pass the exception through as is - it will be raised by the final async iterator
+
         try:
             token_text = incoming_item.choices[0].delta.content
         except AttributeError:
