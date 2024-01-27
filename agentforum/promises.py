@@ -92,7 +92,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
     async def _aconvert_incoming_item(self, incoming_item: "_MessageTypeWrapper") -> AsyncIterator["MessagePromise"]:
         try:
             if isinstance(incoming_item.zero_or_more_messages, BaseException):
-                # TODO TODO TODO TODO TODO Oleksandr: convert into a MessagePromise ?
+                # TODO TODO TODO TODO TODO Oleksandr: SEND TO CONVERSATION TRACKER TOO
                 raise incoming_item.zero_or_more_messages
 
             async for msg_promise in self._conversation.aappend_zero_or_more_messages(
@@ -104,7 +104,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeWrapper", "MessagePromis
                 yield msg_promise
 
         except BaseException as exc:  # pylint: disable=broad-except
-            # TODO TODO TODO TODO TODO
+            # TODO TODO TODO TODO TODO Oleksandr: SEND TO CONVERSATION TRACKER TOO
             yield exc
 
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
