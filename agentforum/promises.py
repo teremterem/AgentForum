@@ -36,6 +36,11 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
 
+    async def araise_if_error(self) -> None:
+        async for msg_promise in self:
+            if msg_promise.override_metadata.get("is_error"):
+                raise msg_promise.override_metadata["error"]
+
     async def aget_concluding_msg_promise(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """Get the last message promise in the sequence."""
         concluding_message = None
