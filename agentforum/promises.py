@@ -41,8 +41,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         Raise an error if any of the messages in the sequence is an error message.
         """
         async for msg_promise in self:
-            if msg_promise.is_error:
-                raise msg_promise.error
+            msg_promise.raise_if_error()
 
     async def aget_concluding_msg_promise(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
         """
@@ -211,7 +210,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         self._override_metadata = override_metadata
 
         self.is_error = is_error
-        self.error = error
+        self._error = error
 
         self._materialized_msg: Optional[Message] = materialized_msg
         self._lock = asyncio.Lock()
@@ -232,6 +231,13 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 yield ContentChunk(text=self._content)
 
         return _aiter()
+
+    def raise_if_error(self) -> None:
+        """
+        Raise an error if this message is an error message.
+        """
+        if self.is_error:
+            raise self._error
 
     @property
     def is_agent_call(self) -> bool:
@@ -286,7 +292,9 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         return prev_msg_promise
 
+    # noinspection PyProtectedMember
     async def _amaterialize_impl(self) -> Message:
+        # pylint: disable=protected-access,too-many-boolean-expressions
         if self._branch_from and self._branch_from is not NO_VALUE:
             prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key
         else:
@@ -301,22 +309,23 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     # TODO TODO TODO Oleksandr: override "sender_alias" with metadata from StreamedMessage too ?
                     "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                     **self._override_metadata,
-                    "is_error": self.is_error,
                 }
             else:
                 msg_content = self._content
                 metadata = {
                     "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                     **self._override_metadata,
-                    "is_error": self.is_error,
                 }
 
-            return Message(
+            msg = Message(
                 forum_trees=self.forum.forum_trees,
                 content=msg_content,
                 prev_msg_hash_key=prev_msg_hash_key,
+                is_error=self.is_error,
                 **metadata,
             )
+            msg._error = self._error
+            return msg
 
         if isinstance(self._content, (Message, MessagePromise)):
             if isinstance(self._content, MessagePromise):
@@ -328,6 +337,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 (not self._do_not_forward_if_possible)
                 or self._override_metadata
                 or self.is_error != msg_before_forward.is_error
+                or self._error != msg_before_forward._error
                 or (self._branch_from is not NO_VALUE and prev_msg_hash_key != msg_before_forward.prev_msg_hash_key)
             ):
                 # the message must be forwarded because either we are not actively trying to avoid forwarding
@@ -339,15 +349,15 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     content=msg_before_forward.content,
                     msg_before_forward_hash_key=msg_before_forward.hash_key,
                     prev_msg_hash_key=prev_msg_hash_key,
+                    is_error=self.is_error,
                     **{
                         **msg_before_forward.metadata_as_dict,
                         "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                         **self._override_metadata,
-                        "is_error": self.is_error,
                     },
                 )
-                # noinspection PyProtectedMember
-                forwarded_msg._set_msg_before_forward(msg_before_forward)  # pylint: disable=protected-access
+                forwarded_msg._error = self._error
+                forwarded_msg._set_msg_before_forward(msg_before_forward)
                 return forwarded_msg
 
             # TODO Oleksandr: this message is stored in the storage twice, because it is "materialized" twice

@@ -118,7 +118,7 @@ class Message(Freeform):
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
     is_error: bool = False
-    # TODO TODO TODO TODO TODO Oleksandr: _error: Optional[BaseException] = None ?
+    _error: BaseException = NotImplementedError("serialized error messages are not raisable yet")
 
     @property
     def original_sender_alias(self) -> str:

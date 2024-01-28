@@ -41,6 +41,7 @@ class ConversationTracker:
         """Check if there is prior history in this conversation."""
         return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
 
+    # noinspection PyProtectedMember
     async def aappend_zero_or_more_messages(
         self,
         content: "MessageType",
@@ -51,6 +52,7 @@ class ConversationTracker:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
+        # pylint: disable=protected-access
         if isinstance(content, BaseException):
             if isinstance(content, ForumErrorFormatter):
                 error_formatter = content
@@ -77,7 +79,7 @@ class ConversationTracker:
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
                 is_error=content.is_error,
-                error=content.error,
+                error=content._error,
                 **override_metadata,
             )
             self._latest_msg_promise = msg_promise
@@ -91,8 +93,7 @@ class ConversationTracker:
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
                 is_error=content.is_error,
-                # # TODO TODO TODO TODO TODO TODO TODO Oleksandr: what to do about `error` here ?
-                # error=content.error,
+                error=content._error,
                 **override_metadata,
             )
             self._latest_msg_promise = msg_promise
