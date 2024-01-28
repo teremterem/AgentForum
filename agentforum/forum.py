@@ -69,7 +69,36 @@ class ConversationTracker:
             self._latest_msg_promise = msg_promise
             yield msg_promise
 
-        elif isinstance(content, (str, Message, StreamedMessage, MessagePromise)):
+        elif isinstance(content, MessagePromise):
+            msg_promise = MessagePromise(
+                forum=self.forum,
+                content=content,
+                default_sender_alias=default_sender_alias,
+                do_not_forward_if_possible=do_not_forward_if_possible,
+                branch_from=self._latest_msg_promise,
+                is_error=content.is_error,
+                error=content.error,
+                **override_metadata,
+            )
+            self._latest_msg_promise = msg_promise
+            yield msg_promise
+
+        elif isinstance(content, Message):
+            msg_promise = MessagePromise(
+                forum=self.forum,
+                content=content,
+                default_sender_alias=default_sender_alias,
+                do_not_forward_if_possible=do_not_forward_if_possible,
+                branch_from=self._latest_msg_promise,
+                is_error=content.is_error,
+                # # TODO TODO TODO TODO TODO TODO TODO Oleksandr: what to do about `error` here ?
+                # error=content.error,
+                **override_metadata,
+            )
+            self._latest_msg_promise = msg_promise
+            yield msg_promise
+
+        elif isinstance(content, (str, StreamedMessage)):
             msg_promise = MessagePromise(
                 forum=self.forum,
                 content=content,
@@ -102,6 +131,7 @@ class ConversationTracker:
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
+                    # TODO TODO TODO TODO TODO TODO TODO
                     **override_metadata,
                 ):
                     self._latest_msg_promise = msg_promise
@@ -113,6 +143,7 @@ class ConversationTracker:
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
+                    # TODO TODO TODO TODO TODO TODO TODO
                     **override_metadata,
                 ):
                     self._latest_msg_promise = msg_promise
