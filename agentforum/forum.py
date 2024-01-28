@@ -131,7 +131,6 @@ class ConversationTracker:
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    # TODO TODO TODO TODO TODO TODO TODO
                     **override_metadata,
                 ):
                     self._latest_msg_promise = msg_promise
@@ -143,7 +142,6 @@ class ConversationTracker:
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    # TODO TODO TODO TODO TODO TODO TODO
                     **override_metadata,
                 ):
                     self._latest_msg_promise = msg_promise
