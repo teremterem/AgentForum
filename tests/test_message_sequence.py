@@ -2,8 +2,6 @@
 Tests for agentforum.promises.AsyncMessageSequence
 """
 # pylint: disable=protected-access
-import asyncio
-
 import pytest
 
 from agentforum.forum import Forum, ConversationTracker
@@ -78,7 +76,7 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
 
             level1_producer.send_zero_or_more_messages("message 4")
 
-    await asyncio.gather(_atask())
+    await _atask()
 
     actual_messages = []
     async for msg in level1_sequence:
@@ -119,7 +117,7 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
 
             level2_producer.send_zero_or_more_messages("message 5")
 
-    await asyncio.gather(_atask())
+    await _atask()
 
     with pytest.raises(ValueError) as exc_info:
         await level1_sequence.araise_if_error()  # no error should be raised
