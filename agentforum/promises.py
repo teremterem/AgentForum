@@ -183,6 +183,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             )
 
         self.forum = forum
+
         self._content = content
         self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
