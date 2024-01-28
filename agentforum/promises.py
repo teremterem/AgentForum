@@ -87,7 +87,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             )
         return []
 
-    # TODO TODO TODO Oleksandr: also introduce a method that returns full history as an AsyncMessageSequence instead
+    # TODO Oleksandr: also introduce a method that returns full history as an AsyncMessageSequence instead
     #  of a ready-to-use list of MessagePromise objects ?
 
     async def amaterialize_full_history(
@@ -132,13 +132,13 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             Send a message or messages to the sequence this producer is attached to.
             """
             if isinstance(content, dict):
-                # # TODO TODO TODO Oleksandr: freeze dict using Freeform
+                # # TODO Oleksandr: freeze dict using Freeform
                 # content = Freeform(**content)
                 pass
             elif hasattr(content, "__iter__") and not isinstance(content, (str, tuple, BaseModel)):
                 # we are dealing with a "synchronous" collection of messages here - let's freeze it just in case
                 content = tuple(content)
-            # TODO TODO TODO Oleksandr: validate `content` type manually, because in Pydantic it's just Any
+            # TODO Oleksandr: validate `content` type manually, because in Pydantic it's just Any
             self.send(_MessageTypeCarrier(zero_or_more_messages=content, override_metadata=Freeform(**metadata)))
 
 
@@ -306,7 +306,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 # let's merge the metadata from the stream with the metadata provided to the constructor
                 metadata = {
                     **(await self._content.amaterialize_metadata()).as_dict,
-                    # TODO TODO TODO Oleksandr: override "sender_alias" with metadata from StreamedMessage too ?
+                    # TODO Oleksandr: override "sender_alias" with metadata from StreamedMessage too ?
                     "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                     **self._override_metadata,
                 }

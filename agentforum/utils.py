@@ -43,7 +43,7 @@ async def aflatten_message_sequence(message_sequence: "MessageType") -> list["Me
     with AsyncMessageSequence._MessageProducer(sequence) as producer:  # pylint: disable=protected-access
         producer.send_zero_or_more_messages(message_sequence)
 
-    # TODO TODO TODO Oleksandr: why don't I have a shortcut method for this ?
+    # TODO Oleksandr: why don't I have a shortcut method for this ?
     return [promise async for promise in sequence]
 
 
