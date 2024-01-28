@@ -198,8 +198,6 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 yield ContentChunk(text=self._content.content)
             else:
                 yield ContentChunk(text=self._content)
-            # TODO TODO TODO TODO TODO Oleksandr: what to do if self._content is of type BaseException ?
-            #  are you sure it will ever be BaseException, though ?
 
         return _aiter()
 
