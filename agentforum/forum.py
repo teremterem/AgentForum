@@ -63,6 +63,7 @@ class ConversationTracker:
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
                 is_error=True,
+                error=content,
                 **override_metadata,
             )
             self._latest_msg_promise = msg_promise

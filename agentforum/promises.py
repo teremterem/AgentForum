@@ -37,12 +37,17 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         self._do_not_forward_if_possible = do_not_forward_if_possible
 
     async def araise_if_error(self) -> None:
+        """
+        Raise an error if any of the messages in the sequence is an error message.
+        """
         async for msg_promise in self:
-            if msg_promise.override_metadata.get("is_error"):
-                raise msg_promise.override_metadata["error"]
+            if msg_promise.is_error:
+                raise msg_promise.error
 
     async def aget_concluding_msg_promise(self, raise_if_none: bool = True) -> Optional["MessagePromise"]:
-        """Get the last message promise in the sequence."""
+        """
+        Get the last message promise in the sequence.
+        """
         concluding_message = None
         async for concluding_message in self:
             pass
@@ -51,11 +56,15 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         return concluding_message
 
     async def amaterialize_concluding_message(self, raise_if_none: bool = True) -> Message:
-        """Get the last message in the sequence, but return a Message object instead of a MessagePromise object."""
+        """
+        Get the last message in the sequence, but return a Message object instead of a MessagePromise object.
+        """
         return await (await self.aget_concluding_msg_promise(raise_if_none=raise_if_none)).amaterialize()
 
     async def amaterialize_concluding_content(self, raise_if_none: bool = True) -> str:
-        """Get the content of the last message in the sequence as a string."""
+        """
+        Get the content of the last message in the sequence as a string.
+        """
         return (await self.amaterialize_concluding_message(raise_if_none=raise_if_none)).content
 
     async def amaterialize_as_list(self) -> list["Message"]:
@@ -69,7 +78,9 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
     async def aget_full_history(
         self, skip_agent_calls: bool = True, include_this_message: bool = True
     ) -> list["MessagePromise"]:
-        """Get the full chat history of the conversation branch up to the last message in the sequence."""
+        """
+        Get the full chat history of the conversation branch up to the last message in the sequence.
+        """
         concluding_msg_promise = await self.aget_concluding_msg_promise(raise_if_none=False)
         if concluding_msg_promise:
             return await concluding_msg_promise.aget_full_history(
@@ -113,10 +124,14 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             yield msg_promise
 
     class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
-        """A context manager that allows sending messages to AsyncMessageSequence."""
+        """
+        A context manager that allows sending messages to AsyncMessageSequence.
+        """
 
         def send_zero_or_more_messages(self, content: "MessageType", **metadata) -> None:
-            """Send a message or messages to the sequence this producer is attached to."""
+            """
+            Send a message or messages to the sequence this producer is attached to.
+            """
             if isinstance(content, dict):
                 # # TODO TODO TODO Oleksandr: freeze dict using Freeform
                 # content = Freeform(**content)
@@ -143,7 +158,9 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         self._aggregated_metadata: Optional[Freeform] = None
 
     async def amaterialize_content(self) -> str:
-        """Get the full content of the message as a string."""
+        """
+        Get the full content of the message as a string.
+        """
         if self._aggregated_content is None:
             # asyncio.Lock could have been used here, but there is not much harm in running it twice in a rare case
             self._aggregated_content = "".join([token.text async for token in self])
@@ -163,7 +180,9 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
 
 
 class MessagePromise:  # pylint: disable=too-many-instance-attributes
-    """A promise to materialize a message."""
+    """
+    A promise to materialize a message.
+    """
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -174,6 +193,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         branch_from: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
         is_error: bool = False,
+        error: Optional[BaseException] = None,
         **override_metadata,
     ) -> None:
         if materialized_msg and (content is not None or default_sender_alias or branch_from or override_metadata):
@@ -191,6 +211,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         self._override_metadata = override_metadata
 
         self.is_error = is_error
+        self.error = error
 
         self._materialized_msg: Optional[Message] = materialized_msg
         self._lock = asyncio.Lock()
@@ -200,7 +221,9 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             return self._content.__aiter__()
 
         async def _aiter() -> AsyncIterator[ContentChunk]:
-            """Return only one element - the whole message."""
+            """
+            Return only one element - the whole message.
+            """
             if self._materialized_msg:
                 yield ContentChunk(text=self._materialized_msg.content)
             elif isinstance(self._content, Message):
@@ -212,7 +235,9 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
     @property
     def is_agent_call(self) -> bool:
-        """Check if this message is a call to an agent."""
+        """
+        Check if this message is a call to an agent.
+        """
         if self._materialized_msg:
             return isinstance(self._materialized_msg, AgentCallMsg)
         return False  # this will be overridden in AgentCallMsgPromise
@@ -238,15 +263,21 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         return self._materialized_msg
 
     async def amaterialize_content(self) -> str:
-        """Get the full content of the message as a string."""
+        """
+        Get the full content of the message as a string.
+        """
         return (await self.amaterialize()).content
 
     async def amaterialize_sender_alias(self) -> str:
-        """Get the sender alias of the message as a string."""
+        """
+        Get the sender alias of the message as a string.
+        """
         return (await self.amaterialize()).sender_alias
 
     async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
-        """Get the previous MessagePromise in this conversation branch."""
+        """
+        Get the previous MessagePromise in this conversation branch.
+        """
         prev_msg_promise = await self._aget_previous_msg_promise_try_materialized()
 
         if skip_agent_calls:
