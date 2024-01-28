@@ -126,7 +126,14 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
         actual_messages.append(await msg.amaterialize())
 
     # assert that the messages before the error were successfully processed
-    assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "message 3"]
+    assert [msg.content for msg in actual_messages] == [
+        "message 1",
+        "message 2",
+        "message 3",
+        "ValueError: message 4",
+        "message 5",
+        "message 6",
+    ]
 
 
 @pytest.mark.asyncio
