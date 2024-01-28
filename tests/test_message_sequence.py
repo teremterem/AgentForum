@@ -88,6 +88,11 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
     # assert that the messages were processed together with the error message
     assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "ValueError: message 3", "message 4"]
 
+    # assert that the error message was persisted
+    persisted_error_msg = await forum.forum_trees.aretrieve_message(actual_messages[2].hash_key)
+    assert persisted_error_msg.content == "ValueError: message 3"
+    assert persisted_error_msg.is_error
+
 
 @pytest.mark.asyncio
 async def test_error_in_nested_message_sequence(forum: Forum) -> None:
