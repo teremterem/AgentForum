@@ -84,7 +84,7 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
         await level1_sequence.araise_if_error()
     assert str(exc_info.value) == "message 3"
 
-    # assert that the messages before the error were successfully processed
+    # assert that the messages were processed together with the error message
     assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "ValueError: message 3", "message 4"]
 
 
@@ -118,11 +118,12 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
 
     await asyncio.gather(_atask())
 
-    actual_messages = []
     with pytest.raises(ValueError) as exc_info:
-        async for msg in level1_sequence:
-            actual_messages.append(await msg.amaterialize())
+        await level1_sequence.araise_if_error()  # no error should be raised
     assert str(exc_info.value) == "message 4"
+    actual_messages = []
+    async for msg in level1_sequence:
+        actual_messages.append(await msg.amaterialize())
 
     # assert that the messages before the error were successfully processed
     assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "message 3"]
