@@ -1,4 +1,6 @@
-"""Data models."""
+"""
+Data models.
+"""
 import hashlib
 import json
 from functools import cached_property
@@ -21,7 +23,9 @@ class Immutable(BaseModel):
 
     @cached_property
     def hash_key(self) -> str:
-        """Get the hash key for this object. It is a hash of the JSON representation of the object."""
+        """
+        Get the hash key for this object. It is a hash of the JSON representation of the object.
+        """
         return hashlib.sha256(
             json.dumps(self.model_dump(exclude=self._exclude_from_hash()), ensure_ascii=False, sort_keys=True).encode(
                 "utf-8"
@@ -35,18 +39,30 @@ class Immutable(BaseModel):
         """
         return self.model_dump(exclude=self._exclude_from_dict() | self._exclude_from_hash())
 
+    @classmethod
+    def _pre_process_values(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """
+        Pre-process the values before validation.
+        """
+        return values
+
     # noinspection PyNestedDecorators
     @model_validator(mode="before")
     @classmethod
     def _validate_immutable_fields(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Recursively make sure that the field values of the object are immutable."""
+        """
+        Recursively make sure that the field values of the object are immutable.
+        """
+        values = cls._pre_process_values(values)
         for key, value in values.items():
             values[key] = cls._validate_value(key, value)
         return values
 
     @classmethod
     def _validate_value(cls, key: str, value: Any) -> Any:
-        """Recursively make sure that the field value is immutable."""
+        """
+        Recursively make sure that the field value is immutable.
+        """
         if isinstance(value, (tuple, list)):
             return tuple(cls._validate_value(key, sub_value) for sub_value in value)
         if isinstance(value, dict):
@@ -90,7 +106,9 @@ _TYPES_ALLOWED_IN_FREEFORM = *_PRIMITIVES_ALLOWED_IN_IMMUTABLE, Freeform
 
 
 class Message(Freeform):
-    """A message."""
+    """
+    A message.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -99,6 +117,8 @@ class Message(Freeform):
     content: str
     sender_alias: str
     prev_msg_hash_key: Optional[str] = None
+    is_error: bool = False
+    _error: BaseException = NotImplementedError("serialized error messages are not raisable yet")
 
     @property
     def original_sender_alias(self) -> str:
@@ -116,7 +136,9 @@ class Message(Freeform):
         return self.sender_alias
 
     async def aget_previous_msg(self, skip_agent_calls: bool = True) -> Optional["Message"]:
-        """Get the previous message in the forum."""
+        """
+        Get the previous message in the forum.
+        """
         if self.prev_msg_hash_key is None:
             return None
         previous_message = await self.forum_trees.aretrieve_message(self.prev_msg_hash_key)
@@ -170,7 +192,9 @@ class Message(Freeform):
 
 
 class ForwardedMessage(Message):
-    """A subtype of Message that represents a message forwarded by an agent."""
+    """
+    A subtype of Message that represents a message forwarded by an agent.
+    """
 
     im_model_: Literal["message"] = "forward"
     msg_before_forward_hash_key: str
@@ -202,7 +226,9 @@ class ForwardedMessage(Message):
 
 
 class AgentCallMsg(Message):
-    """A subtype of Message that represents a call to an agent."""
+    """
+    A subtype of Message that represents a call to an agent.
+    """
 
     im_model_: Literal["call"] = "call"
     function_kwargs: Freeform = Freeform()
@@ -215,7 +241,9 @@ class AgentCallMsg(Message):
 
 
 class ContentChunk(BaseModel):
-    """A chunk of message content. For ex. a token if the message is streamed token by token."""
+    """
+    A chunk of message content. For ex. a token if the message is streamed token by token.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

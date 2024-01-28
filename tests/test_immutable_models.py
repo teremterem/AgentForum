@@ -74,17 +74,17 @@ def test_message_hash_key(forum: Forum) -> None:
     message = Message(
         forum_trees=forum.forum_trees, content="test", sender_alias="user", custom_field={"role": "user"}
     )
-    # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
+    # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "custom_field": {"role": "user"}, "im_model_": "message", '
+        '{"content": "test", "custom_field": {"role": "user"}, "im_model_": "message", "is_error": false, '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
     message = Message(forum_trees=forum.forum_trees, content="test", sender_alias="user")
-    # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
+    # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "message", '
+        '{"content": "test", "im_model_": "message", "is_error": false, '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -107,10 +107,10 @@ def test_forwarded_message_hash_key(forum: Forum) -> None:
     )
     message._original_msg = original_msg  # pylint: disable=protected-access
 
-    # print(json.dumps(message.model_dump(), ensure_ascii=False, sort_keys=True))
+    # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "forward", '
-        '"msg_before_forward_hash_key": "f2487bd3261d29745e4c47ae8f0256845a7eae939b437a5409258310486cd80a", '
+        '{"content": "test", "im_model_": "forward", "is_error": false, '
+        '"msg_before_forward_hash_key": "b6a83b3500ed9b9593bb98a8ad87e59ac0cb360ccb92d54804b2ed062e31b1a2", '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key

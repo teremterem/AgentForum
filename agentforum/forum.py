@@ -11,6 +11,7 @@ from typing import Optional, AsyncIterator, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
+from agentforum.errors import ForumErrorFormatter
 from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
@@ -40,6 +41,7 @@ class ConversationTracker:
         """Check if there is prior history in this conversation."""
         return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
 
+    # noinspection PyProtectedMember
     async def aappend_zero_or_more_messages(
         self,
         content: "MessageType",
@@ -50,7 +52,54 @@ class ConversationTracker:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
-        if isinstance(content, (str, Message, StreamedMessage, MessagePromise)):
+        # pylint: disable=protected-access
+        if isinstance(content, BaseException):
+            if isinstance(content, ForumErrorFormatter):
+                error_formatter = content
+            else:
+                error_formatter = ForumErrorFormatter(original_error=content)
+            msg_promise = MessagePromise(
+                forum=self.forum,
+                content=await error_formatter.agenerate_error_message(self._latest_msg_promise),
+                default_sender_alias=default_sender_alias,
+                do_not_forward_if_possible=do_not_forward_if_possible,
+                branch_from=self._latest_msg_promise,
+                is_error=True,
+                error=content,
+                **override_metadata,
+            )
+            self._latest_msg_promise = msg_promise
+            yield msg_promise
+
+        elif isinstance(content, MessagePromise):
+            msg_promise = MessagePromise(
+                forum=self.forum,
+                content=content,
+                default_sender_alias=default_sender_alias,
+                do_not_forward_if_possible=do_not_forward_if_possible,
+                branch_from=self._latest_msg_promise,
+                is_error=content.is_error,
+                error=content._error,
+                **override_metadata,
+            )
+            self._latest_msg_promise = msg_promise
+            yield msg_promise
+
+        elif isinstance(content, Message):
+            msg_promise = MessagePromise(
+                forum=self.forum,
+                content=content,
+                default_sender_alias=default_sender_alias,
+                do_not_forward_if_possible=do_not_forward_if_possible,
+                branch_from=self._latest_msg_promise,
+                is_error=content.is_error,
+                error=content._error,
+                **override_metadata,
+            )
+            self._latest_msg_promise = msg_promise
+            yield msg_promise
+
+        elif isinstance(content, (str, StreamedMessage)):
             msg_promise = MessagePromise(
                 forum=self.forum,
                 content=content,
@@ -253,8 +302,8 @@ class Agent:
         )
 
         parent_ctx = InteractionContext.get_current_context()
-        # TODO Oleksandr: get rid of this if-statement by making Forum a context manager too and making sure all the
-        #  "seed" agent calls are done within the context of the forum ?
+        # TODO Oleksandr: if there is no active agent call, InteractionContext.get_current_context() should return a
+        #  default, "USER" context and not just None
         if parent_ctx:
             parent_ctx._child_agent_calls.append(agent_call)  # pylint: disable=protected-access
 
@@ -270,11 +319,7 @@ class Agent:
                 request_messages=agent_call._request_messages,
                 response_producer=agent_call._response_producer,
             ) as ctx:
-                try:
-                    await self._func(ctx, **function_kwargs)
-                except BaseException as exc:  # pylint: disable=broad-exception-caught
-                    # catch all exceptions, including KeyboardInterrupt
-                    ctx.respond(exc)
+                await self._func(ctx, **function_kwargs)
 
 
 # noinspection PyProtectedMember

@@ -51,7 +51,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         ]
 
         if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
-            # TODO Oleksandr: implement actual ErrorMessage class
+            # TODO Oleksandr: raise an actual error from _reminder_api agent
             corrections = _critic.quick_call(api_responses)
 
             assert await arepresent_conversation_with_dicts(corrections) == [
@@ -397,6 +397,9 @@ async def arepresent_conversation_with_dicts(
         if msg_dict_.get("function_kwargs") == {}:
             # function_kwargs exists, and it is empty - remove it to reduce verbosity
             del msg_dict_["function_kwargs"]
+        if msg_dict_.get("is_error") is False:
+            # is_error exists, and it is False - remove it to reduce verbosity
+            del msg_dict_["is_error"]
 
         before_forward_ = msg_.get_before_forward(return_self_if_none=False)
         if before_forward_:

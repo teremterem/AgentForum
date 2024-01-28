@@ -2,8 +2,6 @@
 Tests for agentforum.promises.AsyncMessageSequence
 """
 # pylint: disable=protected-access
-import asyncio
-
 import pytest
 
 from agentforum.forum import Forum, ConversationTracker
@@ -52,12 +50,16 @@ async def test_nested_message_sequences(forum: Forum) -> None:
     for msg1, msg2 in zip(actual_messages, actual_messages[1:]):
         assert msg1.hash_key == msg2.prev_msg_hash_key
 
+    await level3_sequence.araise_if_error()  # no error should be raised
+    await level2_sequence.araise_if_error()  # no error should be raised
+    await level1_sequence.araise_if_error()  # no error should be raised
+
 
 @pytest.mark.asyncio
 async def test_error_in_message_sequence(forum: Forum) -> None:
     """
-    Verify that an error in a NESTED message sequence comes out on the other end of the OUTER sequence, but that the
-    messages before the error are still processed.
+    Verify that an error in a message sequence comes out on the other end, but that the messages before the error
+    are still processed.
     """
     level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
@@ -74,23 +76,29 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
 
             level1_producer.send_zero_or_more_messages("message 4")
 
-    await asyncio.gather(_atask())
+    await _atask()
 
     actual_messages = []
+    async for msg in level1_sequence:
+        actual_messages.append(await msg.amaterialize())
     with pytest.raises(ValueError) as exc_info:
-        async for msg in level1_sequence:
-            actual_messages.append(await msg.amaterialize())
+        await level1_sequence.araise_if_error()
     assert str(exc_info.value) == "message 3"
 
-    # assert that the messages before the error were successfully processed
-    assert [msg.content for msg in actual_messages] == ["message 1", "message 2"]
+    # assert that the messages were processed together with the error message
+    assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "ValueError: message 3", "message 4"]
+
+    # assert that the error message was persisted
+    persisted_error_msg = await forum.forum_trees.aretrieve_message(actual_messages[2].hash_key)
+    assert persisted_error_msg.content == "ValueError: message 3"
+    assert persisted_error_msg.is_error
 
 
 @pytest.mark.asyncio
 async def test_error_in_nested_message_sequence(forum: Forum) -> None:
     """
-    Verify that an error in a message sequence comes out on the other end, but that the messages before the error
-    are still processed.
+    Verify that an error in a NESTED message sequence comes out on the other end of the OUTER sequence, but that the
+    messages before the error are still processed.
     """
     level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
@@ -114,16 +122,59 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
 
             level2_producer.send_zero_or_more_messages("message 5")
 
-    await asyncio.gather(_atask())
+    await _atask()
 
-    actual_messages = []
     with pytest.raises(ValueError) as exc_info:
-        async for msg in level1_sequence:
-            actual_messages.append(await msg.amaterialize())
+        await level1_sequence.araise_if_error()  # no error should be raised
     assert str(exc_info.value) == "message 4"
+    actual_messages = []
+    async for msg in level1_sequence:
+        actual_messages.append(await msg.amaterialize())
 
     # assert that the messages before the error were successfully processed
-    assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "message 3"]
+    assert [msg.content for msg in actual_messages] == [
+        "message 1",
+        "message 2",
+        "message 3",
+        "ValueError: message 4",
+        "message 5",
+        "message 6",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_error_in_materialized_nested_sequence(forum: Forum) -> None:
+    """
+    Verify that an error in a MATERIALIZED NESTED message sequence comes out on the other end of the OUTER sequence.
+    A separate unit test for this is necessary because in case of MATERIALIZED NESTED sequence, the error is
+    propagated from Message to MessagePromise, and not from MessagePromise to MessagePromise, as in the previous test.
+    """
+    level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
+    level2_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
+    level2_producer = AsyncMessageSequence._MessageProducer(level2_sequence)
+
+    async def _atask() -> None:
+        with level2_producer:
+            try:
+                raise ValueError("error message")
+            except ValueError as exc:
+                level2_producer.send_zero_or_more_messages(exc)
+
+    await _atask()
+
+    with level1_producer:
+        level1_producer.send_zero_or_more_messages(await level2_sequence.amaterialize_as_list())
+
+    with pytest.raises(ValueError) as exc_info:
+        await level1_sequence.araise_if_error()  # no error should be raised
+    assert str(exc_info.value) == "error message"
+    actual_messages = []
+    async for msg in level1_sequence:
+        actual_messages.append(await msg.amaterialize())
+
+    # assert that the messages before the error were successfully processed
+    assert [msg.content for msg in actual_messages] == ["ValueError: error message"]
 
 
 @pytest.mark.asyncio
