@@ -173,6 +173,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         do_not_forward_if_possible: bool = True,
         branch_from: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
+        is_error: bool = False,
         **override_metadata,
     ) -> None:
         if materialized_msg and (content is not None or default_sender_alias or branch_from or override_metadata):
@@ -187,6 +188,8 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         self._do_not_forward_if_possible = do_not_forward_if_possible
         self._branch_from = branch_from
         self._override_metadata = override_metadata
+
+        self.is_error = is_error
 
         self._materialized_msg: Optional[Message] = materialized_msg
         self._lock = asyncio.Lock()
@@ -229,6 +232,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     self._default_sender_alias = None
                     self._branch_from = None
                     self._override_metadata = None
+                    self.is_error = None
 
         return self._materialized_msg
 
@@ -266,12 +270,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     # TODO TODO TODO Oleksandr: override "sender_alias" with metadata from StreamedMessage too ?
                     "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                     **self._override_metadata,
+                    "is_error": self.is_error,
                 }
             else:
                 msg_content = self._content
                 metadata = {
                     "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                     **self._override_metadata,
+                    "is_error": self.is_error,
                 }
 
             return Message(
@@ -290,6 +296,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if (
                 (not self._do_not_forward_if_possible)
                 or self._override_metadata
+                or self.is_error != msg_before_forward.is_error
                 or (self._branch_from is not NO_VALUE and prev_msg_hash_key != msg_before_forward.prev_msg_hash_key)
             ):
                 # the message must be forwarded because either we are not actively trying to avoid forwarding
@@ -305,6 +312,7 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                         **msg_before_forward.metadata_as_dict,
                         "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
                         **self._override_metadata,
+                        "is_error": self.is_error,
                     },
                 )
                 # noinspection PyProtectedMember
