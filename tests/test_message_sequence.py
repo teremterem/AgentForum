@@ -38,7 +38,6 @@ async def test_nested_message_sequences(forum: Forum) -> None:
         level2_producer.send_zero_or_more_messages("message 5")
 
     actual_messages = await level1_sequence.amaterialize_as_list()
-    await level1_sequence.araise_if_error()  # no error should be raised
     actual_texts = [msg.content for msg in actual_messages]
     assert actual_texts == [
         "message 1",
@@ -52,6 +51,10 @@ async def test_nested_message_sequences(forum: Forum) -> None:
     assert actual_messages[0].prev_msg_hash_key is None
     for msg1, msg2 in zip(actual_messages, actual_messages[1:]):
         assert msg1.hash_key == msg2.prev_msg_hash_key
+
+    await level3_sequence.araise_if_error()  # no error should be raised
+    await level2_sequence.araise_if_error()  # no error should be raised
+    await level1_sequence.araise_if_error()  # no error should be raised
 
 
 @pytest.mark.asyncio
