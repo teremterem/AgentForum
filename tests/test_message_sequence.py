@@ -38,6 +38,7 @@ async def test_nested_message_sequences(forum: Forum) -> None:
         level2_producer.send_zero_or_more_messages("message 5")
 
     actual_messages = await level1_sequence.amaterialize_as_list()
+    await level1_sequence.araise_if_error()  # no error should be raised
     actual_texts = [msg.content for msg in actual_messages]
     assert actual_texts == [
         "message 1",
@@ -77,13 +78,14 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
     await asyncio.gather(_atask())
 
     actual_messages = []
+    async for msg in level1_sequence:
+        actual_messages.append(await msg.amaterialize())
     with pytest.raises(ValueError) as exc_info:
-        async for msg in level1_sequence:
-            actual_messages.append(await msg.amaterialize())
+        await level1_sequence.araise_if_error()
     assert str(exc_info.value) == "message 3"
 
     # assert that the messages before the error were successfully processed
-    assert [msg.content for msg in actual_messages] == ["message 1", "message 2"]
+    assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "ValueError: message 3", "message 4"]
 
 
 @pytest.mark.asyncio

@@ -34,7 +34,7 @@ class ForumErrorFormatter:
                     type(self.original_error), self.original_error, self.original_error.__traceback__
                 )
             )
-        return "".join(traceback.format_exception_only(type(self.original_error), self.original_error))
+        return "".join(traceback.format_exception_only(type(self.original_error), self.original_error)).strip()
 
 
 class AgentForumError(Exception):

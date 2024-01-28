@@ -258,7 +258,6 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                     self._default_sender_alias = None
                     self._branch_from = None
                     self._override_metadata = None
-                    self.is_error = None
 
         return self._materialized_msg
 
