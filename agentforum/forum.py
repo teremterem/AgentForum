@@ -319,11 +319,7 @@ class Agent:
                 request_messages=agent_call._request_messages,
                 response_producer=agent_call._response_producer,
             ) as ctx:
-                try:
-                    await self._func(ctx, **function_kwargs)
-                except BaseException as exc:  # pylint: disable=broad-exception-caught
-                    # catch all exceptions, including KeyboardInterrupt
-                    ctx.respond(exc)
+                await self._func(ctx, **function_kwargs)
 
 
 # noinspection PyProtectedMember

@@ -207,8 +207,6 @@ class AsyncStreamable(Generic[IN, OUT]):
         ) -> Optional[bool]:
             is_send_closed_error = isinstance(exc_value, SendClosedError)
             if exc_value and not is_send_closed_error:
-                # TODO TODO TODO TODO TODO Oleksandr: is it a good idea to send this exception by context manager
-                #  automatically ? check with Agent._acall_non_cached_agent_func implementation
                 self.send(exc_value)
             self.close()
             # we are not suppressing SendClosedError even if self._suppress_exceptions is True
