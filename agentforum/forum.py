@@ -5,8 +5,12 @@ it, and call agents. The Forum class is also responsible for storing messages in
 for that).
 """
 import asyncio
+
+# noinspection PyPackageRequirements
 import contextvars
 import typing
+
+# noinspection PyPackageRequirements
 from contextvars import ContextVar
 from typing import Optional, AsyncIterator, Union, Callable
 
