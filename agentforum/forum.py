@@ -344,7 +344,7 @@ class InteractionContext:
         self._response_producer = response_producer
         self._child_agent_calls: list[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
-        # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
+        self.parent_context: Optional["InteractionContext"] = self.get_current_context()
 
     def respond(self, content: "MessageType", **metadata) -> None:
         """Respond with a message or a sequence of messages."""
