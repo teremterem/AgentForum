@@ -310,9 +310,6 @@ class Agent:
         asyncio.create_task(self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs))
         return agent_call
 
-    def tell(self) -> None:
-        raise NotImplementedError("TODO Oleksandr: implement this")
-
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
         # pylint: disable=protected-access
         with agent_call._response_producer:
@@ -419,7 +416,11 @@ class AgentCall:
         )
         conversation._latest_msg_promise = agent_call_msg_promise
 
-        self._response_messages = AsyncMessageSequence(conversation, default_sender_alias=self.receiving_agent.alias)
+        # TODO TODO TODO Oleksandr: reply_to (to AgentCallMsg) will be employed for this ConversationTracker
+        response_conversation = ConversationTracker(forum=forum, branch_from=NO_VALUE)
+        self._response_messages = AsyncMessageSequence(
+            response_conversation, default_sender_alias=self.receiving_agent.alias
+        )
         self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
 
     def send_request(self, content: "MessageType", **metadata) -> "AgentCall":
