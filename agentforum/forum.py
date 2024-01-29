@@ -310,6 +310,9 @@ class Agent:
         asyncio.create_task(self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs))
         return agent_call
 
+    def tell(self) -> None:
+        raise NotImplementedError("TODO Oleksandr: implement this")
+
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
         # pylint: disable=protected-access
         with agent_call._response_producer:
