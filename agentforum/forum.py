@@ -243,7 +243,7 @@ class Agent:
         self.__name__ = self.alias
         self.__doc__ = self.description
 
-    def quick_call(  # pylint: disable=too-many-arguments
+    def ask(  # pylint: disable=too-many-arguments
         self,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
@@ -259,7 +259,7 @@ class Agent:
         branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
         from those messages, in other words).
         """
-        agent_call = self.call(
+        agent_call = self.start_asking(
             branch_from=branch_from,
             conversation=conversation,
             force_new_conversation=force_new_conversation,
@@ -272,7 +272,7 @@ class Agent:
                 agent_call.send_request(content)
         return agent_call.response_sequence()
 
-    def call(
+    def start_asking(
         self,
         branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
