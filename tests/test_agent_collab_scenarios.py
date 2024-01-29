@@ -7,8 +7,6 @@ from agentforum.forum import Forum, InteractionContext
 from agentforum.models import Message, AgentCallMsg
 from agentforum.promises import MessagePromise, AsyncMessageSequence
 
-# pytestmark = pytest.mark.skip  # TODO TODO TODO
-
 
 @pytest.mark.asyncio
 async def test_api_call_error_recovery(forum: Forum) -> None:
