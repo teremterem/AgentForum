@@ -32,5 +32,7 @@ def fake_interaction_context(forum: Forum, fake_agent: Agent) -> None:
     code such functions are supposed to be called from within agents.
     """
     # noinspection PyTypeChecker
-    with InteractionContext(forum=forum, agent=fake_agent, request_messages=None, response_producer=None) as ctx:
+    with InteractionContext(
+        forum=forum, agent=fake_agent, request_messages=None, is_asker_context=False, response_producer=None
+    ) as ctx:
         yield ctx
