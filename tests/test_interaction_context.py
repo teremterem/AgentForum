@@ -63,5 +63,6 @@ def _create_interaction_context(agent_alias: str) -> InteractionContext:
         forum=MagicMock(),
         agent=MagicMock(alias=agent_alias),
         request_messages=MagicMock(),
+        is_asker_context=False,
         response_producer=MagicMock(),
     )

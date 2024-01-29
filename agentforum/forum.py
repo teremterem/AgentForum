@@ -1,3 +1,4 @@
+# pylint: disable=too-many-arguments
 """
 The Forum class is the main entry point for the agentforum library. It is used to create a forum, register agents in
 it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ForumTrees
@@ -11,7 +12,7 @@ from typing import Optional, AsyncIterator, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
-from agentforum.errors import ForumErrorFormatter
+from agentforum.errors import ForumErrorFormatter, NoAskingAgentError
 from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
@@ -298,7 +299,12 @@ class Agent:
             conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
 
         agent_call = AgentCall(
-            self.forum, conversation, self, do_not_forward_if_possible=not force_new_conversation, **function_kwargs
+            forum=self.forum,
+            conversation=conversation,
+            receiving_agent=self,
+            is_asking=True,
+            do_not_forward_if_possible=not force_new_conversation,
+            **function_kwargs,
         )
 
         parent_ctx = InteractionContext.get_current_context()
@@ -317,13 +323,14 @@ class Agent:
                 forum=self.forum,
                 agent=self,
                 request_messages=agent_call._request_messages,
+                is_asker_context=agent_call.is_asking,
                 response_producer=agent_call._response_producer,
             ) as ctx:
                 await self._func(ctx, **function_kwargs)
 
 
 # noinspection PyProtectedMember
-class InteractionContext:
+class InteractionContext:  # pylint: disable=too-many-instance-attributes
     """
     A context within which an agent is called. This is needed for things like looking up a sender alias for a message
     that is being created by the agent, so it can be populated in the message automatically (and other similar things).
@@ -336,15 +343,18 @@ class InteractionContext:
         forum: Forum,
         agent: Agent,
         request_messages: AsyncMessageSequence,
+        is_asker_context: bool,
         response_producer: "AsyncMessageSequence._MessageProducer",
     ) -> None:
         self.forum = forum
         self.this_agent = agent
         self.request_messages = request_messages
+        self.is_asker_context = is_asker_context
+        self.parent_context: Optional["InteractionContext"] = self.get_current_context()
+
         self._response_producer = response_producer
         self._child_agent_calls: list[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
-        self.parent_context: Optional["InteractionContext"] = self.get_current_context()
 
     def respond(self, content: "MessageType", **metadata) -> None:
         """Respond with a message or a sequence of messages."""
@@ -354,6 +364,18 @@ class InteractionContext:
     def get_current_context(cls) -> Optional["InteractionContext"]:
         """Get the current InteractionContext object."""
         return cls._current_context.get()
+
+    def get_asker_context(self) -> "InteractionContext":
+        """
+        Get the InteractionContext object of the agent that is currently asking. If there is no agent asking, raise
+        NoAskingAgentError.
+        """
+        ctx = self
+        while ctx:
+            if ctx.is_asker_context:
+                return ctx
+            ctx = ctx.parent_context
+        raise NoAskingAgentError("There is no agent up the chain of parent contexts that is currently asking")
 
     @classmethod
     def get_current_sender_alias(cls) -> str:
@@ -391,11 +413,13 @@ class AgentCall:
         forum: Forum,
         conversation: ConversationTracker,
         receiving_agent: Agent,
+        is_asking: bool,
         do_not_forward_if_possible: bool = True,
         **function_kwargs,
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
+        self.is_asking = is_asking
 
         # TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it completely when
         #  you get to implementing cached agent calls
