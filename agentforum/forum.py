@@ -418,7 +418,8 @@ class AgentCall:
 
         # TODO TODO TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to AgentCallMsg)
         # TODO TODO TODO Oleksandr: also it is a bad idea to "throw away" the original ConversationTracker that came
-        #  with parameters like that
+        #  with parameters like that - they may represent conversation histories that are maintained by external
+        #  systems
         response_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
         self._response_messages = AsyncMessageSequence(
             response_conversation, default_sender_alias=self.receiving_agent.alias
