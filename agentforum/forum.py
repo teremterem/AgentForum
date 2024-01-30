@@ -330,6 +330,14 @@ class Agent:
         force_new_conversation: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
+        """
+        Initiate the process of "telling" the agent. Returns an AgentCall object that can be used to send requests to
+        the agent by calling `send_request()` zero or more times and calling `finish()` at the end. If
+        force_new_conversation is False and conversation is not specified and pre-existing messages are passed as
+        requests (for ex. messages that came from other agents), then this agent call will be automatically branched
+        off of the conversation branch those pre-existing messages belong to (the history will be inherited from those
+        messages, in other words).
+        """
         return self._call(
             is_asking=False,
             branch_from=branch_from,
@@ -546,12 +554,18 @@ class AgentCall:
 
         NOTE: After this method is called it is not possible to send any more requests to this AgentCall object.
         """
-        self._request_producer.close()
-        # TODO TODO TODO Oleksandr: how should I call this method ? it shouldn't raise an error, because it finishes
-        #  the request
         if not self.is_asking:
             raise NoAskingAgentError(
                 "Cannot get response sequence for an agent call that is not asking, "
                 "use ask()/start_asking() instead of tell()/start_telling()"
             )
+        self.finish()
         return self._response_messages
+
+    def finish(self) -> None:
+        """
+        Finish the agent call.
+
+        NOTE: After this method is called it is not possible to send any more requests to this AgentCall object.
+        """
+        self._request_producer.close()
