@@ -1,17 +1,22 @@
+# pylint: disable=too-many-arguments
 """
 The Forum class is the main entry point for the agentforum library. It is used to create a forum, register agents in
 it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ForumTrees
 for that).
 """
 import asyncio
+
+# noinspection PyPackageRequirements
 import contextvars
 import typing
+
+# noinspection PyPackageRequirements
 from contextvars import ContextVar
 from typing import Optional, AsyncIterator, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
-from agentforum.errors import ForumErrorFormatter
+from agentforum.errors import ForumErrorFormatter, NoAskingAgentError
 from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
@@ -243,7 +248,7 @@ class Agent:
         self.__name__ = self.alias
         self.__doc__ = self.description
 
-    def quick_call(  # pylint: disable=too-many-arguments
+    def ask(
         self,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
@@ -253,13 +258,106 @@ class Agent:
         **function_kwargs,
     ) -> "AsyncMessageSequence":
         """
-        Call the agent and immediately finish the call. Returns a AsyncMessageSequence object that contains the agent's
+        "Ask" the agent and immediately receive an AsyncMessageSequence object that can be used to obtain the agent's
         response(s). If force_new_conversation is False and conversation is not specified and pre-existing messages are
         passed as requests (for ex. messages that came from other agents), then this agent call will be automatically
         branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
         from those messages, in other words).
         """
-        agent_call = self.call(
+        return self._quick_call(
+            is_asking=True,
+            content=content,
+            override_sender_alias=override_sender_alias,
+            branch_from=branch_from,
+            conversation=conversation,
+            force_new_conversation=force_new_conversation,
+            **function_kwargs,
+        )
+
+    def start_asking(
+        self,
+        branch_from: Optional[MessagePromise] = None,
+        conversation: Optional[ConversationTracker] = None,
+        force_new_conversation: bool = False,
+        **function_kwargs,
+    ) -> "AgentCall":
+        """
+        Initiate the process of "asking" the agent. Returns an AgentCall object that can be used to send requests to
+        the agent by calling `send_request()` zero or more times and receive its responses by calling
+        `response_sequence()` at the end. If force_new_conversation is False and conversation is not specified and
+        pre-existing messages are passed as requests (for ex. messages that came from other agents), then this agent
+        call will be automatically branched off of the conversation branch those pre-existing messages belong to (the
+        history will be inherited from those messages, in other words).
+        """
+        return self._call(
+            is_asking=True,
+            branch_from=branch_from,
+            conversation=conversation,
+            force_new_conversation=force_new_conversation,
+            **function_kwargs,
+        )
+
+    def tell(
+        self,
+        content: Optional["MessageType"] = None,
+        override_sender_alias: Optional[str] = None,
+        branch_from: Optional[MessagePromise] = None,
+        conversation: Optional[ConversationTracker] = None,
+        force_new_conversation: bool = False,
+        **function_kwargs,
+    ) -> None:
+        """
+        "Tell" the agent. Does not return anything, because it's a one-way communication. If force_new_conversation
+        is False and conversation is not specified and pre-existing messages are passed as requests (for ex. messages
+        that came from other agents), then this agent call will be automatically branched off of the conversation
+        branch those pre-existing messages belong to (the history will be inherited from those messages, in other
+        words).
+        """
+        self._quick_call(
+            is_asking=False,
+            content=content,
+            override_sender_alias=override_sender_alias,
+            branch_from=branch_from,
+            conversation=conversation,
+            force_new_conversation=force_new_conversation,
+            **function_kwargs,
+        )
+
+    def start_telling(
+        self,
+        branch_from: Optional[MessagePromise] = None,
+        conversation: Optional[ConversationTracker] = None,
+        force_new_conversation: bool = False,
+        **function_kwargs,
+    ) -> "AgentCall":
+        """
+        Initiate the process of "telling" the agent. Returns an AgentCall object that can be used to send requests to
+        the agent by calling `send_request()` zero or more times and calling `finish()` at the end. If
+        force_new_conversation is False and conversation is not specified and pre-existing messages are passed as
+        requests (for ex. messages that came from other agents), then this agent call will be automatically branched
+        off of the conversation branch those pre-existing messages belong to (the history will be inherited from those
+        messages, in other words).
+        """
+        return self._call(
+            is_asking=False,
+            branch_from=branch_from,
+            conversation=conversation,
+            force_new_conversation=force_new_conversation,
+            **function_kwargs,
+        )
+
+    def _quick_call(  # pylint: disable=too-many-arguments
+        self,
+        is_asking: bool,
+        content: Optional["MessageType"] = None,
+        override_sender_alias: Optional[str] = None,
+        branch_from: Optional[MessagePromise] = None,
+        conversation: Optional[ConversationTracker] = None,
+        force_new_conversation: bool = False,
+        **function_kwargs,
+    ) -> Optional["AsyncMessageSequence"]:
+        agent_call = self._call(
+            is_asking=is_asking,
             branch_from=branch_from,
             conversation=conversation,
             force_new_conversation=force_new_conversation,
@@ -270,22 +368,16 @@ class Agent:
                 agent_call.send_request(content, sender_alias=override_sender_alias)
             else:
                 agent_call.send_request(content)
-        return agent_call.response_sequence()
+        return agent_call.response_sequence() if is_asking else None
 
-    def call(
+    def _call(
         self,
+        is_asking: bool,
         branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
-        """
-        Call the agent. Returns an AgentCall object that can be used to send requests to the agent and receive its
-        responses. If force_new_conversation is False and conversation is not specified and pre-existing messages are
-        passed as requests (for ex. messages that came from other agents), then this agent call will be automatically
-        branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
-        from those messages, in other words).
-        """
         if branch_from and conversation:
             raise ValueError("Cannot specify both conversation and branch_from in Agent.call() or Agent.quick_call()")
         if branch_from:
@@ -298,7 +390,12 @@ class Agent:
             conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
 
         agent_call = AgentCall(
-            self.forum, conversation, self, do_not_forward_if_possible=not force_new_conversation, **function_kwargs
+            forum=self.forum,
+            conversation=conversation,
+            receiving_agent=self,
+            is_asking=is_asking,
+            do_not_forward_if_possible=not force_new_conversation,
+            **function_kwargs,
         )
 
         parent_ctx = InteractionContext.get_current_context()
@@ -317,13 +414,14 @@ class Agent:
                 forum=self.forum,
                 agent=self,
                 request_messages=agent_call._request_messages,
+                is_asker_context=agent_call.is_asking,
                 response_producer=agent_call._response_producer,
             ) as ctx:
                 await self._func(ctx, **function_kwargs)
 
 
 # noinspection PyProtectedMember
-class InteractionContext:
+class InteractionContext:  # pylint: disable=too-many-instance-attributes
     """
     A context within which an agent is called. This is needed for things like looking up a sender alias for a message
     that is being created by the agent, so it can be populated in the message automatically (and other similar things).
@@ -336,24 +434,41 @@ class InteractionContext:
         forum: Forum,
         agent: Agent,
         request_messages: AsyncMessageSequence,
+        is_asker_context: bool,
         response_producer: "AsyncMessageSequence._MessageProducer",
     ) -> None:
         self.forum = forum
         self.this_agent = agent
         self.request_messages = request_messages
+        self.is_asker_context = is_asker_context
+        self.parent_context: Optional["InteractionContext"] = self.get_current_context()
+
         self._response_producer = response_producer
         self._child_agent_calls: list[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
-        # TODO Oleksandr: self.parent_context: Optional["InteractionContext"] ?
 
     def respond(self, content: "MessageType", **metadata) -> None:
         """Respond with a message or a sequence of messages."""
+        if not self.is_asker_context:
+            raise NoAskingAgentError("Cannot respond in a context that is not asking")
         self._response_producer.send_zero_or_more_messages(content, **metadata)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
         """Get the current InteractionContext object."""
         return cls._current_context.get()
+
+    def get_asker_context(self) -> "InteractionContext":
+        """
+        Get the InteractionContext object of the agent that is currently asking. If there is no agent asking, raise
+        NoAskingAgentError.
+        """
+        ctx = self
+        while ctx:
+            if ctx.is_asker_context:
+                return ctx
+            ctx = ctx.parent_context
+        raise NoAskingAgentError("There is no agent up the chain of parent contexts that is currently asking")
 
     @classmethod
     def get_current_sender_alias(cls) -> str:
@@ -391,11 +506,13 @@ class AgentCall:
         forum: Forum,
         conversation: ConversationTracker,
         receiving_agent: Agent,
+        is_asking: bool,
         do_not_forward_if_possible: bool = True,
         **function_kwargs,
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
+        self.is_asking = is_asking
 
         # TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it completely when
         #  you get to implementing cached agent calls
@@ -416,8 +533,15 @@ class AgentCall:
         )
         conversation._latest_msg_promise = agent_call_msg_promise
 
-        self._response_messages = AsyncMessageSequence(conversation, default_sender_alias=self.receiving_agent.alias)
-        self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
+        if is_asking:
+            # TODO TODO TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to AgentCallMsg)
+            self._response_messages = AsyncMessageSequence(
+                conversation, default_sender_alias=self.receiving_agent.alias
+            )
+            self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
+        else:
+            self._response_messages = None
+            self._response_producer = None
 
     def send_request(self, content: "MessageType", **metadata) -> "AgentCall":
         """Send a request to the agent."""
@@ -430,5 +554,18 @@ class AgentCall:
 
         NOTE: After this method is called it is not possible to send any more requests to this AgentCall object.
         """
-        self._request_producer.close()
+        if not self.is_asking:
+            raise NoAskingAgentError(
+                "Cannot get response sequence for an agent call that is not asking, "
+                "use ask()/start_asking() instead of tell()/start_telling()"
+            )
+        self.finish()
         return self._response_messages
+
+    def finish(self) -> None:
+        """
+        Finish the agent call.
+
+        NOTE: After this method is called it is not possible to send any more requests to this AgentCall object.
+        """
+        self._request_producer.close()

@@ -50,14 +50,14 @@ async def main() -> None:
     assistant_responses = []
     try:
         while True:
-            user_requests = user_proxy_agent.quick_call(assistant_responses)
+            user_requests = user_proxy_agent.ask(assistant_responses)
 
             # the following line is needed in order to wait until the previous back-and-forth is processed
             # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
             # TODO Oleksandr: how to turn this hack into something more elegant ?
             await user_requests.amaterialize_as_list()
 
-            assistant_responses = openai_agent.quick_call(
+            assistant_responses = openai_agent.ask(
                 user_requests,
                 model="gpt-4-1106-preview",
                 # model="gpt-3.5-turbo-1106",

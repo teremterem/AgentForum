@@ -65,3 +65,10 @@ class EmptySequenceError(AgentForumError):
     """
     Raised when a sequence is empty.
     """
+
+
+class NoAskingAgentError(AgentForumError):
+    """
+    Raised when no asking agent is found up the chain of parent InteractionContexts, or .respond() is called on a
+    non-asking InteractionContext, or .response_sequence() is called on a non-asking AgentCall.
+    """
