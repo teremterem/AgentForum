@@ -6,7 +6,7 @@ branch = true
 
 [tool.poetry]
 name = "agentforum"
-version = "0.0.7"
+version = "0.0.8"
 description = """\
 An asynchronous framework for building LLM-based multi-agent systems in Python, \
 with a focus on trees of immutable messages and token streaming.\
