@@ -5,12 +5,10 @@ it, and call agents. The Forum class is also responsible for storing messages in
 for that).
 """
 import asyncio
-
-# noinspection PyPackageRequirements
+import contextlib
 import contextvars
+import logging
 import typing
-
-# noinspection PyPackageRequirements
 from contextvars import ContextVar
 from typing import Optional, AsyncIterator, Union, Callable
 
@@ -28,6 +26,8 @@ if typing.TYPE_CHECKING:
 
 USER_ALIAS = "USER"
 
+logger = logging.getLogger(__name__)
+
 
 class ConversationTracker:
     """
@@ -43,7 +43,9 @@ class ConversationTracker:
 
     @property
     def has_prior_history(self) -> bool:
-        """Check if there is prior history in this conversation."""
+        """
+        Check if there is prior history in this conversation.
+        """
         return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
 
     # noinspection PyProtectedMember
@@ -157,7 +159,9 @@ class ConversationTracker:
 
 
 class Forum(BaseModel):
-    """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
+    """
+    A forum for agents to communicate. Messages in the forum assemble in a tree-like structure.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
@@ -171,7 +175,9 @@ class Forum(BaseModel):
         uppercase_func_name: bool = True,
         normalize_spaces_in_docstring: bool = True,
     ) -> Union["Agent", Callable[["AgentFunction"], "Agent"]]:
-        """A decorator that registers an agent function in the forum."""
+        """
+        A decorator that registers an agent function in the forum.
+        """
         if func is None:
             # the decorator `@forum.agent(...)` was used with arguments
             def _decorator(f: "AgentFunction") -> "Agent":
@@ -216,7 +222,9 @@ class Forum(BaseModel):
 
 # noinspection PyProtectedMember
 class Agent:
-    """A wrapper for an agent function that allows calling the agent."""
+    """
+    A wrapper for an agent function that allows calling the agent.
+    """
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -368,7 +376,11 @@ class Agent:
                 agent_call.send_request(content, sender_alias=override_sender_alias)
             else:
                 agent_call.send_request(content)
-        return agent_call.response_sequence() if is_asking else None
+
+        if is_asking:
+            return agent_call.response_sequence()
+        agent_call.finish()
+        return None
 
     def _call(
         self,
@@ -409,7 +421,7 @@ class Agent:
 
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
         # pylint: disable=protected-access,broad-except
-        with agent_call._response_producer:
+        with agent_call._response_producer or contextlib.nullcontext():
             with InteractionContext(
                 forum=self.forum,
                 agent=self,
@@ -420,6 +432,7 @@ class Agent:
                 try:
                     await self._func(ctx, **function_kwargs)
                 except BaseException as exc:
+                    logger.debug("Agent function %s raised an exception", self.alias, exc_info=True)
                     ctx.get_asker_context().respond(exc)
 
 
@@ -451,10 +464,13 @@ class InteractionContext:  # pylint: disable=too-many-instance-attributes
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
     def respond(self, content: "MessageType", **metadata) -> None:
-        """Respond with a message or a sequence of messages."""
-        if not self.is_asker_context:
-            raise NoAskingAgentError("Cannot respond in a context that is not asking")
-        self._response_producer.send_zero_or_more_messages(content, **metadata)
+        """
+        Respond with a message or a sequence of messages.
+        """
+        if self.is_asker_context:
+            self._response_producer.send_zero_or_more_messages(content, **metadata)
+        else:
+            self.get_asker_context().respond(content, **metadata)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -475,24 +491,30 @@ class InteractionContext:  # pylint: disable=too-many-instance-attributes
 
     @classmethod
     def get_current_sender_alias(cls) -> str:
-        """Get the sender alias from the current InteractionContext object."""
+        """
+        Get the sender alias from the current InteractionContext object.
+        """
         ctx = cls.get_current_context()
         if ctx:
             return ctx.this_agent.alias
         return USER_ALIAS
 
     def __enter__(self) -> "InteractionContext":
-        """Set this context as the current context."""
+        """
+        Set this context as the current context.
+        """
         if self._previous_ctx_token:
             raise RuntimeError("InteractionContext is not reentrant")
         self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Restore the context that was current before this one."""
+        """
+        Restore the context that was current before this one.
+        """
         for child_agent_call in self._child_agent_calls:
             # just in case any of the child agent calls weren't explicitly finished, finish them now
-            child_agent_call.response_sequence()
+            child_agent_call.finish()
         self._current_context.reset(self._previous_ctx_token)
         self._previous_ctx_token = None
 
@@ -547,7 +569,9 @@ class AgentCall:
             self._response_producer = None
 
     def send_request(self, content: "MessageType", **metadata) -> "AgentCall":
-        """Send a request to the agent."""
+        """
+        Send a request to the agent.
+        """
         self._request_producer.send_zero_or_more_messages(content, **metadata)
         return self
 

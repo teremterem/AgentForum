@@ -3,6 +3,7 @@
 Utility functions and classes for the AgentForum framework.
 """
 import asyncio
+import logging
 import typing
 from types import TracebackType
 from typing import Optional, Iterable, AsyncIterator, Generic, Union, TypeVar, Callable
@@ -24,6 +25,8 @@ class Sentinel:
 
 END_OF_QUEUE = Sentinel()
 NO_VALUE = Sentinel()
+
+logger = logging.getLogger(__name__)
 
 
 async def aflatten_message_sequence(message_sequence: "MessageType") -> list["MessagePromise"]:
@@ -207,6 +210,10 @@ class AsyncStreamable(Generic[IN, OUT]):
         ) -> Optional[bool]:
             is_send_closed_error = isinstance(exc_value, SendClosedError)
             if exc_value and not is_send_closed_error:
+                logger.debug(
+                    "Exception raised in AsyncStreamable._Producer.__exit__:",
+                    exc_info=(exc_type, exc_value, traceback),
+                )
                 self.send(exc_value)
             self.close()
             # we are not suppressing SendClosedError even if self._suppress_exceptions is True

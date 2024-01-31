@@ -1,6 +1,7 @@
 """
 OpenAI API extension for AgentForum.
 """
+
 import asyncio
 import typing
 from typing import Any, Union, Optional, AsyncIterator
@@ -40,8 +41,6 @@ def openai_chat_completion(  # TODO Oleksandr: create a class and make this func
         # noinspection PyProtectedMember
         with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
             message_dicts = [_message_to_openai_dict(msg) for msg in await amaterialize_message_sequence(prompt)]
-
-            # noinspection PyTypeChecker
             response = await async_openai_client.chat.completions.create(
                 messages=message_dicts, stream=stream, n=n, **kwargs
             )
