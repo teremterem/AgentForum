@@ -408,7 +408,7 @@ class Agent:
         return agent_call
 
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
-        # pylint: disable=protected-access
+        # pylint: disable=protected-access,broad-except
         with agent_call._response_producer:
             with InteractionContext(
                 forum=self.forum,
@@ -417,7 +417,10 @@ class Agent:
                 is_asker_context=agent_call.is_asking,
                 response_producer=agent_call._response_producer,
             ) as ctx:
-                await self._func(ctx, **function_kwargs)
+                try:
+                    await self._func(ctx, **function_kwargs)
+                except BaseException as exc:
+                    ctx.get_asker_context().respond(exc)
 
 
 # noinspection PyProtectedMember

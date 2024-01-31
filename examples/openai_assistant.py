@@ -84,11 +84,12 @@ async def main() -> None:
     try:
         while True:
             user_requests = user_proxy_agent.ask(assistant_responses)
-
-            # the following line is needed in order to wait until the previous back-and-forth is processed
+            # the following line is needed for two reasons:
+            # - to raise KeyboardInterrupt if the user typed exit
+            # - to wait until the previous back-and-forth is processed
             # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
-            # TODO Oleksandr: how to turn this hack into something more elegant ?
-            await user_requests.amaterialize_as_list()
+            # TODO TODO TODO Oleksandr: what to do about the fact that people will not remember to call it ?
+            await user_requests.araise_if_error()
 
             assistant_responses = openai_assistant.ask(user_requests)
     except KeyboardInterrupt:
