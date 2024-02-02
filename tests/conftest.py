@@ -2,6 +2,8 @@
 """
 Pytest configuration for the AgentForum framework. It is loaded by pytest automatically.
 """
+from unittest.mock import MagicMock
+
 import pytest
 
 from agentforum.forum import Forum, InteractionContext, Agent
@@ -18,21 +20,21 @@ def forum() -> Forum:
 @pytest.fixture
 def fake_agent(forum: Forum) -> Agent:
     """
-    Create a fake Agent instance. Needed for fake_interaction_context (see its docstring below for details).
+    Create a fake Agent instance. Needed in the `fake_interaction_context` fixture (see its docstring below for
+    details).
     """
     # noinspection PyTypeChecker
     return Agent(forum=forum, func=lambda *args, **kwargs: None, alias="FAKE_AGENT")
 
 
 @pytest.fixture
-def fake_interaction_context(forum: Forum, fake_agent: Agent) -> None:
+def fake_interaction_context(forum: Forum, fake_agent: Agent) -> InteractionContext:
     """
     Activate a fake InteractionContext. Needed when utility functions are tested that depend on the presence of an
     active InteractionContext (because they need access to a Forum object and its ForumTrees to work). In the client
     code such functions are supposed to be called from within agents.
     """
     # noinspection PyTypeChecker
-    with InteractionContext(
-        forum=forum, agent=fake_agent, request_messages=None, is_asker_context=False, response_producer=None
-    ) as ctx:
-        yield ctx
+    return InteractionContext(
+        forum=forum, agent=fake_agent, request_messages=MagicMock(), response_producer=MagicMock()
+    )
