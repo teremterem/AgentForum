@@ -1,16 +1,14 @@
-# pylint: disable=too-many-arguments
+# pylint: disable=too-many-arguments,too-many-instance-attributes,protected-access
 """
 The Forum class is the main entry point for the agentforum library. It is used to create a forum, register agents in
 it, and call agents. The Forum class is also responsible for storing messages in the forum (it uses ForumTrees
 for that).
 """
 import asyncio
-
-# noinspection PyPackageRequirements
+import contextlib
 import contextvars
+import logging
 import typing
-
-# noinspection PyPackageRequirements
 from contextvars import ContextVar
 from typing import Optional, AsyncIterator, Union, Callable
 
@@ -28,6 +26,8 @@ if typing.TYPE_CHECKING:
 
 USER_ALIAS = "USER"
 
+logger = logging.getLogger(__name__)
+
 
 class ConversationTracker:
     """
@@ -43,7 +43,9 @@ class ConversationTracker:
 
     @property
     def has_prior_history(self) -> bool:
-        """Check if there is prior history in this conversation."""
+        """
+        Check if there is prior history in this conversation.
+        """
         return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
 
     # noinspection PyProtectedMember
@@ -57,7 +59,6 @@ class ConversationTracker:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
-        # pylint: disable=protected-access
         if isinstance(content, BaseException):
             if isinstance(content, ForumErrorFormatter):
                 error_formatter = content
@@ -157,13 +158,15 @@ class ConversationTracker:
 
 
 class Forum(BaseModel):
-    """A forum for agents to communicate. Messages in the forum assemble in a tree-like structure."""
+    """
+    A forum for agents to communicate. Messages in the forum assemble in a tree-like structure.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
     _conversations: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
-    def agent(  # pylint: disable=too-many-arguments
+    def agent(
         self,
         func: Optional["AgentFunction"] = None,
         alias: Optional[str] = None,
@@ -171,7 +174,9 @@ class Forum(BaseModel):
         uppercase_func_name: bool = True,
         normalize_spaces_in_docstring: bool = True,
     ) -> Union["Agent", Callable[["AgentFunction"], "Agent"]]:
-        """A decorator that registers an agent function in the forum."""
+        """
+        A decorator that registers an agent function in the forum.
+        """
         if func is None:
             # the decorator `@forum.agent(...)` was used with arguments
             def _decorator(f: "AgentFunction") -> "Agent":
@@ -216,9 +221,11 @@ class Forum(BaseModel):
 
 # noinspection PyProtectedMember
 class Agent:
-    """A wrapper for an agent function that allows calling the agent."""
+    """
+    A wrapper for an agent function that allows calling the agent.
+    """
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         forum: Forum,
         func: "AgentFunction",
@@ -264,7 +271,7 @@ class Agent:
         branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
         from those messages, in other words).
         """
-        return self._quick_call(
+        return self._call(
             is_asking=True,
             content=content,
             override_sender_alias=override_sender_alias,
@@ -289,7 +296,7 @@ class Agent:
         call will be automatically branched off of the conversation branch those pre-existing messages belong to (the
         history will be inherited from those messages, in other words).
         """
-        return self._call(
+        return self._start_call(
             is_asking=True,
             branch_from=branch_from,
             conversation=conversation,
@@ -313,7 +320,7 @@ class Agent:
         branch those pre-existing messages belong to (the history will be inherited from those messages, in other
         words).
         """
-        self._quick_call(
+        self._call(
             is_asking=False,
             content=content,
             override_sender_alias=override_sender_alias,
@@ -338,7 +345,7 @@ class Agent:
         off of the conversation branch those pre-existing messages belong to (the history will be inherited from those
         messages, in other words).
         """
-        return self._call(
+        return self._start_call(
             is_asking=False,
             branch_from=branch_from,
             conversation=conversation,
@@ -346,7 +353,7 @@ class Agent:
             **function_kwargs,
         )
 
-    def _quick_call(  # pylint: disable=too-many-arguments
+    def _call(
         self,
         is_asking: bool,
         content: Optional["MessageType"] = None,
@@ -356,7 +363,7 @@ class Agent:
         force_new_conversation: bool = False,
         **function_kwargs,
     ) -> Optional["AsyncMessageSequence"]:
-        agent_call = self._call(
+        agent_call = self._start_call(
             is_asking=is_asking,
             branch_from=branch_from,
             conversation=conversation,
@@ -368,9 +375,13 @@ class Agent:
                 agent_call.send_request(content, sender_alias=override_sender_alias)
             else:
                 agent_call.send_request(content)
-        return agent_call.response_sequence() if is_asking else None
 
-    def _call(
+        if is_asking:
+            return agent_call.response_sequence()
+        agent_call.finish()
+        return None
+
+    def _start_call(
         self,
         is_asking: bool,
         branch_from: Optional[MessagePromise] = None,
@@ -397,34 +408,34 @@ class Agent:
             do_not_forward_if_possible=not force_new_conversation,
             **function_kwargs,
         )
+        agent_call._task = asyncio.create_task(
+            self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs)
+        )
 
         parent_ctx = InteractionContext.get_current_context()
         # TODO Oleksandr: if there is no active agent call, InteractionContext.get_current_context() should return a
         #  default, "USER" context and not just None
         if parent_ctx:
-            parent_ctx._child_agent_calls.append(agent_call)  # pylint: disable=protected-access
-
-        asyncio.create_task(self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs))
+            parent_ctx._child_agent_calls.append(agent_call)
         return agent_call
 
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
-        # pylint: disable=protected-access,broad-except
-        with agent_call._response_producer:
-            with InteractionContext(
+        with agent_call._response_producer or contextlib.nullcontext():
+            async with InteractionContext(
                 forum=self.forum,
                 agent=self,
                 request_messages=agent_call._request_messages,
-                is_asker_context=agent_call.is_asking,
                 response_producer=agent_call._response_producer,
             ) as ctx:
                 try:
                     await self._func(ctx, **function_kwargs)
-                except BaseException as exc:
-                    ctx.get_asker_context().respond(exc)
+                except BaseException as exc:  # pylint: disable=broad-except
+                    logger.debug("Agent function %s raised an exception", self.alias, exc_info=True)
+                    ctx.respond(exc)
 
 
 # noinspection PyProtectedMember
-class InteractionContext:  # pylint: disable=too-many-instance-attributes
+class InteractionContext:
     """
     A context within which an agent is called. This is needed for things like looking up a sender alias for a message
     that is being created by the agent, so it can be populated in the message automatically (and other similar things).
@@ -437,62 +448,84 @@ class InteractionContext:  # pylint: disable=too-many-instance-attributes
         forum: Forum,
         agent: Agent,
         request_messages: AsyncMessageSequence,
-        is_asker_context: bool,
-        response_producer: "AsyncMessageSequence._MessageProducer",
+        response_producer: Optional["AsyncMessageSequence._MessageProducer"],
     ) -> None:
         self.forum = forum
         self.this_agent = agent
         self.request_messages = request_messages
-        self.is_asker_context = is_asker_context
         self.parent_context: Optional["InteractionContext"] = self.get_current_context()
 
         self._response_producer = response_producer
         self._child_agent_calls: list[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
+    @property
+    def was_asked(self) -> bool:
+        """
+        Check if this agent was "asked", and not just "told" (the calling agent is waiting for a response).
+        """
+        return bool(self._response_producer)
+
     def respond(self, content: "MessageType", **metadata) -> None:
-        """Respond with a message or a sequence of messages."""
-        if not self.is_asker_context:
-            raise NoAskingAgentError("Cannot respond in a context that is not asking")
-        self._response_producer.send_zero_or_more_messages(content, **metadata)
+        """
+        Respond with a message or a sequence of messages.
+        """
+        if self.was_asked:
+            self._response_producer.send_zero_or_more_messages(content, **metadata)
+        else:
+            self.get_asked_context().respond(content, **metadata)
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
         """Get the current InteractionContext object."""
         return cls._current_context.get()
 
-    def get_asker_context(self) -> "InteractionContext":
+    def get_asked_context(self) -> "InteractionContext":
         """
-        Get the InteractionContext object of the agent that is currently asking. If there is no agent asking, raise
-        NoAskingAgentError.
+        Get the InteractionContext object produced by an "asking" (rather than "telling") agent. If there is no asking
+        agent, raises NoAskingAgentError.
         """
         ctx = self
         while ctx:
-            if ctx.is_asker_context:
+            if ctx.was_asked:
                 return ctx
             ctx = ctx.parent_context
         raise NoAskingAgentError("There is no agent up the chain of parent contexts that is currently asking")
 
     @classmethod
     def get_current_sender_alias(cls) -> str:
-        """Get the sender alias from the current InteractionContext object."""
+        """
+        Get the sender alias from the current InteractionContext object.
+        """
         ctx = cls.get_current_context()
         if ctx:
             return ctx.this_agent.alias
         return USER_ALIAS
 
-    def __enter__(self) -> "InteractionContext":
-        """Set this context as the current context."""
+    async def __aenter__(self) -> "InteractionContext":
+        """
+        Set this context as the current context.
+        """
         if self._previous_ctx_token:
             raise RuntimeError("InteractionContext is not reentrant")
         self._previous_ctx_token = self._current_context.set(self)  # <- this is the context switch
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Restore the context that was current before this one."""
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """
+        Restore the context that was current before this one.
+        """
         for child_agent_call in self._child_agent_calls:
-            # just in case any of the child agent calls weren't explicitly finished, finish them now
-            child_agent_call.response_sequence()
+            # Just in case any of the child agent calls weren't explicitly finished, finish them now>
+            # NOTE: "Finish" here doesn't mean finishing the agent function run, it means finishing the act of calling
+            # the agent (i.e. the act of sending requests to the agent).
+            child_agent_call.finish()
+        # And here we wait for all the child agent functions to actually finish (before we let the parent context to
+        # end).
+        await asyncio.gather(
+            *(child_agent_call._task for child_agent_call in self._child_agent_calls if child_agent_call._task),
+            return_exceptions=True,  # this prevents waiting until the first exception and then giving up
+        )
         self._current_context.reset(self._previous_ctx_token)
         self._previous_ctx_token = None
 
@@ -528,6 +561,8 @@ class AgentCall:
         )
         self._request_producer = AsyncMessageSequence._MessageProducer(self._request_messages)
 
+        self._task: Optional[asyncio.Task] = None
+
         agent_call_msg_promise = AgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,
@@ -547,7 +582,9 @@ class AgentCall:
             self._response_producer = None
 
     def send_request(self, content: "MessageType", **metadata) -> "AgentCall":
-        """Send a request to the agent."""
+        """
+        Send a request to the agent.
+        """
         self._request_producer.send_zero_or_more_messages(content, **metadata)
         return self
 
