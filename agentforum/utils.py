@@ -187,17 +187,19 @@ class AsyncStreamable(Generic[IN, OUT]):
             self._async_streamable = async_streamable
             self._suppress_exceptions = suppress_exceptions
 
-        def send(self, item: Union[IN, BaseException]) -> None:
+        def send(self, item: Union[IN, BaseException]) -> "_Producer":
             """Send an item to AsyncStreamable if it is still open (SendClosedError is raised otherwise)."""
             if self._async_streamable._send_closed:
                 raise SendClosedError("Cannot send items to a closed AsyncStreamable.")
             self._async_streamable._queue_in.put_nowait(item)
+            return self
 
-        def close(self) -> None:
+        def close(self) -> "_Producer":
             """Close AsyncStreamable for sending. Has no effect if the container is already closed."""
             if not self._async_streamable._send_closed:
                 self._async_streamable._send_closed = True
                 self._async_streamable._queue_in.put_nowait(END_OF_QUEUE)
+            return self
 
         def __enter__(self) -> "AsyncStreamable._Producer":
             return self

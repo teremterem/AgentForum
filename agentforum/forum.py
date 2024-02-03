@@ -572,7 +572,7 @@ class AgentCall:
         conversation._latest_msg_promise = agent_call_msg_promise
 
         if is_asking:
-            # TODO TODO TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to AgentCallMsg)
+            # TODO TODO TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to AgentCallMsg) ?
             self._response_messages = AsyncMessageSequence(
                 conversation, default_sender_alias=self.receiving_agent.alias
             )
@@ -602,10 +602,11 @@ class AgentCall:
         self.finish()
         return self._response_messages
 
-    def finish(self) -> None:
+    def finish(self) -> "AgentCall":
         """
         Finish the agent call.
 
         NOTE: After this method is called it is not possible to send any more requests to this AgentCall object.
         """
         self._request_producer.close()
+        return self
