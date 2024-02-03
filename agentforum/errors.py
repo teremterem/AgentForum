@@ -1,6 +1,7 @@
 """
 AgentForum errors.
 """
+
 import traceback
 import typing
 from typing import Optional
@@ -64,6 +65,12 @@ class WrongImmutableTypeError(AgentForumError):
 class EmptySequenceError(AgentForumError):
     """
     Raised when a sequence is empty.
+    """
+
+
+class DetachedMessageError(AgentForumError):
+    """
+    Raised when a message is detached and an operation is attempted on it which is not allowed for detached messages.
     """
 
 

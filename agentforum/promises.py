@@ -1,3 +1,4 @@
+# pylint: disable=too-many-arguments,too-many-instance-attributes,protected-access
 """
 This module contains wrappers for the pydantic models that turn those models into asynchronous promises.
 """
@@ -9,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from agentforum.errors import EmptySequenceError
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, ContentChunk
-from agentforum.utils import AsyncStreamable, NO_VALUE, IN
+from agentforum.utils import AsyncStreamable, NO_VALUE, IN, SYSTEM_ALIAS
 
 if typing.TYPE_CHECKING:
     from agentforum.forum import Forum, ConversationTracker
@@ -35,6 +36,15 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         self._conversation = conversation
         self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
+
+    async def acontains_errors(self) -> bool:
+        """
+        Check if any of the messages in the sequence is an error message.
+        """
+        async for msg_promise in self:
+            if msg_promise.is_error:
+                return True
+        return False
 
     async def araise_if_error(self) -> None:
         """
@@ -122,7 +132,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         ):
             yield msg_promise
 
-    class _MessageProducer(AsyncStreamable._Producer):  # pylint: disable=protected-access
+    class _MessageProducer(AsyncStreamable._Producer):
         """
         A context manager that allows sending messages to AsyncMessageSequence.
         """
@@ -132,9 +142,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             Send a message or messages to the sequence this producer is attached to.
             """
             if isinstance(content, dict):
-                # # TODO Oleksandr: freeze dict using Freeform
-                # content = Freeform(**content)
-                pass
+                content = Message(**content)
             elif hasattr(content, "__iter__") and not isinstance(content, (str, tuple, BaseModel)):
                 # we are dealing with a "synchronous" collection of messages here - let's freeze it just in case
                 content = tuple(content)
@@ -178,12 +186,13 @@ class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
         return self._aggregated_metadata
 
 
-class MessagePromise:  # pylint: disable=too-many-instance-attributes
+# noinspection PyProtectedMember
+class MessagePromise:
     """
     A promise to materialize a message.
     """
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         forum: "Forum",
         content: Optional["SingleMessageType"] = None,
@@ -195,11 +204,16 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         error: Optional[BaseException] = None,
         **override_metadata,
     ) -> None:
-        if materialized_msg and (content is not None or default_sender_alias or branch_from or override_metadata):
+        # pylint: disable=too-many-boolean-expressions
+        if materialized_msg and (
+            content is not None or default_sender_alias or branch_from or is_error or error or override_metadata
+        ):
             raise ValueError(
-                "If materialized_msg is provided, content, default_sender_alias, branch_from and override_metadata "
-                "must not be provided."
+                "If materialized_msg is provided, content, default_sender_alias, branch_from, is_error, error and "
+                "override_metadata must not be provided."
             )
+        if not materialized_msg and (content is None or not default_sender_alias):
+            raise ValueError("If materialized_msg is not provided, content and default_sender_alias must be provided.")
 
         self.forum = forum
 
@@ -209,8 +223,12 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
         self._branch_from = branch_from
         self._override_metadata = override_metadata
 
-        self.is_error = is_error
-        self._error = error
+        if materialized_msg:
+            self.is_error = materialized_msg.is_error
+            self._error = materialized_msg._error
+        else:
+            self.is_error = is_error
+            self._error = error
 
         self._materialized_msg: Optional[Message] = materialized_msg
         self._lock = asyncio.Lock()
@@ -287,41 +305,41 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
 
         if skip_agent_calls:
             while prev_msg_promise and prev_msg_promise.is_agent_call:
-                # pylint: disable=protected-access
                 prev_msg_promise = await prev_msg_promise._aget_previous_msg_promise_try_materialized()
 
         return prev_msg_promise
 
-    # noinspection PyProtectedMember
     async def _amaterialize_impl(self) -> Message:
-        # pylint: disable=protected-access,too-many-boolean-expressions
         if self._branch_from and self._branch_from is not NO_VALUE:
             prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key
         else:
             prev_msg_hash_key = None
 
+        override_metadata = dict(self._override_metadata)
+        override_sender_alias = override_metadata.pop("sender_alias", None)
+
         if isinstance(self._content, (str, StreamedMessage)):
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
-                # let's merge the metadata from the stream with the metadata provided to the constructor
+                materialized_metadata = (await self._content.amaterialize_metadata()).as_dict
+                sender_alias = override_sender_alias or materialized_metadata.pop("sender_alias", None)
                 metadata = {
-                    **(await self._content.amaterialize_metadata()).as_dict,
-                    # TODO Oleksandr: override "sender_alias" with metadata from StreamedMessage too ?
-                    "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
-                    **self._override_metadata,
+                    **materialized_metadata,
+                    **override_metadata,
                 }
             else:
+                # string content
                 msg_content = self._content
-                metadata = {
-                    "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
-                    **self._override_metadata,
-                }
+                sender_alias = override_sender_alias
+                metadata = override_metadata
 
             msg = Message(
                 forum_trees=self.forum.forum_trees,
+                sender_alias=sender_alias or self._default_sender_alias,
                 content=msg_content,
                 prev_msg_hash_key=prev_msg_hash_key,
                 is_error=self.is_error,
+                is_detached=False,
                 **metadata,
             )
             msg._error = self._error
@@ -336,8 +354,6 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
             if (
                 (not self._do_not_forward_if_possible)
                 or self._override_metadata
-                or self.is_error != msg_before_forward.is_error
-                or self._error != msg_before_forward._error
                 or (self._branch_from is not NO_VALUE and prev_msg_hash_key != msg_before_forward.prev_msg_hash_key)
             ):
                 # the message must be forwarded because either we are not actively trying to avoid forwarding
@@ -346,14 +362,14 @@ class MessagePromise:  # pylint: disable=too-many-instance-attributes
                 # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
                     forum_trees=self.forum.forum_trees,
+                    sender_alias=override_sender_alias or self._default_sender_alias,
                     content=msg_before_forward.content,
                     msg_before_forward_hash_key=msg_before_forward.hash_key,
                     prev_msg_hash_key=prev_msg_hash_key,
                     is_error=self.is_error,
                     **{
                         **msg_before_forward.metadata_as_dict,
-                        "sender_alias": self._default_sender_alias,  # may be overridden by the metadata dict below
-                        **self._override_metadata,
+                        **override_metadata,
                     },
                 )
                 forwarded_msg._error = self._error
@@ -428,7 +444,9 @@ class AgentCallMsgPromise(MessagePromise):
     def __init__(
         self, forum: "Forum", request_messages: AsyncMessageSequence, receiving_agent_alias: str, **function_kwargs
     ) -> None:
-        super().__init__(forum=forum, content=receiving_agent_alias, **function_kwargs)
+        super().__init__(
+            forum=forum, content=receiving_agent_alias, default_sender_alias=SYSTEM_ALIAS, **function_kwargs
+        )
         self._request_messages = request_messages
 
     @property
@@ -447,7 +465,7 @@ class AgentCallMsgPromise(MessagePromise):
         return AgentCallMsg(
             forum_trees=self.forum.forum_trees,
             content=self._content,  # receiving_agent_alias
-            sender_alias="",  # we keep agent calls anonymous, so they could be cached and reused by other agents
+            sender_alias=SYSTEM_ALIAS,  # agent calls should be cacheable and reuseable by other agents
             function_kwargs=self._override_metadata,  # function_kwargs from the constructor
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent call gets attached to the end of the request messages
             msg_seq_start_hash_key=msg_seq_start_hash_key,

@@ -19,12 +19,10 @@ from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
 from agentforum.storage.trees_impl import InMemoryTrees
-from agentforum.utils import Sentinel, NO_VALUE
+from agentforum.utils import Sentinel, NO_VALUE, USER_ALIAS
 
 if typing.TYPE_CHECKING:
     from agentforum.typing import AgentFunction, MessageType
-
-USER_ALIAS = "USER"
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +57,7 @@ class ConversationTracker:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
+        # pylint: disable=too-many-branches
         if isinstance(content, BaseException):
             if isinstance(content, ForumErrorFormatter):
                 error_formatter = content
@@ -91,17 +90,43 @@ class ConversationTracker:
             self._latest_msg_promise = msg_promise
             yield msg_promise
 
-        elif isinstance(content, Message):
+        elif isinstance(content, dict):
             msg_promise = MessagePromise(
                 forum=self.forum,
-                content=content,
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
-                is_error=content.is_error,
-                error=content._error,
-                **override_metadata,
+                **{
+                    **content,
+                    **override_metadata,
+                },
             )
+            self._latest_msg_promise = msg_promise
+            yield msg_promise
+
+        elif isinstance(content, Message):
+            if content.is_detached:
+                msg_promise = MessagePromise(
+                    forum=self.forum,
+                    default_sender_alias=default_sender_alias,
+                    do_not_forward_if_possible=do_not_forward_if_possible,
+                    branch_from=self._latest_msg_promise,
+                    **{
+                        **content.as_dict,
+                        **override_metadata,
+                    },
+                )
+            else:
+                msg_promise = MessagePromise(
+                    forum=self.forum,
+                    content=content,
+                    default_sender_alias=default_sender_alias,
+                    do_not_forward_if_possible=do_not_forward_if_possible,
+                    branch_from=self._latest_msg_promise,
+                    is_error=content.is_error,
+                    error=content._error,
+                    **override_metadata,
+                )
             self._latest_msg_promise = msg_promise
             yield msg_promise
 
@@ -113,20 +138,6 @@ class ConversationTracker:
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
                 **override_metadata,
-            )
-            self._latest_msg_promise = msg_promise
-            yield msg_promise
-
-        elif isinstance(content, dict):
-            msg_promise = MessagePromise(
-                forum=self.forum,
-                default_sender_alias=default_sender_alias,
-                do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                **{
-                    **content,
-                    **override_metadata,
-                },
             )
             self._latest_msg_promise = msg_promise
             yield msg_promise
@@ -430,7 +441,7 @@ class Agent:
                 try:
                     await self._func(ctx, **function_kwargs)
                 except BaseException as exc:  # pylint: disable=broad-except
-                    logger.debug("Agent function %s raised an exception", self.alias, exc_info=True)
+                    logger.debug("AGENT FUNCTION OF %s RAISED AN EXCEPTION:", self.alias, exc_info=True)
                     ctx.respond(exc)
 
 

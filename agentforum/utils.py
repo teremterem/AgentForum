@@ -18,6 +18,9 @@ if typing.TYPE_CHECKING:
 IN = TypeVar("IN")
 OUT = TypeVar("OUT")
 
+USER_ALIAS = "USER"
+SYSTEM_ALIAS = "SYSTEM"
+
 
 class Sentinel:
     """A sentinel object used pass special values through queues indicating things like "end of queue" etc."""
@@ -213,7 +216,7 @@ class AsyncStreamable(Generic[IN, OUT]):
             is_send_closed_error = isinstance(exc_value, SendClosedError)
             if exc_value and not is_send_closed_error:
                 logger.debug(
-                    "Exception raised in AsyncStreamable._Producer.__exit__:",
+                    "EXCEPTION RAISED IN AsyncStreamable._Producer.__exit__:",
                     exc_info=(exc_type, exc_value, traceback),
                 )
                 self.send(exc_value)
