@@ -9,6 +9,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, model_validator, ConfigDict
 
+from agentforum.errors import DetachedMessageError
 from agentforum.storage.trees import ForumTrees
 
 _PRIMITIVES_ALLOWED_IN_IMMUTABLE = (type(None), str, int, float, bool, tuple, list, dict)
@@ -33,7 +34,7 @@ class Immutable(BaseModel):
             )
         ).hexdigest()
 
-    @cached_property
+    @property  # TODO TODO TODO Oleksandr: turn into a regular function (we are not caching mutable objects)
     def as_dict(self) -> dict[str, Any]:
         """
         Get the fields of the object as a dictionary. Omits im_model_ field (which may be defined in subclasses).
@@ -114,12 +115,13 @@ class Message(Freeform):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     im_model_: Literal["message"] = "message"
-    forum_trees: ForumTrees
-    sender_alias: str
+    forum_trees: Optional[ForumTrees] = None
+    sender_alias: Optional[str] = None  # TODO TODO TODO Oleksandr: rename to `final_sender_alias` to avoid confusion ?
     content: Optional[str] = None
     content_template: Optional[str] = None
     prev_msg_hash_key: Optional[str] = None
     is_error: bool = False
+    is_detached: bool = True  # TODO Oleksandr: users should not be able to set this field
     _error: BaseException = NotImplementedError("serialized error messages are not raisable yet")
 
     @property
@@ -153,7 +155,7 @@ class Message(Freeform):
 
         return previous_message
 
-    @cached_property
+    @property  # TODO TODO TODO Oleksandr: turn into a regular function (we are not caching mutable objects)
     def metadata_as_dict(self) -> dict[str, Any]:
         """
         Get the metadata from a Message instance as a dictionary. All the custom fields (those which are not defined
@@ -182,16 +184,37 @@ class Message(Freeform):
         return self if return_self_if_none else None
 
     def _exclude_from_hash(self):
-        return super()._exclude_from_hash() | {"forum_trees"}
+        return super()._exclude_from_hash() | {"forum_trees", "is_detached"}
+
+    def _exclude_from_dict(self):
+        exclude = super()._exclude_from_dict()
+        if self.is_detached:
+            exclude |= {"prev_msg_hash_key"}  # detached messages do not have a previous message
+        return exclude
+
+    @cached_property
+    def hash_key(self) -> str:
+        if self.is_detached:
+            raise DetachedMessageError("detached messages cannot be hashed")
+        return super().hash_key
 
     @classmethod
     def _preprocess_values(cls, values: dict[str, Any]) -> dict[str, Any]:
         values = super()._preprocess_values(values)
 
-        if "content" in values and "content_template" in values:
-            raise ValueError("content and content_template cannot be both present in a message")
         if "content" not in values and "content_template" not in values:
             raise ValueError("either content or content_template must be present in a message")
+
+        if values.get("is_detached", cls.model_fields["is_detached"].default):
+            if "forum_trees" in values or "prev_msg_hash_key" in values:
+                raise ValueError("forum_trees and prev_msg_hash_key cannot be present in a detached message")
+            if "content" in values and "content_template" in values:
+                raise ValueError("content and content_template cannot be both present in a detached message")
+        else:
+            if not values.get("forum_trees"):
+                raise ValueError("forum_trees is required in a non-detached message")
+            if not values.get("sender_alias"):
+                raise ValueError("sender_alias is required in a non-detached message")
 
         content_template = values.get("content_template")
         if content_template is not None:
@@ -211,8 +234,9 @@ class ForwardedMessage(Message):
     A subtype of Message that represents a message forwarded by an agent.
     """
 
-    im_model_: Literal["message"] = "forward"
+    im_model_: Literal["forward"] = "forward"
     msg_before_forward_hash_key: str
+    is_detached: Literal[False] = False  # forwarded messages cannot be detached
 
     _msg_before_forward: Optional["Message"] = None
 
@@ -248,6 +272,7 @@ class AgentCallMsg(Message):
     im_model_: Literal["call"] = "call"
     function_kwargs: Freeform = Freeform()
     msg_seq_start_hash_key: Optional[str] = None
+    is_detached: Literal[False] = False  # agent call messages cannot be detached
 
     @property
     def receiver_alias(self) -> str:

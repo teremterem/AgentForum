@@ -40,7 +40,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             },
             {
                 "im_model_": "call",
-                "sender_alias": "",
+                "sender_alias": "SYSTEM",
                 "content": "_REMINDER_API",
                 "messages_in_request": 1,
             },
@@ -63,7 +63,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 },
                 {
                     "im_model_": "call",
-                    "sender_alias": "",
+                    "sender_alias": "SYSTEM",
                     "content": "_REMINDER_API",
                     "messages_in_request": 1,
                 },
@@ -74,7 +74,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 },
                 {
                     "im_model_": "call",
-                    "sender_alias": "",
+                    "sender_alias": "SYSTEM",
                     "content": "_CRITIC",
                     "messages_in_request": 1,
                 },
@@ -95,7 +95,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             },
             {
                 "im_model_": "call",
-                "sender_alias": "",
+                "sender_alias": "SYSTEM",
                 "content": "_REMINDER_API",
                 "messages_in_request": 1,
             },
@@ -106,7 +106,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             },
             {
                 "im_model_": "call",
-                "sender_alias": "",
+                "sender_alias": "SYSTEM",
                 "content": "_CRITIC",
                 "messages_in_request": 1,
             },
@@ -117,7 +117,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             },
             {
                 "im_model_": "call",
-                "sender_alias": "",
+                "sender_alias": "SYSTEM",
                 "content": "_REMINDER_API",
                 "messages_in_request": 1,
             },
@@ -152,7 +152,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         },
         {
             "im_model_": "call",
-            "sender_alias": "",
+            "sender_alias": "SYSTEM",
             "content": "_ASSISTANT",
             "messages_in_request": 1,
         },
@@ -211,7 +211,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         },
         {
             "im_model_": "call",
-            "sender_alias": "",
+            "sender_alias": "SYSTEM",
             "content": "_AGENT1",
             "messages_in_request": 1,
         },
@@ -305,7 +305,7 @@ async def test_agent_force_new_conversation(
             },
             {
                 "im_model_": "call",
-                "sender_alias": "",
+                "sender_alias": "SYSTEM",
                 "content": "_AGENT1",
                 "messages_in_request": 2,
             },
@@ -345,7 +345,7 @@ async def test_agent_force_new_conversation(
             },
             {
                 "im_model_": "call",
-                "sender_alias": "",
+                "sender_alias": "SYSTEM",
                 "content": "_AGENT2",
                 "messages_in_request": 1,
             },
@@ -361,7 +361,7 @@ async def test_agent_force_new_conversation(
             },
             {
                 "im_model_": "call",
-                "sender_alias": "",
+                "sender_alias": "SYSTEM",
                 "content": "_AGENT1",
                 "messages_in_request": 2,
             },
@@ -396,16 +396,14 @@ async def arepresent_conversation_with_dicts(
             exclude={"forum_trees", "prev_msg_hash_key", "msg_before_forward_hash_key", "msg_seq_start_hash_key"}
         )
         if msg_dict_.get("function_kwargs") == {}:
-            # function_kwargs exists, and it is empty - remove it to reduce verbosity
             del msg_dict_["function_kwargs"]
         if msg_dict_.get("is_error") is False:
-            # is_error exists, and it is False - remove it to reduce verbosity
             del msg_dict_["is_error"]
+        if msg_dict_.get("is_detached") is False:
+            del msg_dict_["is_detached"]
         if "content" in msg_dict_ and msg_dict_.get("content") is None:
-            # content exists, and it is None - remove it to reduce verbosity
             del msg_dict_["content"]
         if "content_template" in msg_dict_ and msg_dict_.get("content_template") is None:
-            # content_template exists, and it is None - remove it to reduce verbosity
             del msg_dict_["content_template"]
 
         before_forward_ = msg_.get_before_forward(return_self_if_none=False)

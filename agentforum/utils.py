@@ -18,6 +18,9 @@ if typing.TYPE_CHECKING:
 IN = TypeVar("IN")
 OUT = TypeVar("OUT")
 
+USER_ALIAS = "USER"
+SYSTEM_ALIAS = "SYSTEM"
+
 
 class Sentinel:
     """A sentinel object used pass special values through queues indicating things like "end of queue" etc."""
@@ -187,17 +190,19 @@ class AsyncStreamable(Generic[IN, OUT]):
             self._async_streamable = async_streamable
             self._suppress_exceptions = suppress_exceptions
 
-        def send(self, item: Union[IN, BaseException]) -> None:
+        def send(self, item: Union[IN, BaseException]) -> "_Producer":
             """Send an item to AsyncStreamable if it is still open (SendClosedError is raised otherwise)."""
             if self._async_streamable._send_closed:
                 raise SendClosedError("Cannot send items to a closed AsyncStreamable.")
             self._async_streamable._queue_in.put_nowait(item)
+            return self
 
-        def close(self) -> None:
+        def close(self) -> "_Producer":
             """Close AsyncStreamable for sending. Has no effect if the container is already closed."""
             if not self._async_streamable._send_closed:
                 self._async_streamable._send_closed = True
                 self._async_streamable._queue_in.put_nowait(END_OF_QUEUE)
+            return self
 
         def __enter__(self) -> "AsyncStreamable._Producer":
             return self
@@ -211,7 +216,7 @@ class AsyncStreamable(Generic[IN, OUT]):
             is_send_closed_error = isinstance(exc_value, SendClosedError)
             if exc_value and not is_send_closed_error:
                 logger.debug(
-                    "Exception raised in AsyncStreamable._Producer.__exit__:",
+                    "EXCEPTION RAISED IN AsyncStreamable._Producer.__exit__:",
                     exc_info=(exc_type, exc_value, traceback),
                 )
                 self.send(exc_value)
