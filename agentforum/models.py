@@ -1,6 +1,7 @@
 """
 Data models.
 """
+
 import hashlib
 import json
 from functools import cached_property
@@ -40,9 +41,9 @@ class Immutable(BaseModel):
         return self.model_dump(exclude=self._exclude_from_dict() | self._exclude_from_hash())
 
     @classmethod
-    def _pre_process_values(cls, values: dict[str, Any]) -> dict[str, Any]:
+    def _preprocess_values(cls, values: dict[str, Any]) -> dict[str, Any]:
         """
-        Pre-process the values before validation.
+        Preprocess the values before validation.
         """
         return values
 
@@ -53,7 +54,7 @@ class Immutable(BaseModel):
         """
         Recursively make sure that the field values of the object are immutable.
         """
-        values = cls._pre_process_values(values)
+        values = cls._preprocess_values(values)
         for key, value in values.items():
             values[key] = cls._validate_value(key, value)
         return values
@@ -114,8 +115,9 @@ class Message(Freeform):
 
     im_model_: Literal["message"] = "message"
     forum_trees: ForumTrees
-    content: str
     sender_alias: str
+    content: Optional[str] = None
+    content_template: Optional[str] = None
     prev_msg_hash_key: Optional[str] = None
     is_error: bool = False
     _error: BaseException = NotImplementedError("serialized error messages are not raisable yet")
@@ -183,10 +185,23 @@ class Message(Freeform):
         return super()._exclude_from_hash() | {"forum_trees"}
 
     @classmethod
+    def _preprocess_values(cls, values: dict[str, Any]) -> dict[str, Any]:
+        values = super()._preprocess_values(values)
+
+        if "content" in values and "content_template" in values:
+            raise ValueError("content and content_template cannot be both present in a message")
+        if "content" not in values and "content_template" not in values:
+            raise ValueError("either content or content_template must be present in a message")
+
+        content_template = values.get("content_template")
+        if content_template is not None:
+            values["content"] = content_template.format(**values)
+
+        return values
+
+    @classmethod
     def _validate_value(cls, key: str, value: Any) -> Any:
         if key == "forum_trees":
-            if not isinstance(value, ForumTrees):
-                raise ValueError(f"`forum_trees` must be an instance of ForumTrees, got `{type(value).__name__}`")
             return value
         return super()._validate_value(key, value)
 

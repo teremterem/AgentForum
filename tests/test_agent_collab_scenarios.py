@@ -1,4 +1,5 @@
 """Test different agent collaboration scenarios."""
+
 from typing import Union, Any
 
 import pytest
@@ -400,6 +401,12 @@ async def arepresent_conversation_with_dicts(
         if msg_dict_.get("is_error") is False:
             # is_error exists, and it is False - remove it to reduce verbosity
             del msg_dict_["is_error"]
+        if "content" in msg_dict_ and msg_dict_.get("content") is None:
+            # content exists, and it is None - remove it to reduce verbosity
+            del msg_dict_["content"]
+        if "content_template" in msg_dict_ and msg_dict_.get("content_template") is None:
+            # content_template exists, and it is None - remove it to reduce verbosity
+            del msg_dict_["content_template"]
 
         before_forward_ = msg_.get_before_forward(return_self_if_none=False)
         if before_forward_:

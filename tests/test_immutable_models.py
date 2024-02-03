@@ -76,15 +76,15 @@ def test_message_hash_key(forum: Forum) -> None:
     )
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "custom_field": {"role": "user"}, "im_model_": "message", "is_error": false, '
-        '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
+        '{"content": "test", "content_template": null, "custom_field": {"role": "user"}, "im_model_": "message", '
+        '"is_error": false, "prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
     message = Message(forum_trees=forum.forum_trees, content="test", sender_alias="user")
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "message", "is_error": false, '
+        '{"content": "test", "content_template": null, "im_model_": "message", "is_error": false, '
         '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
@@ -105,13 +105,17 @@ def test_forwarded_message_hash_key(forum: Forum) -> None:
         sender_alias="user",
         msg_before_forward_hash_key=original_msg.hash_key,
     )
-    message._original_msg = original_msg  # pylint: disable=protected-access
 
+    # print(json.dumps(original_msg.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
+    expected_original_hash_key = hashlib.sha256(
+        '{"content": "message that is being forwarded", "content_template": null, "im_model_": "message", '
+        '"is_error": false, "prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
+    ).hexdigest()
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "im_model_": "forward", "is_error": false, '
-        '"msg_before_forward_hash_key": "b6a83b3500ed9b9593bb98a8ad87e59ac0cb360ccb92d54804b2ed062e31b1a2", '
-        '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
+        '{"content": "test", "content_template": null, "im_model_": "forward", "is_error": false, '
+        f'"msg_before_forward_hash_key": "{expected_original_hash_key}", "prev_msg_hash_key": null, '
+        '"sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
