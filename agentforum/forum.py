@@ -572,7 +572,7 @@ class AgentCall:
         conversation._latest_msg_promise = agent_call_msg_promise
 
         if is_asking:
-            # TODO TODO TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to AgentCallMsg) ?
+            # TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to AgentCallMsg) ?
             self._response_messages = AsyncMessageSequence(
                 conversation, default_sender_alias=self.receiving_agent.alias
             )

@@ -88,7 +88,7 @@ async def main() -> None:
             # - to raise KeyboardInterrupt if the user typed exit
             # - to wait until the previous back-and-forth is processed
             # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
-            # TODO TODO TODO Oleksandr: what to do about the fact that people will not remember to call it ?
+            # TODO Oleksandr: what to do about the fact that people will not remember to call it ?
             await user_requests.araise_if_error()
 
             assistant_responses = openai_assistant.ask(user_requests)
