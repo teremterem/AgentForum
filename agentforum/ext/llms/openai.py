@@ -37,7 +37,7 @@ def openai_chat_completion(  # TODO Oleksandr: create a class and make this func
     streamed_message = _OpenAIStreamedMessage()
 
     asyncio.create_task(
-        _make_request(
+        _make_openai_request(
             prompt=prompt,
             streamed_message=streamed_message,
             async_openai_client=async_openai_client,
@@ -50,7 +50,7 @@ def openai_chat_completion(  # TODO Oleksandr: create a class and make this func
     return streamed_message
 
 
-async def _make_request(
+async def _make_openai_request(
     prompt: "MessageType",
     streamed_message: "_OpenAIStreamedMessage",
     async_openai_client: Optional[Any] = None,
