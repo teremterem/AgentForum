@@ -145,6 +145,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
                 content = Message(**content)
             elif hasattr(content, "__iter__") and not isinstance(content, (str, tuple, BaseModel)):
                 # we are dealing with a "synchronous" collection of messages here - let's freeze it just in case
+                # TODO Oleksandr: some sort of "deep freeze" is needed here - items can be mutable dicts or lists
                 content = tuple(content)
             # TODO Oleksandr: validate `content` type manually, because in Pydantic it's just Any
             self.send(_MessageTypeCarrier(zero_or_more_messages=content, override_metadata=Freeform(**metadata)))

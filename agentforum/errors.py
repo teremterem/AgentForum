@@ -10,17 +10,24 @@ if typing.TYPE_CHECKING:
     from agentforum.promises import MessagePromise
 
 
-class ForumErrorFormatter:
+class AgentForumError(Exception):
     """
-    Mixin for errors that allows to format an error message before storing it as a Message in ForumTrees.
+    Base class AgentForum errors.
+    """
+
+
+class FormattedForumError(AgentForumError):
+    """
+    Base class for all exceptions in the AgentForum project that can be formatted into a forum tree message.
     """
 
     def __init__(
-        self, *args, original_error: Optional[BaseException] = None, include_stack_trace: bool = False, **kwargs
+        self, *args, original_error: Optional[BaseException] = None, include_stack_trace: bool = False, **metadata
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args)
         self.original_error = original_error or self
         self.include_stack_trace = include_stack_trace
+        self.metadata = metadata
 
     # noinspection PyUnusedLocal
     async def agenerate_error_message(self, previous_msg_promise: "MessagePromise") -> str:
@@ -36,12 +43,6 @@ class ForumErrorFormatter:
                 )
             )
         return "".join(traceback.format_exception_only(type(self.original_error), self.original_error)).strip()
-
-
-class AgentForumError(Exception):
-    """
-    Base class AgentForum errors.
-    """
 
 
 class SendClosedError(AgentForumError):

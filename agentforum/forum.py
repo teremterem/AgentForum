@@ -14,7 +14,7 @@ from typing import Optional, AsyncIterator, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
-from agentforum.errors import ForumErrorFormatter, NoAskingAgentError
+from agentforum.errors import NoAskingAgentError, FormattedForumError
 from agentforum.models import Message, Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
@@ -59,19 +59,22 @@ class ConversationTracker:
         """
         # pylint: disable=too-many-branches
         if isinstance(content, BaseException):
-            if isinstance(content, ForumErrorFormatter):
-                error_formatter = content
+            if isinstance(content, FormattedForumError):
+                formatted_error = content
             else:
-                error_formatter = ForumErrorFormatter(original_error=content)
+                formatted_error = FormattedForumError(original_error=content)
             msg_promise = MessagePromise(
                 forum=self.forum,
-                content=await error_formatter.agenerate_error_message(self._latest_msg_promise),
+                content=await formatted_error.agenerate_error_message(self._latest_msg_promise),
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
                 is_error=True,
                 error=content,
-                **override_metadata,
+                **{
+                    **formatted_error.metadata,
+                    **override_metadata,
+                },
             )
             self._latest_msg_promise = msg_promise
             yield msg_promise
