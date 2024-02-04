@@ -36,24 +36,41 @@ def openai_chat_completion(  # TODO Oleksandr: create a class and make this func
 
     streamed_message = _OpenAIStreamedMessage()
 
-    async def _make_request() -> None:
-        # pylint: disable=protected-access
-        # noinspection PyProtectedMember
-        with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
-            message_dicts = [_message_to_openai_dict(msg) for msg in await amaterialize_message_sequence(prompt)]
-            response = await async_openai_client.chat.completions.create(
-                messages=message_dicts, stream=stream, n=n, **kwargs
-            )
-            if stream:
-                async for token_raw in response:
-                    token_producer.send(token_raw)
-            else:
-                # send the whole response as a single "token"
-                token_producer.send(response)
-
-    asyncio.create_task(_make_request())
+    asyncio.create_task(
+        _make_request(
+            prompt=prompt,
+            streamed_message=streamed_message,
+            async_openai_client=async_openai_client,
+            stream=stream,
+            n=n,
+            **kwargs,
+        )
+    )
 
     return streamed_message
+
+
+async def _make_request(
+    prompt: "MessageType",
+    streamed_message: "_OpenAIStreamedMessage",
+    async_openai_client: Optional[Any] = None,
+    stream: bool = False,
+    n: int = 1,
+    **kwargs,
+) -> None:
+    # pylint: disable=protected-access
+    # noinspection PyProtectedMember
+    with _OpenAIStreamedMessage._Producer(streamed_message) as token_producer:
+        message_dicts = [_message_to_openai_dict(msg) for msg in await amaterialize_message_sequence(prompt)]
+        response = await async_openai_client.chat.completions.create(
+            messages=message_dicts, stream=stream, n=n, **kwargs
+        )
+        if stream:
+            async for token_raw in response:
+                token_producer.send(token_raw)
+        else:
+            # send the whole response as a single "token"
+            token_producer.send(response)
 
 
 async def anum_tokens_from_messages(messages: "MessageType", model: str = "gpt-3.5-turbo-0613") -> int:
