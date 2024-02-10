@@ -120,6 +120,7 @@ class Message(Freeform):
     content: Optional[str] = None
     content_template: Optional[str] = None
     prev_msg_hash_key: Optional[str] = None
+    reply_to_msg_hash_key: Optional[str] = None
     is_error: bool = False
     is_detached: bool = True  # TODO Oleksandr: users should not be able to set this field
     _error: BaseException = NotImplementedError("serialized error messages are not raisable yet")
@@ -154,6 +155,14 @@ class Message(Freeform):
                 )
 
         return previous_message
+
+    async def aget_reply_to_msg(self) -> Optional["Message"]:
+        """
+        Get the message that this message is a reply to.
+        """
+        if self.reply_to_msg_hash_key is None:
+            return None
+        return await self.forum_trees.aretrieve_message(self.reply_to_msg_hash_key)
 
     @property  # TODO TODO TODO Oleksandr: turn into a regular function (we are not caching mutable objects)
     def metadata_as_dict(self) -> dict[str, Any]:
@@ -254,6 +263,11 @@ class ForwardedMessage(Message):
         if not self._msg_before_forward:
             raise RuntimeError("_msg_before_forward property was not initialized")
         return self._msg_before_forward
+
+    def _exclude_from_hash(self):
+        # TODO TODO TODO Oleksandr: in this case you should also make sure that `content` is not settable.
+        #  what about `content_template` then ?
+        return super()._exclude_from_hash() | {"content"}
 
     def _set_msg_before_forward(self, msg_before_forward: Message) -> None:
         if msg_before_forward.hash_key != self.msg_before_forward_hash_key:
