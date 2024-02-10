@@ -265,7 +265,7 @@ class ForwardedMessage(Message):
     def _exclude_from_hash(self):
         # TODO TODO TODO Oleksandr: in this case you should also make sure that `content` is not settable.
         #  what about `content_template` then ?
-        return super()._exclude_from_hash() | {"content"}
+        return super()._exclude_from_hash() | {"content", "content_template"}
 
     def _set_msg_before_forward(self, msg_before_forward: Message) -> None:
         if msg_before_forward.hash_key != self.msg_before_forward_hash_key:
