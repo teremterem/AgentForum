@@ -36,7 +36,7 @@ def test_immutable_frozen() -> None:
 
 def test_message_frozen(forum: Forum) -> None:
     """Test that the `Message` class is frozen."""
-    message = Message(forum_trees=forum.forum_trees, content="test", sender_alias="user", is_detached=False)
+    message = Message(forum_trees=forum.forum_trees, content="test", final_sender_alias="user", is_detached=False)
 
     with pytest.raises(ValidationError):
         message.content = "test2"
@@ -74,22 +74,23 @@ def test_message_hash_key(forum: Forum) -> None:
     message = Message(
         forum_trees=forum.forum_trees,
         content="test",
-        sender_alias="user",
+        final_sender_alias="user",
         custom_field={"role": "user"},
         is_detached=False,
     )
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "content_template": null, "custom_field": {"role": "user"}, "im_model_": "message", '
-        '"is_error": false, "prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
+        '{"content": "test", "content_template": null, "custom_field": {"role": "user"}, '
+        '"final_sender_alias": "user", "im_model_": "message", "is_error": false, "prev_msg_hash_key": null, '
+        '"reply_to_msg_hash_key": null}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
-    message = Message(forum_trees=forum.forum_trees, content="test", sender_alias="user", is_detached=False)
+    message = Message(forum_trees=forum.forum_trees, content="test", final_sender_alias="user", is_detached=False)
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "content_template": null, "im_model_": "message", "is_error": false, '
-        '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
+        '{"content": "test", "content_template": null, "final_sender_alias": "user", "im_model_": "message", '
+        '"is_error": false, "prev_msg_hash_key": null, "reply_to_msg_hash_key": null}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
@@ -102,27 +103,27 @@ def test_forwarded_message_hash_key(forum: Forum) -> None:
     original_msg = Message(
         forum_trees=forum.forum_trees,
         content="message that is being forwarded",
-        sender_alias="user",
+        final_sender_alias="user",
         is_detached=False,
     )
 
     message = ForwardedMessage(
         forum_trees=forum.forum_trees,
-        content="test",
-        sender_alias="user",
+        final_sender_alias="user",
         msg_before_forward_hash_key=original_msg.hash_key,
     )
 
     # print(json.dumps(original_msg.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_original_hash_key = hashlib.sha256(
-        '{"content": "message that is being forwarded", "content_template": null, "im_model_": "message", '
-        '"is_error": false, "prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
+        '{"content": "message that is being forwarded", "content_template": null, "final_sender_alias": "user", '
+        '"im_model_": "message", "is_error": false, "prev_msg_hash_key": null, "reply_to_msg_hash_key": null}'
+        "".encode("utf-8")
     ).hexdigest()
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
-        '{"content": "test", "content_template": null, "im_model_": "forward", "is_error": false, '
+        '{"final_sender_alias": "user", "im_model_": "forward", "is_error": false, '
         f'"msg_before_forward_hash_key": "{expected_original_hash_key}", "prev_msg_hash_key": null, '
-        '"sender_alias": "user"}'.encode("utf-8")
+        '"reply_to_msg_hash_key": null}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
@@ -142,7 +143,7 @@ def test_nested_message_freeform_not_copied(forum: Forum) -> None:
     message = Message(
         forum_trees=forum.forum_trees,
         content="test",
-        sender_alias="user",
+        final_sender_alias="user",
         custom_field=custom_field,
         is_detached=False,
     )
@@ -181,43 +182,43 @@ def test_freeform_hash_key_vs_key_ordering() -> None:
 
 def test_message_metadata_as_dict(forum: Forum) -> None:
     """
-    Test that the `Message.metadata_as_dict` method returns only the custom fields as a dict.
+    Test that the `Message.metadata_as_dict()` method returns only the custom fields as a dict.
     """
     message = Message(
         forum_trees=forum.forum_trees,
         content="test",
-        sender_alias="user",
+        final_sender_alias="user",
         custom_field={"role": "user"},
         is_detached=False,
     )
 
     assert isinstance(message.custom_field, Freeform)  # make sure it wasn't stored as plain dict
-    assert message.metadata_as_dict == {"custom_field": {"role": "user"}}
+    assert message.metadata_as_dict() == {"custom_field": {"role": "user"}}
 
 
 @pytest.fixture
 async def amessage_on_branch(forum: Forum) -> Message:
     """A message on a branch."""
-    message = Message(forum_trees=forum.forum_trees, content="message 1", sender_alias="user", is_detached=False)
+    message = Message(forum_trees=forum.forum_trees, content="message 1", final_sender_alias="user", is_detached=False)
     await forum.forum_trees.astore_immutable(message)
     message = AgentCallMsg(
         forum_trees=forum.forum_trees,
-        content="call 1",
-        sender_alias="SYSTEM",
+        receiver_alias="call 1",
+        final_sender_alias="SYSTEM",
         prev_msg_hash_key=message.hash_key,
     )
     await forum.forum_trees.astore_immutable(message)
     message = AgentCallMsg(
         forum_trees=forum.forum_trees,
-        content="call 2",
-        sender_alias="SYSTEM",
+        receiver_alias="call 2",
+        final_sender_alias="SYSTEM",
         prev_msg_hash_key=message.hash_key,
     )
     await forum.forum_trees.astore_immutable(message)
     message = Message(
         forum_trees=forum.forum_trees,
         content="message 2",
-        sender_alias="user",
+        final_sender_alias="user",
         prev_msg_hash_key=message.hash_key,
         is_detached=False,
     )
@@ -254,8 +255,8 @@ async def test_message_aget_previous_msg_dont_skip_calls(amessage_on_branch: Awa
     previous_message = await message.aget_previous_msg(skip_agent_calls=False)
 
     # agent calls were NOT skipped
-    assert previous_message.content == "call 2"
     assert type(previous_message) is AgentCallMsg  # pylint: disable=unidiomatic-typecheck
+    assert previous_message.receiver_alias == "call 2"
 
     # more previous messages exist
     assert await previous_message.aget_previous_msg() is not None

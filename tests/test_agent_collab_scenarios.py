@@ -26,7 +26,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
-                "sender_alias": "USER",
+                "final_sender_alias": "USER",
                 "content": "set a reminder for me for tomorrow at 10am",
             },
         ]
@@ -35,18 +35,18 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         assert await arepresent_conversation_with_dicts(api_responses) == [
             {
                 "im_model_": "message",
-                "sender_alias": "USER",
+                "final_sender_alias": "USER",
                 "content": "set a reminder for me for tomorrow at 10am",
             },
             {
                 "im_model_": "call",
-                "sender_alias": "SYSTEM",
-                "content": "_REMINDER_API",
+                "final_sender_alias": "SYSTEM",
+                "receiver_alias": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_REMINDER_API",
+                "final_sender_alias": "_REMINDER_API",
                 "content": "api error: invalid date format",
             },
         ]
@@ -58,29 +58,29 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             assert await arepresent_conversation_with_dicts(corrections) == [
                 {
                     "im_model_": "message",
-                    "sender_alias": "USER",
+                    "final_sender_alias": "USER",
                     "content": "set a reminder for me for tomorrow at 10am",
                 },
                 {
                     "im_model_": "call",
-                    "sender_alias": "SYSTEM",
-                    "content": "_REMINDER_API",
+                    "final_sender_alias": "SYSTEM",
+                    "receiver_alias": "_REMINDER_API",
                     "messages_in_request": 1,
                 },
                 {
                     "im_model_": "message",
-                    "sender_alias": "_REMINDER_API",
+                    "final_sender_alias": "_REMINDER_API",
                     "content": "api error: invalid date format",
                 },
                 {
                     "im_model_": "call",
-                    "sender_alias": "SYSTEM",
-                    "content": "_CRITIC",
+                    "final_sender_alias": "SYSTEM",
+                    "receiver_alias": "_CRITIC",
                     "messages_in_request": 1,
                 },
                 {
                     "im_model_": "message",
-                    "sender_alias": "_CRITIC",
+                    "final_sender_alias": "_CRITIC",
                     "content": "try swapping the month and day",
                 },
             ]
@@ -90,40 +90,40 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         assert await arepresent_conversation_with_dicts(api_responses) == [
             {
                 "im_model_": "message",
-                "sender_alias": "USER",
+                "final_sender_alias": "USER",
                 "content": "set a reminder for me for tomorrow at 10am",
             },
             {
                 "im_model_": "call",
-                "sender_alias": "SYSTEM",
-                "content": "_REMINDER_API",
+                "final_sender_alias": "SYSTEM",
+                "receiver_alias": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_REMINDER_API",
+                "final_sender_alias": "_REMINDER_API",
                 "content": "api error: invalid date format",
             },
             {
                 "im_model_": "call",
-                "sender_alias": "SYSTEM",
-                "content": "_CRITIC",
+                "final_sender_alias": "SYSTEM",
+                "receiver_alias": "_CRITIC",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_CRITIC",
+                "final_sender_alias": "_CRITIC",
                 "content": "try swapping the month and day",
             },
             {
                 "im_model_": "call",
-                "sender_alias": "SYSTEM",
-                "content": "_REMINDER_API",
+                "final_sender_alias": "SYSTEM",
+                "receiver_alias": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_REMINDER_API",
+                "final_sender_alias": "_REMINDER_API",
                 "content": "success: reminder set",
             },
         ]
@@ -147,21 +147,21 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     assert await arepresent_conversation_with_dicts(assistant_responses) == [
         {
             "im_model_": "message",
-            "sender_alias": "USER",
+            "final_sender_alias": "USER",
             "content": "set a reminder for me for tomorrow at 10am",
         },
         {
             "im_model_": "call",
-            "sender_alias": "SYSTEM",
-            "content": "_ASSISTANT",
+            "final_sender_alias": "SYSTEM",
+            "receiver_alias": "_ASSISTANT",
             "messages_in_request": 1,
         },
         {
             "im_model_": "forward",
-            "sender_alias": "_ASSISTANT",
+            "final_sender_alias": "_ASSISTANT",
             "before_forward": {
                 "im_model_": "message",
-                "sender_alias": "_REMINDER_API",
+                "final_sender_alias": "_REMINDER_API",
                 "content": "success: reminder set",
             },
         },
@@ -180,7 +180,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
-                "sender_alias": "USER",
+                "final_sender_alias": "USER",
                 "content": "user says hello",
             },
         ]
@@ -193,7 +193,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
-                "sender_alias": "USER",
+                "final_sender_alias": "USER",
                 "content": "user says hello",
             },
         ]
@@ -206,36 +206,36 @@ async def test_two_nested_agents(forum: Forum) -> None:
     assert await arepresent_conversation_with_dicts(responses1) == [
         {
             "im_model_": "message",
-            "sender_alias": "USER",
+            "final_sender_alias": "USER",
             "content": "user says hello",
         },
         {
             "im_model_": "call",
-            "sender_alias": "SYSTEM",
-            "content": "_AGENT1",
+            "final_sender_alias": "SYSTEM",
+            "receiver_alias": "_AGENT1",
             "messages_in_request": 1,
         },
         {
             "im_model_": "forward",
-            "sender_alias": "_AGENT1",
+            "final_sender_alias": "_AGENT1",
             "before_forward": {
                 "im_model_": "message",
-                "sender_alias": "_AGENT2",
+                "final_sender_alias": "_AGENT2",
                 "content": "agent2 says hello",
             },
         },
         {
             "im_model_": "forward",
-            "sender_alias": "_AGENT1",
+            "final_sender_alias": "_AGENT1",
             "before_forward": {
                 "im_model_": "message",
-                "sender_alias": "_AGENT2",
+                "final_sender_alias": "_AGENT2",
                 "content": "agent2 says hello again",
             },
         },
         {
             "im_model_": "message",
-            "sender_alias": "_AGENT1",
+            "final_sender_alias": "_AGENT1",
             "content": "agent1 also says hello",
         },
     ]
@@ -287,50 +287,50 @@ async def test_agent_force_new_conversation(
         assert await arepresent_conversation_with_dicts(responses1) == [
             {
                 "im_model_": "forward",
-                "sender_alias": "USER",
+                "final_sender_alias": "USER",
                 "before_forward": {
                     "im_model_": "message",
-                    "sender_alias": "_AGENT2",
+                    "final_sender_alias": "_AGENT2",
                     "content": "agent2 says hello",
                 },
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "USER",
+                "final_sender_alias": "USER",
                 "before_forward": {
                     "im_model_": "message",
-                    "sender_alias": "_AGENT2",
+                    "final_sender_alias": "_AGENT2",
                     "content": "agent2 says hello again",
                 },
             },
             {
                 "im_model_": "call",
-                "sender_alias": "SYSTEM",
-                "content": "_AGENT1",
+                "final_sender_alias": "SYSTEM",
+                "receiver_alias": "_AGENT1",
                 "messages_in_request": 2,
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "_AGENT1",
+                "final_sender_alias": "_AGENT1",
                 "before_forward": {
                     "im_model_": "forward",
-                    "sender_alias": "USER",
+                    "final_sender_alias": "USER",
                     "before_forward": {
                         "im_model_": "message",
-                        "sender_alias": "_AGENT2",
+                        "final_sender_alias": "_AGENT2",
                         "content": "agent2 says hello",
                     },
                 },
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "_AGENT1",
+                "final_sender_alias": "_AGENT1",
                 "before_forward": {
                     "im_model_": "forward",
-                    "sender_alias": "USER",
+                    "final_sender_alias": "USER",
                     "before_forward": {
                         "im_model_": "message",
-                        "sender_alias": "_AGENT2",
+                        "final_sender_alias": "_AGENT2",
                         "content": "agent2 says hello again",
                     },
                 },
@@ -340,46 +340,46 @@ async def test_agent_force_new_conversation(
         assert await arepresent_conversation_with_dicts(responses1) == [
             {
                 "im_model_": "message",
-                "sender_alias": "USER",
+                "final_sender_alias": "USER",
                 "content": "user says hello",
             },
             {
                 "im_model_": "call",
-                "sender_alias": "SYSTEM",
-                "content": "_AGENT2",
+                "final_sender_alias": "SYSTEM",
+                "receiver_alias": "_AGENT2",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_AGENT2",
+                "final_sender_alias": "_AGENT2",
                 "content": "agent2 says hello",
             },
             {
                 "im_model_": "message",
-                "sender_alias": "_AGENT2",
+                "final_sender_alias": "_AGENT2",
                 "content": "agent2 says hello again",
             },
             {
                 "im_model_": "call",
-                "sender_alias": "SYSTEM",
-                "content": "_AGENT1",
+                "final_sender_alias": "SYSTEM",
+                "receiver_alias": "_AGENT1",
                 "messages_in_request": 2,
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "_AGENT1",
+                "final_sender_alias": "_AGENT1",
                 "before_forward": {
                     "im_model_": "message",
-                    "sender_alias": "_AGENT2",
+                    "final_sender_alias": "_AGENT2",
                     "content": "agent2 says hello",
                 },
             },
             {
                 "im_model_": "forward",
-                "sender_alias": "_AGENT1",
+                "final_sender_alias": "_AGENT1",
                 "before_forward": {
                     "im_model_": "message",
-                    "sender_alias": "_AGENT2",
+                    "final_sender_alias": "_AGENT2",
                     "content": "agent2 says hello again",
                 },
             },
@@ -393,7 +393,13 @@ async def arepresent_conversation_with_dicts(
 
     def _get_msg_dict(msg_: Message) -> dict[str, Any]:
         msg_dict_ = msg_.model_dump(
-            exclude={"forum_trees", "prev_msg_hash_key", "msg_before_forward_hash_key", "msg_seq_start_hash_key"}
+            exclude={
+                "forum_trees",
+                "msg_before_forward_hash_key",
+                "msg_seq_start_hash_key",
+                "prev_msg_hash_key",
+                "reply_to_msg_hash_key",
+            }
         )
         if msg_dict_.get("function_kwargs") == {}:
             del msg_dict_["function_kwargs"]

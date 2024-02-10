@@ -115,7 +115,7 @@ class ConversationTracker:
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     branch_from=self._latest_msg_promise,
                     **{
-                        **content.as_dict,
+                        **content.as_dict(),
                         **override_metadata,
                     },
                 )
@@ -386,7 +386,7 @@ class Agent:
         )
         if content is not None:
             if override_sender_alias:
-                agent_call.send_request(content, sender_alias=override_sender_alias)
+                agent_call.send_request(content, final_sender_alias=override_sender_alias)
             else:
                 agent_call.send_request(content)
 

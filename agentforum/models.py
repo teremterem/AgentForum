@@ -34,7 +34,6 @@ class Immutable(BaseModel):
             )
         ).hexdigest()
 
-    @property  # TODO TODO TODO Oleksandr: turn into a regular function (we are not caching mutable objects)
     def as_dict(self) -> dict[str, Any]:
         """
         Get the fields of the object as a dictionary. Omits im_model_ field (which may be defined in subclasses).
@@ -116,10 +115,11 @@ class Message(Freeform):
 
     im_model_: Literal["message"] = "message"
     forum_trees: Optional[ForumTrees] = None
-    sender_alias: Optional[str] = None  # TODO TODO TODO Oleksandr: rename to `final_sender_alias` to avoid confusion ?
+    final_sender_alias: Optional[str] = None
     content: Optional[str] = None
     content_template: Optional[str] = None
     prev_msg_hash_key: Optional[str] = None
+    reply_to_msg_hash_key: Optional[str] = None
     is_error: bool = False
     is_detached: bool = True  # TODO Oleksandr: users should not be able to set this field
     _error: BaseException = NotImplementedError("serialized error messages are not raisable yet")
@@ -129,15 +129,7 @@ class Message(Freeform):
         """
         Get the alias of the original sender of the message.
         """
-        return self.sender_alias
-
-    @property
-    def final_sender_alias(self) -> str:
-        """
-        Get the alias of the final sender of the message. It may be different from the original sender if the message
-        is forwarded.
-        """
-        return self.sender_alias
+        return self.final_sender_alias
 
     async def aget_previous_msg(self, skip_agent_calls: bool = True) -> Optional["Message"]:
         """
@@ -155,7 +147,14 @@ class Message(Freeform):
 
         return previous_message
 
-    @property  # TODO TODO TODO Oleksandr: turn into a regular function (we are not caching mutable objects)
+    async def aget_reply_to_msg(self) -> Optional["Message"]:
+        """
+        Get the message that this message is a reply to.
+        """
+        if self.reply_to_msg_hash_key is None:
+            return None
+        return await self.forum_trees.aretrieve_message(self.reply_to_msg_hash_key)
+
     def metadata_as_dict(self) -> dict[str, Any]:
         """
         Get the metadata from a Message instance as a dictionary. All the custom fields (those which are not defined
@@ -183,6 +182,10 @@ class Message(Freeform):
         """
         return self if return_self_if_none else None
 
+    @classmethod
+    def _require_content(cls) -> bool:
+        return True
+
     def _exclude_from_hash(self):
         return super()._exclude_from_hash() | {"forum_trees", "is_detached"}
 
@@ -202,19 +205,19 @@ class Message(Freeform):
     def _preprocess_values(cls, values: dict[str, Any]) -> dict[str, Any]:
         values = super()._preprocess_values(values)
 
-        if "content" not in values and "content_template" not in values:
-            raise ValueError("either content or content_template must be present in a message")
+        if cls._require_content() and "content" not in values and "content_template" not in values:
+            raise ValueError("either `content` or `content_template` must be present in a message")
 
         if values.get("is_detached", cls.model_fields["is_detached"].default):
             if "forum_trees" in values or "prev_msg_hash_key" in values:
-                raise ValueError("forum_trees and prev_msg_hash_key cannot be present in a detached message")
+                raise ValueError("`forum_trees` and `prev_msg_hash_key` cannot be present in a detached message")
             if "content" in values and "content_template" in values:
-                raise ValueError("content and content_template cannot be both present in a detached message")
+                raise ValueError("`content` and `content_template` cannot be both present in a detached message")
         else:
             if not values.get("forum_trees"):
-                raise ValueError("forum_trees is required in a non-detached message")
-            if not values.get("sender_alias"):
-                raise ValueError("sender_alias is required in a non-detached message")
+                raise ValueError("`forum_trees` is required in a non-detached message")
+            if not values.get("final_sender_alias"):
+                raise ValueError("`final_sender_alias` is required in a non-detached message")
 
         content_template = values.get("content_template")
         if content_template is not None:
@@ -225,6 +228,8 @@ class Message(Freeform):
     @classmethod
     def _validate_value(cls, key: str, value: Any) -> Any:
         if key == "forum_trees":
+            # we are making an exception for the type of this field (doesn't have to be one of the types allowed by
+            # Immutable)
             return value
         return super()._validate_value(key, value)
 
@@ -242,7 +247,7 @@ class ForwardedMessage(Message):
 
     @cached_property
     def original_sender_alias(self) -> str:
-        return self.get_original_msg().sender_alias
+        return self.get_original_msg().final_sender_alias
 
     def get_original_msg(self, return_self_if_none: bool = True) -> Optional["Message"]:
         original_msg = self
@@ -252,16 +257,34 @@ class ForwardedMessage(Message):
 
     def get_before_forward(self, return_self_if_none: bool = True) -> Optional["Message"]:
         if not self._msg_before_forward:
-            raise RuntimeError("_msg_before_forward property was not initialized")
+            raise RuntimeError("`_msg_before_forward` property was not initialized")
         return self._msg_before_forward
+
+    def _exclude_from_hash(self):
+        return super()._exclude_from_hash() | {"content", "content_template"}
 
     def _set_msg_before_forward(self, msg_before_forward: Message) -> None:
         if msg_before_forward.hash_key != self.msg_before_forward_hash_key:
             raise RuntimeError(
-                f"msg_before_forward_hash_key (left) does not match the hash key of the actual message before "
+                f"`msg_before_forward_hash_key` (left) does not match the hash key of the actual message before "
                 f"forward (right): {self.msg_before_forward_hash_key} != {self._msg_before_forward.hash_key}"
             )
         self._msg_before_forward = msg_before_forward
+        # we need to make the original `content` and `content_template` fields available in the forwarded message
+        # directly, so, as a workaround, below we are circumventing the frozen nature of the model
+        # TODO Oleksandr: are there any bad consequences of this workaround ?
+        object.__setattr__(self, "content", msg_before_forward.content)
+        object.__setattr__(self, "content_template", msg_before_forward.content_template)
+
+    @classmethod
+    def _validate_value(cls, key: str, value: Any) -> Any:
+        if key in ("content", "content_template"):
+            raise ValueError("neither `content` nor `content_template` can be present in a forwarded message")
+        return super()._validate_value(key, value)
+
+    @classmethod
+    def _require_content(cls) -> bool:
+        return False
 
 
 class AgentCallMsg(Message):
@@ -269,15 +292,15 @@ class AgentCallMsg(Message):
     A subtype of Message that represents a call to an agent.
     """
 
+    receiver_alias: str
     im_model_: Literal["call"] = "call"
     function_kwargs: Freeform = Freeform()
     msg_seq_start_hash_key: Optional[str] = None
     is_detached: Literal[False] = False  # agent call messages cannot be detached
 
-    @property
-    def receiver_alias(self) -> str:
-        """Get the alias of the agent that is being called."""
-        return self.content  # TODO Oleksandr: stop using `content` for this purpose ?
+    @classmethod
+    def _require_content(cls) -> bool:
+        return False
 
 
 class ContentChunk(BaseModel):
