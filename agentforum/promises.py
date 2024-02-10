@@ -292,12 +292,6 @@ class MessagePromise:
         """
         return (await self.amaterialize()).content
 
-    async def amaterialize_sender_alias(self) -> str:
-        """
-        Get the sender alias of the message as a string.
-        """
-        return (await self.amaterialize()).final_sender_alias
-
     async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """
         Get the previous MessagePromise in this conversation branch.
