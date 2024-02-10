@@ -190,6 +190,10 @@ class Message(Freeform):
         """
         return self if return_self_if_none else None
 
+    @classmethod
+    def _require_content(cls) -> bool:
+        return True
+
     def _exclude_from_hash(self):
         return super()._exclude_from_hash() | {"forum_trees", "is_detached"}
 
@@ -209,19 +213,19 @@ class Message(Freeform):
     def _preprocess_values(cls, values: dict[str, Any]) -> dict[str, Any]:
         values = super()._preprocess_values(values)
 
-        if "content" not in values and "content_template" not in values:
-            raise ValueError("either content or content_template must be present in a message")
+        if cls._require_content() and "content" not in values and "content_template" not in values:
+            raise ValueError("either `content` or `content_template` must be present in a message")
 
         if values.get("is_detached", cls.model_fields["is_detached"].default):
             if "forum_trees" in values or "prev_msg_hash_key" in values:
-                raise ValueError("forum_trees and prev_msg_hash_key cannot be present in a detached message")
+                raise ValueError("`forum_trees` and `prev_msg_hash_key` cannot be present in a detached message")
             if "content" in values and "content_template" in values:
-                raise ValueError("content and content_template cannot be both present in a detached message")
+                raise ValueError("`content` and `content_template` cannot be both present in a detached message")
         else:
             if not values.get("forum_trees"):
-                raise ValueError("forum_trees is required in a non-detached message")
+                raise ValueError("`forum_trees` is required in a non-detached message")
             if not values.get("sender_alias"):
-                raise ValueError("sender_alias is required in a non-detached message")
+                raise ValueError("`sender_alias` is required in a non-detached message")
 
         content_template = values.get("content_template")
         if content_template is not None:
@@ -232,6 +236,8 @@ class Message(Freeform):
     @classmethod
     def _validate_value(cls, key: str, value: Any) -> Any:
         if key == "forum_trees":
+            # we are making an exception for the type of this field (doesn't have to be one of the types allowed by
+            # Immutable)
             return value
         return super()._validate_value(key, value)
 
@@ -259,21 +265,29 @@ class ForwardedMessage(Message):
 
     def get_before_forward(self, return_self_if_none: bool = True) -> Optional["Message"]:
         if not self._msg_before_forward:
-            raise RuntimeError("_msg_before_forward property was not initialized")
+            raise RuntimeError("`_msg_before_forward` property was not initialized")
         return self._msg_before_forward
 
     def _exclude_from_hash(self):
-        # TODO TODO TODO Oleksandr: in this case you should also make sure that `content` is not settable.
-        #  what about `content_template` then ?
         return super()._exclude_from_hash() | {"content", "content_template"}
 
     def _set_msg_before_forward(self, msg_before_forward: Message) -> None:
         if msg_before_forward.hash_key != self.msg_before_forward_hash_key:
             raise RuntimeError(
-                f"msg_before_forward_hash_key (left) does not match the hash key of the actual message before "
+                f"`msg_before_forward_hash_key` (left) does not match the hash key of the actual message before "
                 f"forward (right): {self.msg_before_forward_hash_key} != {self._msg_before_forward.hash_key}"
             )
         self._msg_before_forward = msg_before_forward
+
+    @classmethod
+    def _validate_value(cls, key: str, value: Any) -> Any:
+        if key in ("content", "content_template"):
+            raise ValueError("neither `content` nor `content_template` can be present in a forwarded message")
+        return super()._validate_value(key, value)
+
+    @classmethod
+    def _require_content(cls) -> bool:
+        return False
 
 
 class AgentCallMsg(Message):
@@ -289,7 +303,7 @@ class AgentCallMsg(Message):
     @property
     def receiver_alias(self) -> str:
         """Get the alias of the agent that is being called."""
-        return self.content  # TODO Oleksandr: stop using `content` for this purpose ?
+        return self.content  # TODO TODO TODO Oleksandr: stop using `content` for this purpose ?
 
 
 class ContentChunk(BaseModel):

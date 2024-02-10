@@ -109,7 +109,6 @@ def test_forwarded_message_hash_key(forum: Forum) -> None:
 
     message = ForwardedMessage(
         forum_trees=forum.forum_trees,
-        content="test",
         sender_alias="user",
         msg_before_forward_hash_key=original_msg.hash_key,
     )

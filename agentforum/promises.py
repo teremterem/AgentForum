@@ -364,7 +364,6 @@ class MessagePromise:
                 forwarded_msg = ForwardedMessage(
                     forum_trees=self.forum.forum_trees,
                     sender_alias=override_sender_alias or self._default_sender_alias,
-                    content=msg_before_forward.content,
                     msg_before_forward_hash_key=msg_before_forward.hash_key,
                     prev_msg_hash_key=prev_msg_hash_key,
                     is_error=self.is_error,
