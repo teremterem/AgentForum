@@ -278,6 +278,11 @@ class ForwardedMessage(Message):
                 f"forward (right): {self.msg_before_forward_hash_key} != {self._msg_before_forward.hash_key}"
             )
         self._msg_before_forward = msg_before_forward
+        # we need to make the original `content` and `content_template` fields available in the forwarded message
+        # directly, so, as a workaround, below we are circumventing the frozen nature of the model
+        # TODO Oleksandr: are there any bad consequences of this workaround ?
+        object.__setattr__(self, "content", msg_before_forward.content)
+        object.__setattr__(self, "content_template", msg_before_forward.content_template)
 
     @classmethod
     def _validate_value(cls, key: str, value: Any) -> Any:
