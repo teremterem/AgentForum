@@ -386,7 +386,7 @@ class Agent:
         )
         if content is not None:
             if override_sender_alias:
-                agent_call.send_request(content, sender_alias=override_sender_alias)
+                agent_call.send_request(content, final_sender_alias=override_sender_alias)
             else:
                 agent_call.send_request(content)
 

@@ -115,7 +115,7 @@ class Message(Freeform):
 
     im_model_: Literal["message"] = "message"
     forum_trees: Optional[ForumTrees] = None
-    sender_alias: Optional[str] = None  # TODO TODO TODO Oleksandr: rename to `final_sender_alias` to avoid confusion ?
+    final_sender_alias: Optional[str] = None
     content: Optional[str] = None
     content_template: Optional[str] = None
     prev_msg_hash_key: Optional[str] = None
@@ -129,15 +129,7 @@ class Message(Freeform):
         """
         Get the alias of the original sender of the message.
         """
-        return self.sender_alias
-
-    @property
-    def final_sender_alias(self) -> str:
-        """
-        Get the alias of the final sender of the message. It may be different from the original sender if the message
-        is forwarded.
-        """
-        return self.sender_alias
+        return self.final_sender_alias
 
     async def aget_previous_msg(self, skip_agent_calls: bool = True) -> Optional["Message"]:
         """
@@ -224,8 +216,8 @@ class Message(Freeform):
         else:
             if not values.get("forum_trees"):
                 raise ValueError("`forum_trees` is required in a non-detached message")
-            if not values.get("sender_alias"):
-                raise ValueError("`sender_alias` is required in a non-detached message")
+            if not values.get("final_sender_alias"):
+                raise ValueError("`final_sender_alias` is required in a non-detached message")
 
         content_template = values.get("content_template")
         if content_template is not None:
@@ -255,7 +247,7 @@ class ForwardedMessage(Message):
 
     @cached_property
     def original_sender_alias(self) -> str:
-        return self.get_original_msg().sender_alias
+        return self.get_original_msg().final_sender_alias
 
     def get_original_msg(self, return_self_if_none: bool = True) -> Optional["Message"]:
         original_msg = self

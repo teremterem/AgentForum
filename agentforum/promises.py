@@ -154,7 +154,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
 class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
     """
     A message that is streamed token by token instead of being returned all at once. StreamedMessage only maintains
-    content (as a stream of tokens) and metadata. It does not maintain sender_alias, prev_msg_hash_key, etc.
+    content (as a stream of tokens) and metadata. It does not maintain final_sender_alias, prev_msg_hash_key, etc.
     """
 
     def __init__(self, *args, override_metadata: Optional[dict[str, Any]] = None, **kwargs) -> None:
@@ -296,7 +296,7 @@ class MessagePromise:
         """
         Get the sender alias of the message as a string.
         """
-        return (await self.amaterialize()).sender_alias
+        return (await self.amaterialize()).final_sender_alias
 
     async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
         """
@@ -317,13 +317,13 @@ class MessagePromise:
             prev_msg_hash_key = None
 
         override_metadata = dict(self._override_metadata)
-        override_sender_alias = override_metadata.pop("sender_alias", None)
+        override_sender_alias = override_metadata.pop("final_sender_alias", None)
 
         if isinstance(self._content, (str, StreamedMessage)):
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
                 materialized_metadata = (await self._content.amaterialize_metadata()).as_dict()
-                sender_alias = override_sender_alias or materialized_metadata.pop("sender_alias", None)
+                final_sender_alias = override_sender_alias or materialized_metadata.pop("final_sender_alias", None)
                 metadata = {
                     **materialized_metadata,
                     **override_metadata,
@@ -331,12 +331,12 @@ class MessagePromise:
             else:
                 # string content
                 msg_content = self._content
-                sender_alias = override_sender_alias
+                final_sender_alias = override_sender_alias
                 metadata = override_metadata
 
             msg = Message(
                 forum_trees=self.forum.forum_trees,
-                sender_alias=sender_alias or self._default_sender_alias,
+                final_sender_alias=final_sender_alias or self._default_sender_alias,
                 content=msg_content,
                 prev_msg_hash_key=prev_msg_hash_key,
                 is_error=self.is_error,
@@ -363,7 +363,7 @@ class MessagePromise:
                 # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
                     forum_trees=self.forum.forum_trees,
-                    sender_alias=override_sender_alias or self._default_sender_alias,
+                    final_sender_alias=override_sender_alias or self._default_sender_alias,
                     msg_before_forward_hash_key=msg_before_forward.hash_key,
                     prev_msg_hash_key=prev_msg_hash_key,
                     is_error=self.is_error,
@@ -465,7 +465,7 @@ class AgentCallMsgPromise(MessagePromise):
         return AgentCallMsg(
             forum_trees=self.forum.forum_trees,
             receiver_alias=self._content,  # receiving_agent_alias
-            sender_alias=SYSTEM_ALIAS,  # agent calls should be cacheable and reuseable by other agents
+            final_sender_alias=SYSTEM_ALIAS,  # agent calls should be cacheable and reuseable by other agents
             function_kwargs=self._override_metadata,  # function_kwargs from the constructor
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent call gets attached to the end of the request messages
             msg_seq_start_hash_key=msg_seq_start_hash_key,

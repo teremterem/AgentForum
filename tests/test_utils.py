@@ -23,7 +23,7 @@ async def athree_message_sequence(forum: Forum, fake_interaction_context: Intera
 
         with producer:
             producer.send_zero_or_more_messages("message 1")
-            producer.send_zero_or_more_messages("message 2", sender_alias="OVERRIDDEN_ALIAS")
+            producer.send_zero_or_more_messages("message 2", final_sender_alias="OVERRIDDEN_ALIAS")
             producer.send_zero_or_more_messages("message 3")
 
         yield sequence
@@ -66,7 +66,7 @@ async def test_arender_conversation_custom_alias_resolver(
             alias_resolver=lambda msg: (
                 None
                 if msg.content == "message 1"  # don't render the first message
-                else f"{''.join([word.capitalize() for word in msg.sender_alias.split('_')])}Bot"
+                else f"{''.join([word.capitalize() for word in msg.final_sender_alias.split('_')])}Bot"
             ),
         )
     assert rendered_conversation == "OverriddenAliasBot: message 2\n\nTestAliasBot: message 3"
@@ -85,7 +85,7 @@ async def test_arender_conversation_with_dicts(forum: Forum, fake_interaction_co
             },
             {
                 "content": "message 5",
-                "sender_alias": "ONE_MORE_SENDER_ALIAS",
+                "final_sender_alias": "ONE_MORE_SENDER_ALIAS",
             },
         ]
         rendered_conversation = await arender_conversation(sequence)

@@ -1,6 +1,7 @@
 """
 Tests for agentforum.promises.AsyncMessageSequence
 """
+
 # pylint: disable=protected-access
 import pytest
 
@@ -188,7 +189,7 @@ async def test_dicts_in_message_sequences(forum: Forum) -> None:
     with producer:
         producer.send_zero_or_more_messages({"content": "message 1"})
         producer.send_zero_or_more_messages(
-            {"content": "message 2", "role": "some_role", "sender_alias": "some_alias"}
+            {"content": "message 2", "role": "some_role", "final_sender_alias": "some_alias"}
         )
 
     actual_messages = await sequence.amaterialize_as_list()
@@ -197,13 +198,13 @@ async def test_dicts_in_message_sequences(forum: Forum) -> None:
     assert type(actual_messages[0]) is Message  # pylint: disable=unidiomatic-typecheck
     assert actual_messages[0].content == "message 1"
     assert not hasattr(actual_messages[0], "role")
-    assert actual_messages[0].sender_alias == "test"
+    assert actual_messages[0].final_sender_alias == "test"
     assert actual_messages[0].prev_msg_hash_key is None
 
     assert type(actual_messages[1]) is Message  # pylint: disable=unidiomatic-typecheck
     assert actual_messages[1].content == "message 2"
     assert actual_messages[1].role == "some_role"
-    assert actual_messages[1].sender_alias == "some_alias"
+    assert actual_messages[1].final_sender_alias == "some_alias"
     assert actual_messages[1].prev_msg_hash_key == actual_messages[0].hash_key
 
 
