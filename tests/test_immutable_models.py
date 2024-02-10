@@ -181,7 +181,7 @@ def test_freeform_hash_key_vs_key_ordering() -> None:
 
 def test_message_metadata_as_dict(forum: Forum) -> None:
     """
-    Test that the `Message.metadata_as_dict` method returns only the custom fields as a dict.
+    Test that the `Message.metadata_as_dict()` method returns only the custom fields as a dict.
     """
     message = Message(
         forum_trees=forum.forum_trees,
@@ -192,7 +192,7 @@ def test_message_metadata_as_dict(forum: Forum) -> None:
     )
 
     assert isinstance(message.custom_field, Freeform)  # make sure it wasn't stored as plain dict
-    assert message.metadata_as_dict == {"custom_field": {"role": "user"}}
+    assert message.metadata_as_dict() == {"custom_field": {"role": "user"}}
 
 
 @pytest.fixture

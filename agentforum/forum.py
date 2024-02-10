@@ -115,7 +115,7 @@ class ConversationTracker:
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     branch_from=self._latest_msg_promise,
                     **{
-                        **content.as_dict,
+                        **content.as_dict(),
                         **override_metadata,
                     },
                 )

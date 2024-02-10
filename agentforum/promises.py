@@ -122,7 +122,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             override_metadata = {}
         else:
             content = incoming_item.zero_or_more_messages
-            override_metadata = incoming_item.override_metadata.as_dict
+            override_metadata = incoming_item.override_metadata.as_dict()
 
         async for msg_promise in self._conversation.aappend_zero_or_more_messages(
             content=content,
@@ -322,7 +322,7 @@ class MessagePromise:
         if isinstance(self._content, (str, StreamedMessage)):
             if isinstance(self._content, StreamedMessage):
                 msg_content = await self._content.amaterialize_content()
-                materialized_metadata = (await self._content.amaterialize_metadata()).as_dict
+                materialized_metadata = (await self._content.amaterialize_metadata()).as_dict()
                 sender_alias = override_sender_alias or materialized_metadata.pop("sender_alias", None)
                 metadata = {
                     **materialized_metadata,
@@ -369,7 +369,7 @@ class MessagePromise:
                     prev_msg_hash_key=prev_msg_hash_key,
                     is_error=self.is_error,
                     **{
-                        **msg_before_forward.metadata_as_dict,
+                        **msg_before_forward.metadata_as_dict(),
                         **override_metadata,
                     },
                 )

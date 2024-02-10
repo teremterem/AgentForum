@@ -34,7 +34,6 @@ class Immutable(BaseModel):
             )
         ).hexdigest()
 
-    @property  # TODO TODO TODO Oleksandr: turn into a regular function (we are not caching mutable objects)
     def as_dict(self) -> dict[str, Any]:
         """
         Get the fields of the object as a dictionary. Omits im_model_ field (which may be defined in subclasses).
@@ -164,7 +163,6 @@ class Message(Freeform):
             return None
         return await self.forum_trees.aretrieve_message(self.reply_to_msg_hash_key)
 
-    @property  # TODO TODO TODO Oleksandr: turn into a regular function (we are not caching mutable objects)
     def metadata_as_dict(self) -> dict[str, Any]:
         """
         Get the metadata from a Message instance as a dictionary. All the custom fields (those which are not defined
