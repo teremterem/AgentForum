@@ -81,7 +81,8 @@ def test_message_hash_key(forum: Forum) -> None:
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
         '{"content": "test", "content_template": null, "custom_field": {"role": "user"}, "im_model_": "message", '
-        '"is_error": false, "prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
+        '"is_error": false, "prev_msg_hash_key": null, "reply_to_msg_hash_key": null, "sender_alias": "user"}'
+        "".encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
@@ -89,7 +90,7 @@ def test_message_hash_key(forum: Forum) -> None:
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
         '{"content": "test", "content_template": null, "im_model_": "message", "is_error": false, '
-        '"prev_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
+        '"prev_msg_hash_key": null, "reply_to_msg_hash_key": null, "sender_alias": "user"}'.encode("utf-8")
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
