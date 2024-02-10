@@ -203,14 +203,14 @@ async def amessage_on_branch(forum: Forum) -> Message:
     await forum.forum_trees.astore_immutable(message)
     message = AgentCallMsg(
         forum_trees=forum.forum_trees,
-        content="call 1",
+        receiver_alias="call 1",
         sender_alias="SYSTEM",
         prev_msg_hash_key=message.hash_key,
     )
     await forum.forum_trees.astore_immutable(message)
     message = AgentCallMsg(
         forum_trees=forum.forum_trees,
-        content="call 2",
+        receiver_alias="call 2",
         sender_alias="SYSTEM",
         prev_msg_hash_key=message.hash_key,
     )
@@ -255,8 +255,8 @@ async def test_message_aget_previous_msg_dont_skip_calls(amessage_on_branch: Awa
     previous_message = await message.aget_previous_msg(skip_agent_calls=False)
 
     # agent calls were NOT skipped
-    assert previous_message.content == "call 2"
     assert type(previous_message) is AgentCallMsg  # pylint: disable=unidiomatic-typecheck
+    assert previous_message.receiver_alias == "call 2"
 
     # more previous messages exist
     assert await previous_message.aget_previous_msg() is not None

@@ -41,7 +41,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             {
                 "im_model_": "call",
                 "sender_alias": "SYSTEM",
-                "content": "_REMINDER_API",
+                "receiver_alias": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
@@ -64,7 +64,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 {
                     "im_model_": "call",
                     "sender_alias": "SYSTEM",
-                    "content": "_REMINDER_API",
+                    "receiver_alias": "_REMINDER_API",
                     "messages_in_request": 1,
                 },
                 {
@@ -75,7 +75,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
                 {
                     "im_model_": "call",
                     "sender_alias": "SYSTEM",
-                    "content": "_CRITIC",
+                    "receiver_alias": "_CRITIC",
                     "messages_in_request": 1,
                 },
                 {
@@ -96,7 +96,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             {
                 "im_model_": "call",
                 "sender_alias": "SYSTEM",
-                "content": "_REMINDER_API",
+                "receiver_alias": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
@@ -107,7 +107,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             {
                 "im_model_": "call",
                 "sender_alias": "SYSTEM",
-                "content": "_CRITIC",
+                "receiver_alias": "_CRITIC",
                 "messages_in_request": 1,
             },
             {
@@ -118,7 +118,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             {
                 "im_model_": "call",
                 "sender_alias": "SYSTEM",
-                "content": "_REMINDER_API",
+                "receiver_alias": "_REMINDER_API",
                 "messages_in_request": 1,
             },
             {
@@ -153,7 +153,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         {
             "im_model_": "call",
             "sender_alias": "SYSTEM",
-            "content": "_ASSISTANT",
+            "receiver_alias": "_ASSISTANT",
             "messages_in_request": 1,
         },
         {
@@ -212,7 +212,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
         {
             "im_model_": "call",
             "sender_alias": "SYSTEM",
-            "content": "_AGENT1",
+            "receiver_alias": "_AGENT1",
             "messages_in_request": 1,
         },
         {
@@ -306,7 +306,7 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "call",
                 "sender_alias": "SYSTEM",
-                "content": "_AGENT1",
+                "receiver_alias": "_AGENT1",
                 "messages_in_request": 2,
             },
             {
@@ -346,7 +346,7 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "call",
                 "sender_alias": "SYSTEM",
-                "content": "_AGENT2",
+                "receiver_alias": "_AGENT2",
                 "messages_in_request": 1,
             },
             {
@@ -362,7 +362,7 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "call",
                 "sender_alias": "SYSTEM",
-                "content": "_AGENT1",
+                "receiver_alias": "_AGENT1",
                 "messages_in_request": 2,
             },
             {

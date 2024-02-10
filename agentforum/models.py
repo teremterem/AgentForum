@@ -300,15 +300,15 @@ class AgentCallMsg(Message):
     A subtype of Message that represents a call to an agent.
     """
 
+    receiver_alias: str
     im_model_: Literal["call"] = "call"
     function_kwargs: Freeform = Freeform()
     msg_seq_start_hash_key: Optional[str] = None
     is_detached: Literal[False] = False  # agent call messages cannot be detached
 
-    @property
-    def receiver_alias(self) -> str:
-        """Get the alias of the agent that is being called."""
-        return self.content  # TODO TODO TODO Oleksandr: stop using `content` for this purpose ?
+    @classmethod
+    def _require_content(cls) -> bool:
+        return False
 
 
 class ContentChunk(BaseModel):

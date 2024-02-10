@@ -464,7 +464,7 @@ class AgentCallMsgPromise(MessagePromise):
 
         return AgentCallMsg(
             forum_trees=self.forum.forum_trees,
-            content=self._content,  # receiving_agent_alias
+            receiver_alias=self._content,  # receiving_agent_alias
             sender_alias=SYSTEM_ALIAS,  # agent calls should be cacheable and reuseable by other agents
             function_kwargs=self._override_metadata,  # function_kwargs from the constructor
             prev_msg_hash_key=msg_seq_end_hash_key,  # agent call gets attached to the end of the request messages
