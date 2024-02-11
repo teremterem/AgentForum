@@ -10,6 +10,7 @@ import contextvars
 import logging
 import typing
 from contextvars import ContextVar
+from functools import cached_property
 from typing import Optional, AsyncIterator, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
@@ -191,7 +192,7 @@ class Agent:
     def __init__(
         self,
         forum: "Forum",
-        func: "AgentFunction",
+        func: Optional["AgentFunction"],
         alias: Optional[str] = None,
         description: Optional[str] = None,
         uppercase_func_name: bool = True,
@@ -392,7 +393,8 @@ class Agent:
                 response_producer=agent_call._response_producer,
             ) as ctx:
                 try:
-                    await self._func(ctx, **function_kwargs)
+                    if self._func:
+                        await self._func(ctx, **function_kwargs)
                 except BaseException as exc:  # pylint: disable=broad-except
                     logger.debug("AGENT FUNCTION OF %s RAISED AN EXCEPTION:", self.alias, exc_info=True)
                     ctx.respond(exc)
@@ -458,6 +460,14 @@ class Forum(BaseModel):
             self._conversations[descriptor.hash_key] = conversation
 
         return conversation
+
+    @cached_property
+    def _user_agent(self) -> Agent:
+        """
+        A special agent that represents the user. It is used to send messages to the forum as if they were sent by the
+        user. This is useful when the user is interacting with the forum directly (for ex. through a web interface).
+        """
+        return Agent(self, None, alias=USER_ALIAS)
 
 
 # noinspection PyProtectedMember
