@@ -289,7 +289,6 @@ class Agent:
             if self.forum is not _CURRENT_FORUM.get():
                 prev_forum_token = _CURRENT_FORUM.set(self.forum)
 
-            # TODO TODO TODO
             if branch_from and conversation:
                 raise ValueError(
                     "Cannot specify both `conversation` and `branch_from` in `Agent.call()` or `Agent.quick_call()`"
@@ -303,6 +302,7 @@ class Agent:
                         "Cannot force a new conversation when there is prior history in `ConversationTracker`"
                     )
             else:
+                # TODO TODO TODO TODO TODO
                 conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
 
             agent_call = AgentCall(
@@ -477,7 +477,7 @@ class AgentCall:
         conversation._latest_msg_promise = agent_call_msg_promise
 
         if is_asking:
-            # TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to AgentCallMsg) ?
+            # TODO TODO TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to AgentCallMsg) ?
             self._response_messages = AsyncMessageSequence(
                 conversation, default_sender_alias=self.receiving_agent.alias
             )
