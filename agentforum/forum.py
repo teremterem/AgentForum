@@ -15,7 +15,7 @@ from typing import Optional, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
-from agentforum.conversation_tracker import ConversationTracker
+from agentforum.conversations import ConversationTracker
 from agentforum.errors import NoAskingAgentError
 from agentforum.models import Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, AgentCallMsgPromise
