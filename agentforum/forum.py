@@ -93,10 +93,25 @@ class Forum(BaseModel):
     @cached_property
     def _user_agent(self) -> "Agent":
         """
-        A special agent that represents the user. It is used to send messages to the forum as if they were sent by the
-        user. This is useful when the user is interacting with the forum directly (for ex. through a web interface).
+        A special agent that represents the user. It is used to call other agents from the user's perspective.
         """
         return Agent(self, None, alias=USER_ALIAS)
+
+    @cached_property
+    def _user_interaction_context(self) -> "InteractionContext":
+        """
+        A special interaction context that represents the user. It is used to call other agents from the user's
+        perspective.
+        """
+        return InteractionContext(
+            forum=self,
+            agent=self._user_agent,
+            request_messages=None,
+            response_producer=None,
+        )
+
+
+_CURRENT_FORUM: ContextVar[Optional["Forum"]] = ContextVar("_CURRENT_FORUM", default=None)
 
 
 # noinspection PyProtectedMember
@@ -269,36 +284,45 @@ class Agent:
         force_new_conversation: bool = False,  # TODO TODO TODO Oleksandr: rename to just `new_conversation` ?
         **function_kwargs,
     ) -> "AgentCall":
-        # TODO TODO TODO
-        if branch_from and conversation:
-            raise ValueError("Cannot specify both conversation and branch_from in Agent.call() or Agent.quick_call()")
-        if branch_from:
-            conversation = ConversationTracker(self.forum, branch_from=branch_from)
+        prev_forum_token = None
+        try:
+            if self.forum is not _CURRENT_FORUM.get():
+                prev_forum_token = _CURRENT_FORUM.set(self.forum)
 
-        if conversation:
-            if conversation.has_prior_history and force_new_conversation:
-                raise ValueError("Cannot force a new conversation when there is prior history in ConversationTracker")
-        else:
-            conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
+            # TODO TODO TODO
+            if branch_from and conversation:
+                raise ValueError(
+                    "Cannot specify both `conversation` and `branch_from` in `Agent.call()` or `Agent.quick_call()`"
+                )
+            if branch_from:
+                conversation = ConversationTracker(self.forum, branch_from=branch_from)
 
-        agent_call = AgentCall(
-            forum=self.forum,
-            conversation=conversation,
-            receiving_agent=self,
-            is_asking=is_asking,
-            do_not_forward_if_possible=not force_new_conversation,
-            **function_kwargs,
-        )
-        agent_call._task = asyncio.create_task(
-            self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs)
-        )
+            if conversation:
+                if conversation.has_prior_history and force_new_conversation:
+                    raise ValueError(
+                        "Cannot force a new conversation when there is prior history in `ConversationTracker`"
+                    )
+            else:
+                conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
 
-        parent_ctx = InteractionContext.get_current_context()
-        # TODO TODO TODO Oleksandr: if there is no active agent call, InteractionContext.get_current_context() should
-        #  return a default, "USER" context and not just None
-        if parent_ctx:
+            agent_call = AgentCall(
+                forum=self.forum,
+                conversation=conversation,
+                receiving_agent=self,
+                is_asking=is_asking,
+                do_not_forward_if_possible=not force_new_conversation,
+                **function_kwargs,
+            )
+            agent_call._task = asyncio.create_task(
+                self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs)
+            )
+            parent_ctx = InteractionContext.get_current_context()
             parent_ctx._child_agent_calls.append(agent_call)
-        return agent_call
+
+            return agent_call
+        finally:
+            if prev_forum_token:
+                _CURRENT_FORUM.reset(prev_forum_token)
 
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
         with agent_call._response_producer or contextlib.nullcontext():
@@ -329,13 +353,13 @@ class InteractionContext:
         self,
         forum: "Forum",
         agent: Agent,
-        request_messages: AsyncMessageSequence,
+        request_messages: Optional[AsyncMessageSequence],
         response_producer: Optional["AsyncMessageSequence._MessageProducer"],
     ) -> None:
         self.forum = forum
         self.this_agent = agent
         self.request_messages = request_messages
-        self.parent_context: Optional["InteractionContext"] = self.get_current_context()
+        self.parent_context: Optional["InteractionContext"] = self._current_context.get()
 
         self._response_producer = response_producer
         self._child_agent_calls: list[AgentCall] = []
@@ -360,7 +384,7 @@ class InteractionContext:
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
         """Get the current InteractionContext object."""
-        return cls._current_context.get()
+        return cls._current_context.get() or _CURRENT_FORUM.get()._user_interaction_context
 
     def get_asked_context(self) -> "InteractionContext":
         """
@@ -379,10 +403,7 @@ class InteractionContext:
         """
         Get the sender alias from the current InteractionContext object.
         """
-        ctx = cls.get_current_context()
-        if ctx:
-            return ctx.this_agent.alias
-        return USER_ALIAS
+        return cls.get_current_context().this_agent.alias
 
     async def __aenter__(self) -> "InteractionContext":
         """
