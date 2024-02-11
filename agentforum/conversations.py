@@ -7,7 +7,7 @@ from typing import Optional, AsyncIterator, Union
 
 from agentforum.errors import FormattedForumError
 from agentforum.models import Message
-from agentforum.promises import MessagePromise, StreamedMessage
+from agentforum.promises import MessagePromise, StreamedMessage, AsyncMessageSequence
 from agentforum.utils import Sentinel, NO_VALUE
 
 if typing.TYPE_CHECKING:
@@ -23,7 +23,9 @@ class ConversationTracker:
     branch of messages or not will be determined by the messages that are passed into this conversation later.
     """
 
-    def __init__(self, forum: "Forum", branch_from: Optional[Union[MessagePromise, Sentinel]] = None) -> None:
+    def __init__(
+        self, forum: "Forum", branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None
+    ) -> None:
         self.forum = forum
         self._latest_msg_promise = branch_from
 
@@ -32,6 +34,8 @@ class ConversationTracker:
         """
         Check if there is prior history in this conversation.
         """
+        # TODO TODO TODO Oleksandr: if `self._latest_msg_promise` is a sequence, then it still may turn out to be
+        #  empty - what to do about that ?
         return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
 
     # noinspection PyProtectedMember
@@ -46,6 +50,10 @@ class ConversationTracker:
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
         # pylint: disable=too-many-branches
+        # TODO TODO TODO Oleksandr: is locking necessary in this method ?
+        if isinstance(self._latest_msg_promise, AsyncMessageSequence):
+            self._latest_msg_promise = await self._latest_msg_promise.aget_concluding_msg_promise(raise_if_none=False)
+
         if isinstance(content, BaseException):
             if isinstance(content, FormattedForumError):
                 formatted_error = content
