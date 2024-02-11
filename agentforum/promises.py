@@ -438,7 +438,7 @@ class MessagePromise:
         return None if self._branch_from is NO_VALUE else self._branch_from
 
     async def aget_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
+        self, skip_agent_calls: bool = True, include_this_message: bool = True, prefer_replies: bool = False
     ) -> list["MessagePromise"]:
         """
         Get the full chat history of the conversation branch up to this message. Returns a list of MessagePromise
@@ -447,7 +447,14 @@ class MessagePromise:
         # TODO Oleksandr: introduce a limit on the number of messages to fetch ?
         msg_promise = self
         result = [msg_promise] if include_this_message else []
-        while msg_promise := await msg_promise.aget_previous_msg_promise(skip_agent_calls=skip_agent_calls):
+        while msg_promise := (
+            (
+                await msg_promise.aget_reply_to_msg_promise(skip_agent_calls=skip_agent_calls)
+                if prefer_replies
+                else None
+            )
+            or await msg_promise.aget_previous_msg_promise(skip_agent_calls=skip_agent_calls)
+        ):
             result.append(msg_promise)
         result.reverse()
         return result
