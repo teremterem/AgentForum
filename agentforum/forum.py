@@ -316,7 +316,7 @@ class Agent:
             agent_call._task = asyncio.create_task(
                 self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs)
             )
-            parent_ctx = InteractionContext.get_current_context()
+            parent_ctx = InteractionContext.get_current_context()  # TODO TODO TODO
             parent_ctx._child_agent_calls.append(agent_call)
 
             return agent_call
