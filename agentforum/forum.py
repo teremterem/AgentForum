@@ -63,6 +63,7 @@ class ConversationTracker:
                 formatted_error = content
             else:
                 formatted_error = FormattedForumError(original_error=content)
+
             msg_promise = MessagePromise(
                 forum=self.forum,
                 content=await formatted_error.agenerate_error_message(self._latest_msg_promise),
@@ -109,23 +110,33 @@ class ConversationTracker:
 
         elif isinstance(content, Message):
             if content.is_detached:
+                msg_fields = content.as_dict()
+                msg_fields.pop("reply_to_msg_hash_key", None)
+
                 msg_promise = MessagePromise(
                     forum=self.forum,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     branch_from=self._latest_msg_promise,
                     **{
-                        **content.as_dict(),
+                        **msg_fields,
                         **override_metadata,
                     },
                 )
             else:
+                if content.reply_to_msg_hash_key:
+                    reply_to_msg = await self.forum.forum_trees.aretrieve_message(content.reply_to_msg_hash_key)
+                    reply_to = MessagePromise(forum=self.forum, materialized_msg=reply_to_msg)
+                else:
+                    reply_to = None
+
                 msg_promise = MessagePromise(
                     forum=self.forum,
                     content=content,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     branch_from=self._latest_msg_promise,
+                    reply_to=reply_to,  # TODO TODO TODO Oleksandr: should I really pass it here ?
                     is_error=content.is_error,
                     error=content._error,
                     **override_metadata,

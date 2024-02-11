@@ -200,6 +200,7 @@ class MessagePromise:
         default_sender_alias: Optional[str] = None,
         do_not_forward_if_possible: bool = True,
         branch_from: Optional["MessagePromise"] = None,
+        reply_to: Optional["MessagePromise"] = None,
         materialized_msg: Optional[Message] = None,
         is_error: bool = False,
         error: Optional[BaseException] = None,
@@ -207,14 +208,22 @@ class MessagePromise:
     ) -> None:
         # pylint: disable=too-many-boolean-expressions
         if materialized_msg and (
-            content is not None or default_sender_alias or branch_from or is_error or error or override_metadata
+            content is not None
+            or default_sender_alias
+            or branch_from
+            or reply_to
+            or is_error
+            or error
+            or override_metadata
         ):
             raise ValueError(
-                "If materialized_msg is provided, content, default_sender_alias, branch_from, is_error, error and "
-                "override_metadata must not be provided."
+                "If `materialized_msg` is provided, `content`, `default_sender_alias`, `branch_from`, `reply_to`, "
+                "`is_error`, `error` and `override_metadata` must not be provided."
             )
         if not materialized_msg and (content is None or not default_sender_alias):
-            raise ValueError("If materialized_msg is not provided, content and default_sender_alias must be provided.")
+            raise ValueError(
+                "If `materialized_msg` is not provided, `content` and `default_sender_alias` must be provided."
+            )
 
         self.forum = forum
 
@@ -222,6 +231,7 @@ class MessagePromise:
         self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
         self._branch_from = branch_from
+        self._reply_to = reply_to
         self._override_metadata = override_metadata
 
         if materialized_msg:
@@ -282,6 +292,7 @@ class MessagePromise:
                     self._content = None
                     self._default_sender_alias = None
                     self._branch_from = None
+                    self._reply_to = None
                     self._override_metadata = None
 
         return self._materialized_msg
@@ -304,11 +315,28 @@ class MessagePromise:
 
         return prev_msg_promise
 
+    async def aget_reply_to_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+        """
+        Get the MessagePromise that this MessagePromise is a reply to.
+        """
+        reply_to_msg_promise = await self._aget_reply_to_msg_promise_try_materialized()
+
+        if skip_agent_calls:
+            while reply_to_msg_promise and reply_to_msg_promise.is_agent_call:
+                reply_to_msg_promise = await reply_to_msg_promise._aget_reply_to_msg_promise_try_materialized()
+
+        return reply_to_msg_promise
+
     async def _amaterialize_impl(self) -> Message:
         if self._branch_from and self._branch_from is not NO_VALUE:
             prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key
         else:
             prev_msg_hash_key = None
+
+        if self._reply_to:
+            reply_to_msg_hash_key = (await self._reply_to.amaterialize()).hash_key
+        else:
+            reply_to_msg_hash_key = None
 
         override_metadata = dict(self._override_metadata)
         override_sender_alias = override_metadata.pop("final_sender_alias", None)
@@ -333,6 +361,7 @@ class MessagePromise:
                 final_sender_alias=final_sender_alias or self._default_sender_alias,
                 content=msg_content,
                 prev_msg_hash_key=prev_msg_hash_key,
+                reply_to_msg_hash_key=reply_to_msg_hash_key,
                 is_error=self.is_error,
                 is_detached=False,
                 **metadata,
@@ -350,6 +379,7 @@ class MessagePromise:
                 (not self._do_not_forward_if_possible)
                 or self._override_metadata
                 or (self._branch_from is not NO_VALUE and prev_msg_hash_key != msg_before_forward.prev_msg_hash_key)
+                or reply_to_msg_hash_key != msg_before_forward.reply_to_msg_hash_key
             ):
                 # the message must be forwarded because either we are not actively trying to avoid forwarding
                 # (do_not_forward_if_possible is False), or additional metadata was provided (message forwarding is
@@ -360,6 +390,7 @@ class MessagePromise:
                     final_sender_alias=override_sender_alias or self._default_sender_alias,
                     msg_before_forward_hash_key=msg_before_forward.hash_key,
                     prev_msg_hash_key=prev_msg_hash_key,
+                    reply_to_msg_hash_key=reply_to_msg_hash_key,
                     is_error=self.is_error,
                     **{
                         **msg_before_forward.metadata_as_dict(),
@@ -383,6 +414,14 @@ class MessagePromise:
             return None
         return await self._aget_previous_msg_promise_impl()
 
+    async def _aget_reply_to_msg_promise_try_materialized(self) -> Optional["MessagePromise"]:
+        if self._materialized_msg:
+            if self._materialized_msg.reply_to_msg_hash_key:
+                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.reply_to_msg_hash_key)
+                return MessagePromise(forum=self.forum, materialized_msg=message)
+            return None
+        return self._reply_to
+
     async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
         if self._do_not_forward_if_possible and self._branch_from is NO_VALUE:
             # this message promise doesn't have a previous message promise of its own but there may be an "original"
@@ -399,7 +438,7 @@ class MessagePromise:
         return None if self._branch_from is NO_VALUE else self._branch_from
 
     async def aget_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
+        self, skip_agent_calls: bool = True, include_this_message: bool = True, prefer_replies: bool = False
     ) -> list["MessagePromise"]:
         """
         Get the full chat history of the conversation branch up to this message. Returns a list of MessagePromise
@@ -408,7 +447,14 @@ class MessagePromise:
         # TODO Oleksandr: introduce a limit on the number of messages to fetch ?
         msg_promise = self
         result = [msg_promise] if include_this_message else []
-        while msg_promise := await msg_promise.aget_previous_msg_promise(skip_agent_calls=skip_agent_calls):
+        while msg_promise := (
+            (
+                await msg_promise.aget_reply_to_msg_promise(skip_agent_calls=skip_agent_calls)
+                if prefer_replies
+                else None
+            )
+            or await msg_promise.aget_previous_msg_promise(skip_agent_calls=skip_agent_calls)
+        ):
             result.append(msg_promise)
         result.reverse()
         return result

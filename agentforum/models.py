@@ -209,8 +209,11 @@ class Message(Freeform):
             raise ValueError("either `content` or `content_template` must be present in a message")
 
         if values.get("is_detached", cls.model_fields["is_detached"].default):
-            if "forum_trees" in values or "prev_msg_hash_key" in values:
-                raise ValueError("`forum_trees` and `prev_msg_hash_key` cannot be present in a detached message")
+            if "forum_trees" in values or "prev_msg_hash_key" in values or "reply_to_msg_hash_key" in values:
+                raise ValueError(
+                    "neither `forum_trees` nor `prev_msg_hash_key` nor `reply_to_msg_hash_key` can be present in a "
+                    "detached message"
+                )
             if "content" in values and "content_template" in values:
                 raise ValueError("`content` and `content_template` cannot be both present in a detached message")
         else:
