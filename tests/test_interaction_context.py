@@ -1,3 +1,4 @@
+# pylint: disable=protected-access
 """Tests for the InteractionContext class."""
 
 import asyncio
@@ -5,13 +6,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agentforum.forum import InteractionContext
+from agentforum.forum import InteractionContext, Forum, _CURRENT_FORUM
 
 
 @pytest.mark.asyncio
-async def test_nested_interaction_contexts() -> None:
+async def test_nested_interaction_contexts(forum: Forum) -> None:
     """Assert that nesting of interaction contexts works as expected."""
-    assert InteractionContext.get_current_context() is None
+    _CURRENT_FORUM.set(forum)
+    assert InteractionContext.get_current_context() is forum._user_interaction_context
 
     async with _create_interaction_context("agent1") as ctx1:
         assert InteractionContext.get_current_context() is ctx1
@@ -27,12 +29,13 @@ async def test_nested_interaction_contexts() -> None:
 
         assert InteractionContext.get_current_context() is ctx1
 
-    assert InteractionContext.get_current_context() is None
+    assert InteractionContext.get_current_context() is forum._user_interaction_context
 
 
 @pytest.mark.asyncio
-async def test_interaction_contexts_with_create_task() -> None:
+async def test_interaction_contexts_with_create_task(forum: Forum) -> None:
     """Assert that nesting of interaction contexts works as expected even when asyncio.create_task() is involved."""
+    _CURRENT_FORUM.set(forum)
     ctx0 = _create_interaction_context("agent0")
 
     async def task1() -> None:
@@ -51,12 +54,12 @@ async def test_interaction_contexts_with_create_task() -> None:
             await asyncio.sleep(0.01)
         assert InteractionContext.get_current_context() is ctx0
 
-    assert InteractionContext.get_current_context() is None
+    assert InteractionContext.get_current_context() is forum._user_interaction_context
     async with ctx0:
         assert InteractionContext.get_current_context() is ctx0
         await asyncio.gather(asyncio.create_task(task1()), asyncio.create_task(task2()))
         assert InteractionContext.get_current_context() is ctx0
-    assert InteractionContext.get_current_context() is None
+    assert InteractionContext.get_current_context() is forum._user_interaction_context
 
 
 def _create_interaction_context(agent_alias: str) -> InteractionContext:

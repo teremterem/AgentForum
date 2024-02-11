@@ -10,13 +10,15 @@ import contextvars
 import logging
 import typing
 from contextvars import ContextVar
-from typing import Optional, AsyncIterator, Union, Callable
+from functools import cached_property
+from typing import Optional, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
-from agentforum.errors import NoAskingAgentError, FormattedForumError
-from agentforum.models import Message, Immutable
-from agentforum.promises import MessagePromise, AsyncMessageSequence, StreamedMessage, AgentCallMsgPromise
+from agentforum.conversations import ConversationTracker
+from agentforum.errors import NoAskingAgentError
+from agentforum.models import Immutable
+from agentforum.promises import MessagePromise, AsyncMessageSequence, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
 from agentforum.storage.trees_impl import InMemoryTrees
 from agentforum.utils import Sentinel, NO_VALUE, USER_ALIAS
@@ -25,161 +27,6 @@ if typing.TYPE_CHECKING:
     from agentforum.typing import AgentFunction, MessageType
 
 logger = logging.getLogger(__name__)
-
-
-class ConversationTracker:
-    """
-    An object that tracks the tip of a conversation branch.
-
-    If `branch_from` is set to NO_VALUE then it means that whether this conversation is branched off of an existing
-    branch of messages or not will be determined by the messages that are passed into this conversation later.
-    """
-
-    def __init__(self, forum: "Forum", branch_from: Optional[Union[MessagePromise, Sentinel]] = None) -> None:
-        self.forum = forum
-        self._latest_msg_promise = branch_from
-
-    @property
-    def has_prior_history(self) -> bool:
-        """
-        Check if there is prior history in this conversation.
-        """
-        return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
-
-    # noinspection PyProtectedMember
-    async def aappend_zero_or_more_messages(
-        self,
-        content: "MessageType",
-        default_sender_alias: str,
-        do_not_forward_if_possible: bool = True,
-        **override_metadata,
-    ) -> AsyncIterator[MessagePromise]:
-        """
-        Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
-        """
-        # pylint: disable=too-many-branches
-        if isinstance(content, BaseException):
-            if isinstance(content, FormattedForumError):
-                formatted_error = content
-            else:
-                formatted_error = FormattedForumError(original_error=content)
-
-            msg_promise = MessagePromise(
-                forum=self.forum,
-                content=await formatted_error.agenerate_error_message(self._latest_msg_promise),
-                default_sender_alias=default_sender_alias,
-                do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                is_error=True,
-                error=content,
-                **{
-                    **formatted_error.metadata,
-                    **override_metadata,
-                },
-            )
-            self._latest_msg_promise = msg_promise
-            yield msg_promise
-
-        elif isinstance(content, MessagePromise):
-            msg_promise = MessagePromise(
-                forum=self.forum,
-                content=content,
-                default_sender_alias=default_sender_alias,
-                do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                is_error=content.is_error,
-                error=content._error,
-                **override_metadata,
-            )
-            self._latest_msg_promise = msg_promise
-            yield msg_promise
-
-        elif isinstance(content, dict):
-            msg_promise = MessagePromise(
-                forum=self.forum,
-                default_sender_alias=default_sender_alias,
-                do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                **{
-                    **content,
-                    **override_metadata,
-                },
-            )
-            self._latest_msg_promise = msg_promise
-            yield msg_promise
-
-        elif isinstance(content, Message):
-            if content.is_detached:
-                msg_fields = content.as_dict()
-                msg_fields.pop("reply_to_msg_hash_key", None)
-
-                msg_promise = MessagePromise(
-                    forum=self.forum,
-                    default_sender_alias=default_sender_alias,
-                    do_not_forward_if_possible=do_not_forward_if_possible,
-                    branch_from=self._latest_msg_promise,
-                    **{
-                        **msg_fields,
-                        **override_metadata,
-                    },
-                )
-            else:
-                if content.reply_to_msg_hash_key:
-                    reply_to_msg = await self.forum.forum_trees.aretrieve_message(content.reply_to_msg_hash_key)
-                    reply_to = MessagePromise(forum=self.forum, materialized_msg=reply_to_msg)
-                else:
-                    reply_to = None
-
-                msg_promise = MessagePromise(
-                    forum=self.forum,
-                    content=content,
-                    default_sender_alias=default_sender_alias,
-                    do_not_forward_if_possible=do_not_forward_if_possible,
-                    branch_from=self._latest_msg_promise,
-                    reply_to=reply_to,  # TODO TODO TODO Oleksandr: should I really pass it here ?
-                    is_error=content.is_error,
-                    error=content._error,
-                    **override_metadata,
-                )
-            self._latest_msg_promise = msg_promise
-            yield msg_promise
-
-        elif isinstance(content, (str, StreamedMessage)):
-            msg_promise = MessagePromise(
-                forum=self.forum,
-                content=content,
-                default_sender_alias=default_sender_alias,
-                do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                **override_metadata,
-            )
-            self._latest_msg_promise = msg_promise
-            yield msg_promise
-
-        elif hasattr(content, "__iter__"):
-            # this is not a single message, this is a collection of messages
-            for sub_msg in content:
-                async for msg_promise in self.aappend_zero_or_more_messages(
-                    content=sub_msg,
-                    default_sender_alias=default_sender_alias,
-                    do_not_forward_if_possible=do_not_forward_if_possible,
-                    **override_metadata,
-                ):
-                    self._latest_msg_promise = msg_promise
-                    yield msg_promise
-        elif hasattr(content, "__aiter__"):
-            # this is not a single message, this is an asynchronous collection of messages
-            async for sub_msg in content:
-                async for msg_promise in self.aappend_zero_or_more_messages(
-                    content=sub_msg,
-                    default_sender_alias=default_sender_alias,
-                    do_not_forward_if_possible=do_not_forward_if_possible,
-                    **override_metadata,
-                ):
-                    self._latest_msg_promise = msg_promise
-                    yield msg_promise
-        else:
-            raise ValueError(f"Unexpected message content type: {type(content)}")
 
 
 class Forum(BaseModel):
@@ -243,6 +90,29 @@ class Forum(BaseModel):
 
         return conversation
 
+    @cached_property
+    def _user_agent(self) -> "Agent":
+        """
+        A special agent that represents the user. It is used to call other agents from the user's perspective.
+        """
+        return Agent(self, None, alias=USER_ALIAS)
+
+    @cached_property
+    def _user_interaction_context(self) -> "InteractionContext":
+        """
+        A special interaction context that represents the user. It is used to call other agents from the user's
+        perspective.
+        """
+        return InteractionContext(
+            forum=self,
+            agent=self._user_agent,
+            request_messages=None,
+            response_producer=None,
+        )
+
+
+_CURRENT_FORUM: ContextVar[Optional["Forum"]] = ContextVar("_CURRENT_FORUM", default=None)
+
 
 # noinspection PyProtectedMember
 class Agent:
@@ -253,7 +123,7 @@ class Agent:
     def __init__(
         self,
         forum: Forum,
-        func: "AgentFunction",
+        func: Optional["AgentFunction"],
         alias: Optional[str] = None,
         description: Optional[str] = None,
         uppercase_func_name: bool = True,
@@ -411,38 +281,48 @@ class Agent:
         is_asking: bool,
         branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,
+        force_new_conversation: bool = False,  # TODO TODO TODO Oleksandr: rename to just `new_conversation` ?
         **function_kwargs,
     ) -> "AgentCall":
-        if branch_from and conversation:
-            raise ValueError("Cannot specify both conversation and branch_from in Agent.call() or Agent.quick_call()")
-        if branch_from:
-            conversation = ConversationTracker(self.forum, branch_from=branch_from)
+        prev_forum_token = None
+        try:
+            if self.forum is not _CURRENT_FORUM.get():
+                prev_forum_token = _CURRENT_FORUM.set(self.forum)
 
-        if conversation:
-            if conversation.has_prior_history and force_new_conversation:
-                raise ValueError("Cannot force a new conversation when there is prior history in ConversationTracker")
-        else:
-            conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
+            # TODO TODO TODO
+            if branch_from and conversation:
+                raise ValueError(
+                    "Cannot specify both `conversation` and `branch_from` in `Agent.call()` or `Agent.quick_call()`"
+                )
+            if branch_from:
+                conversation = ConversationTracker(self.forum, branch_from=branch_from)
 
-        agent_call = AgentCall(
-            forum=self.forum,
-            conversation=conversation,
-            receiving_agent=self,
-            is_asking=is_asking,
-            do_not_forward_if_possible=not force_new_conversation,
-            **function_kwargs,
-        )
-        agent_call._task = asyncio.create_task(
-            self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs)
-        )
+            if conversation:
+                if conversation.has_prior_history and force_new_conversation:
+                    raise ValueError(
+                        "Cannot force a new conversation when there is prior history in `ConversationTracker`"
+                    )
+            else:
+                conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
 
-        parent_ctx = InteractionContext.get_current_context()
-        # TODO Oleksandr: if there is no active agent call, InteractionContext.get_current_context() should return a
-        #  default, "USER" context and not just None
-        if parent_ctx:
+            agent_call = AgentCall(
+                forum=self.forum,
+                conversation=conversation,
+                receiving_agent=self,
+                is_asking=is_asking,
+                do_not_forward_if_possible=not force_new_conversation,
+                **function_kwargs,
+            )
+            agent_call._task = asyncio.create_task(
+                self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs)
+            )
+            parent_ctx = InteractionContext.get_current_context()
             parent_ctx._child_agent_calls.append(agent_call)
-        return agent_call
+
+            return agent_call
+        finally:
+            if prev_forum_token:
+                _CURRENT_FORUM.reset(prev_forum_token)
 
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
         with agent_call._response_producer or contextlib.nullcontext():
@@ -453,7 +333,8 @@ class Agent:
                 response_producer=agent_call._response_producer,
             ) as ctx:
                 try:
-                    await self._func(ctx, **function_kwargs)
+                    if self._func:
+                        await self._func(ctx, **function_kwargs)
                 except BaseException as exc:  # pylint: disable=broad-except
                     logger.debug("AGENT FUNCTION OF %s RAISED AN EXCEPTION:", self.alias, exc_info=True)
                     ctx.respond(exc)
@@ -470,15 +351,15 @@ class InteractionContext:
 
     def __init__(
         self,
-        forum: Forum,
+        forum: "Forum",
         agent: Agent,
-        request_messages: AsyncMessageSequence,
+        request_messages: Optional[AsyncMessageSequence],
         response_producer: Optional["AsyncMessageSequence._MessageProducer"],
     ) -> None:
         self.forum = forum
         self.this_agent = agent
         self.request_messages = request_messages
-        self.parent_context: Optional["InteractionContext"] = self.get_current_context()
+        self.parent_context: Optional["InteractionContext"] = self._current_context.get()
 
         self._response_producer = response_producer
         self._child_agent_calls: list[AgentCall] = []
@@ -503,7 +384,7 @@ class InteractionContext:
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
         """Get the current InteractionContext object."""
-        return cls._current_context.get()
+        return cls._current_context.get() or _CURRENT_FORUM.get()._user_interaction_context
 
     def get_asked_context(self) -> "InteractionContext":
         """
@@ -522,10 +403,7 @@ class InteractionContext:
         """
         Get the sender alias from the current InteractionContext object.
         """
-        ctx = cls.get_current_context()
-        if ctx:
-            return ctx.this_agent.alias
-        return USER_ALIAS
+        return cls.get_current_context().this_agent.alias
 
     async def __aenter__(self) -> "InteractionContext":
         """
@@ -568,15 +446,16 @@ class AgentCall:
         conversation: ConversationTracker,
         receiving_agent: Agent,
         is_asking: bool,
-        do_not_forward_if_possible: bool = True,
+        do_not_forward_if_possible: bool = True,  # TODO TODO TODO Oleksandr: this concept should go away
         **function_kwargs,
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
         self.is_asking = is_asking
 
-        # TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it completely when
-        #  you get to implementing cached agent calls
+        # TODO TODO TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it
+        #  completely when you get to implementing cached agent calls
+        # TODO TODO TODO
         temporary_sub_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
 
         self._request_messages = AsyncMessageSequence(
@@ -594,6 +473,7 @@ class AgentCall:
             receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,
         )
+        # TODO TODO TODO
         conversation._latest_msg_promise = agent_call_msg_promise
 
         if is_asking:
