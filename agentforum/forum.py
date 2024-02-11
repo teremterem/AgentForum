@@ -182,68 +182,6 @@ class ConversationTracker:
             raise ValueError(f"Unexpected message content type: {type(content)}")
 
 
-class Forum(BaseModel):
-    """
-    A forum for agents to communicate. Messages in the forum assemble in a tree-like structure.
-    """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
-    _conversations: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
-
-    def agent(
-        self,
-        func: Optional["AgentFunction"] = None,
-        alias: Optional[str] = None,
-        description: Optional[str] = None,
-        uppercase_func_name: bool = True,
-        normalize_spaces_in_docstring: bool = True,
-    ) -> Union["Agent", Callable[["AgentFunction"], "Agent"]]:
-        """
-        A decorator that registers an agent function in the forum.
-        """
-        if func is None:
-            # the decorator `@forum.agent(...)` was used with arguments
-            def _decorator(f: "AgentFunction") -> "Agent":
-                return Agent(
-                    self,
-                    f,
-                    alias=alias,
-                    description=description,
-                    uppercase_func_name=uppercase_func_name,
-                    normalize_spaces_in_docstring=normalize_spaces_in_docstring,
-                )
-
-            return _decorator
-
-        # the decorator `@forum.agent` was used either without arguments or as a direct function call
-        return Agent(
-            self,
-            func,
-            alias=alias,
-            description=description,
-            uppercase_func_name=uppercase_func_name,
-            normalize_spaces_in_docstring=normalize_spaces_in_docstring,
-        )
-
-    def get_conversation(
-        self, descriptor: Immutable, branch_from_if_new: Optional[Union[MessagePromise, Sentinel]] = None
-    ) -> ConversationTracker:
-        """
-        Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
-        exist yet, it will be created. If branch_from_if_new is specified, the conversation will be branched off of
-        that message promise (as long as the conversation doesn't exist yet). Descriptor is used to uniquely identify
-        the conversation. It can be an arbitrary Immutable object - its hash_key will be used to identify the
-        conversation.
-        """
-        conversation = self._conversations.get(descriptor.hash_key)
-        if not conversation:
-            conversation = ConversationTracker(forum=self, branch_from=branch_from_if_new)
-            self._conversations[descriptor.hash_key] = conversation
-
-        return conversation
-
-
 # noinspection PyProtectedMember
 class Agent:
     """
@@ -252,7 +190,7 @@ class Agent:
 
     def __init__(
         self,
-        forum: Forum,
+        forum: "Forum",
         func: "AgentFunction",
         alias: Optional[str] = None,
         description: Optional[str] = None,
@@ -411,7 +349,7 @@ class Agent:
         is_asking: bool,
         branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,  # TODO TODO TODO Oleksandr: rename to just `new_conversation`
+        force_new_conversation: bool = False,  # TODO TODO TODO Oleksandr: rename to just `new_conversation` ?
         **function_kwargs,
     ) -> "AgentCall":
         # TODO TODO TODO
@@ -458,6 +396,68 @@ class Agent:
                 except BaseException as exc:  # pylint: disable=broad-except
                     logger.debug("AGENT FUNCTION OF %s RAISED AN EXCEPTION:", self.alias, exc_info=True)
                     ctx.respond(exc)
+
+
+class Forum(BaseModel):
+    """
+    A forum for agents to communicate. Messages in the forum assemble in a tree-like structure.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
+    _conversations: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
+
+    def agent(
+        self,
+        func: Optional["AgentFunction"] = None,
+        alias: Optional[str] = None,
+        description: Optional[str] = None,
+        uppercase_func_name: bool = True,
+        normalize_spaces_in_docstring: bool = True,
+    ) -> Union["Agent", Callable[["AgentFunction"], "Agent"]]:
+        """
+        A decorator that registers an agent function in the forum.
+        """
+        if func is None:
+            # the decorator `@forum.agent(...)` was used with arguments
+            def _decorator(f: "AgentFunction") -> "Agent":
+                return Agent(
+                    self,
+                    f,
+                    alias=alias,
+                    description=description,
+                    uppercase_func_name=uppercase_func_name,
+                    normalize_spaces_in_docstring=normalize_spaces_in_docstring,
+                )
+
+            return _decorator
+
+        # the decorator `@forum.agent` was used either without arguments or as a direct function call
+        return Agent(
+            self,
+            func,
+            alias=alias,
+            description=description,
+            uppercase_func_name=uppercase_func_name,
+            normalize_spaces_in_docstring=normalize_spaces_in_docstring,
+        )
+
+    def get_conversation(
+        self, descriptor: Immutable, branch_from_if_new: Optional[Union[MessagePromise, Sentinel]] = None
+    ) -> ConversationTracker:
+        """
+        Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
+        exist yet, it will be created. If branch_from_if_new is specified, the conversation will be branched off of
+        that message promise (as long as the conversation doesn't exist yet). Descriptor is used to uniquely identify
+        the conversation. It can be an arbitrary Immutable object - its hash_key will be used to identify the
+        conversation.
+        """
+        conversation = self._conversations.get(descriptor.hash_key)
+        if not conversation:
+            conversation = ConversationTracker(forum=self, branch_from=branch_from_if_new)
+            self._conversations[descriptor.hash_key] = conversation
+
+        return conversation
 
 
 # noinspection PyProtectedMember
