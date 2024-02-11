@@ -315,6 +315,18 @@ class MessagePromise:
 
         return prev_msg_promise
 
+    async def aget_reply_to_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+        """
+        Get the MessagePromise that this MessagePromise is a reply to.
+        """
+        reply_to_msg_promise = await self._aget_reply_to_msg_promise_try_materialized()
+
+        if skip_agent_calls:
+            while reply_to_msg_promise and reply_to_msg_promise.is_agent_call:
+                reply_to_msg_promise = await reply_to_msg_promise._aget_reply_to_msg_promise_try_materialized()
+
+        return reply_to_msg_promise
+
     async def _amaterialize_impl(self) -> Message:
         if self._branch_from and self._branch_from is not NO_VALUE:
             prev_msg_hash_key = (await self._branch_from.amaterialize()).hash_key
@@ -401,6 +413,14 @@ class MessagePromise:
                 return MessagePromise(forum=self.forum, materialized_msg=message)
             return None
         return await self._aget_previous_msg_promise_impl()
+
+    async def _aget_reply_to_msg_promise_try_materialized(self) -> Optional["MessagePromise"]:
+        if self._materialized_msg:
+            if self._materialized_msg.reply_to_msg_hash_key:
+                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.reply_to_msg_hash_key)
+                return MessagePromise(forum=self.forum, materialized_msg=message)
+            return None
+        return self._reply_to
 
     async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
         if self._do_not_forward_if_possible and self._branch_from is NO_VALUE:
