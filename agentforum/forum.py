@@ -449,7 +449,7 @@ class AgentCall:
         conversation: ConversationTracker,
         receiving_agent: Agent,
         is_asking: bool,
-        do_not_forward_if_possible: bool = True,  # TODO TODO TODO Oleksandr: this concept should go away
+        do_not_forward_if_possible: bool = True,  # TODO TODO TODO Oleksandr: should this concept go away or not ?
         **function_kwargs,
     ) -> None:
         self.forum = forum
