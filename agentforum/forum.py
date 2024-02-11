@@ -411,9 +411,10 @@ class Agent:
         is_asking: bool,
         branch_from: Optional[MessagePromise] = None,
         conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,
+        force_new_conversation: bool = False,  # TODO TODO TODO Oleksandr: rename to just `new_conversation`
         **function_kwargs,
     ) -> "AgentCall":
+        # TODO TODO TODO
         if branch_from and conversation:
             raise ValueError("Cannot specify both conversation and branch_from in Agent.call() or Agent.quick_call()")
         if branch_from:
@@ -438,8 +439,8 @@ class Agent:
         )
 
         parent_ctx = InteractionContext.get_current_context()
-        # TODO Oleksandr: if there is no active agent call, InteractionContext.get_current_context() should return a
-        #  default, "USER" context and not just None
+        # TODO TODO TODO Oleksandr: if there is no active agent call, InteractionContext.get_current_context() should
+        #  return a default, "USER" context and not just None
         if parent_ctx:
             parent_ctx._child_agent_calls.append(agent_call)
         return agent_call
@@ -568,15 +569,16 @@ class AgentCall:
         conversation: ConversationTracker,
         receiving_agent: Agent,
         is_asking: bool,
-        do_not_forward_if_possible: bool = True,
+        do_not_forward_if_possible: bool = True,  # TODO TODO TODO Oleksandr: this concept should go away
         **function_kwargs,
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
         self.is_asking = is_asking
 
-        # TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it completely when
-        #  you get to implementing cached agent calls
+        # TODO TODO TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it
+        #  completely when you get to implementing cached agent calls
+        # TODO TODO TODO
         temporary_sub_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
 
         self._request_messages = AsyncMessageSequence(
@@ -594,6 +596,7 @@ class AgentCall:
             receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,
         )
+        # TODO TODO TODO
         conversation._latest_msg_promise = agent_call_msg_promise
 
         if is_asking:
