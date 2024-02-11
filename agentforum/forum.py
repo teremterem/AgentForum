@@ -74,7 +74,9 @@ class Forum(BaseModel):
         )
 
     def get_conversation(
-        self, descriptor: Immutable, branch_from_if_new: Optional[Union[MessagePromise, Sentinel]] = None
+        self,
+        descriptor: Immutable,
+        branch_from_if_new: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None,
     ) -> ConversationTracker:
         """
         Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
@@ -154,7 +156,7 @@ class Agent:
         self,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[MessagePromise] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -178,7 +180,7 @@ class Agent:
 
     def start_asking(
         self,
-        branch_from: Optional[MessagePromise] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -203,7 +205,7 @@ class Agent:
         self,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[MessagePromise] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -227,7 +229,7 @@ class Agent:
 
     def start_telling(
         self,
-        branch_from: Optional[MessagePromise] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -253,7 +255,7 @@ class Agent:
         is_asking: bool,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[MessagePromise] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,
         **function_kwargs,
@@ -279,20 +281,21 @@ class Agent:
     def _start_call(
         self,
         is_asking: bool,
-        branch_from: Optional[MessagePromise] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
         force_new_conversation: bool = False,  # TODO TODO TODO Oleksandr: rename to just `new_conversation` ?
         **function_kwargs,
     ) -> "AgentCall":
+        if branch_from and conversation:
+            raise ValueError(
+                "Cannot specify both `conversation` and `branch_from` in `Agent.call()` or `Agent.quick_call()`"
+            )
+
         prev_forum_token = None
         try:
             if self.forum is not _CURRENT_FORUM.get():
                 prev_forum_token = _CURRENT_FORUM.set(self.forum)
 
-            if branch_from and conversation:
-                raise ValueError(
-                    "Cannot specify both `conversation` and `branch_from` in `Agent.call()` or `Agent.quick_call()`"
-                )
             if branch_from:
                 conversation = ConversationTracker(self.forum, branch_from=branch_from)
 
