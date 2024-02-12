@@ -8,7 +8,7 @@ from typing import Optional, AsyncIterator, Union
 from agentforum.errors import FormattedForumError
 from agentforum.models import Message
 from agentforum.promises import MessagePromise, StreamedMessage, AsyncMessageSequence
-from agentforum.utils import Sentinel, NO_VALUE
+from agentforum.utils import Sentinel
 
 if typing.TYPE_CHECKING:
     from agentforum.forum import Forum
@@ -28,15 +28,6 @@ class ConversationTracker:
     ) -> None:
         self.forum = forum
         self._latest_msg_promise = branch_from
-
-    @property
-    def has_prior_history(self) -> bool:
-        """
-        Check if there is prior history in this conversation.
-        """
-        # TODO TODO TODO Oleksandr: if `self._latest_msg_promise` is a sequence, then it still may turn out to be
-        #  empty - what to do about that ?
-        return self._latest_msg_promise and self._latest_msg_promise != NO_VALUE
 
     # noinspection PyProtectedMember
     async def aappend_zero_or_more_messages(

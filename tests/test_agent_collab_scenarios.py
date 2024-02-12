@@ -244,16 +244,16 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
 
 @pytest.mark.skip
-@pytest.mark.parametrize("force_new_conversation", [True, False])
+@pytest.mark.parametrize("new_conversation", [True, False])
 @pytest.mark.parametrize("materialize_beforehand", [True, False])
 @pytest.mark.parametrize("dont_send_promises", [True, False])
 @pytest.mark.asyncio
-async def test_agent_force_new_conversation(
-    forum: Forum, force_new_conversation: bool, materialize_beforehand: bool, dont_send_promises: bool
+async def test_agent_new_conversation(
+    forum: Forum, new_conversation: bool, materialize_beforehand: bool, dont_send_promises: bool
 ) -> None:
     """
     Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
-    history is recorded according to the `force_new_conversation` flag (if `force_new_conversation` is True then the
+    history is recorded according to the `new_conversation` flag (if `new_conversation` is True then the
     conversation history for the _agent1 starts from the response of _agent2 and not from the user's greeting).
 
     If agent interaction mechanism is implemented correctly then materialize_beforehand and dont_send_promises should
@@ -284,9 +284,9 @@ async def test_agent_force_new_conversation(
     if dont_send_promises:
         responses2 = await responses2.amaterialize_as_list()
 
-    responses1 = _agent1.ask(responses2, force_new_conversation=force_new_conversation)
+    responses1 = _agent1.ask(responses2, new_conversation=new_conversation)
 
-    if force_new_conversation:
+    if new_conversation:
         assert await arepresent_conversation_with_dicts(responses1) == [
             {
                 "im_model_": "forward",
