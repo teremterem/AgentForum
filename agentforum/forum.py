@@ -455,7 +455,6 @@ class AgentCall:
 
         # TODO TODO TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it
         #  completely when you get to implementing cached agent calls
-        # TODO TODO TODO
         temporary_sub_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
 
         self._request_messages = AsyncMessageSequence(
