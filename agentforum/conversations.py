@@ -120,19 +120,12 @@ class ConversationTracker:
                     },
                 )
             else:
-                if content.reply_to_msg_hash_key:
-                    reply_to_msg = await self.forum.forum_trees.aretrieve_message(content.reply_to_msg_hash_key)
-                    reply_to = MessagePromise(forum=self.forum, materialized_msg=reply_to_msg)
-                else:
-                    reply_to = None
-
                 msg_promise = MessagePromise(
                     forum=self.forum,
                     content=content,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     branch_from=self._latest_msg_promise,
-                    reply_to=reply_to,  # TODO TODO TODO Oleksandr: should I really pass it here ?
                     is_error=content.is_error,
                     error=content._error,
                     **override_metadata,
