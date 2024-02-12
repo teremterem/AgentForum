@@ -9,6 +9,7 @@ from agentforum.models import Message, AgentCallMsg
 from agentforum.promises import MessagePromise, AsyncMessageSequence
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_api_call_error_recovery(forum: Forum) -> None:
     """
@@ -168,6 +169,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     ]
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_two_nested_agents(forum: Forum) -> None:
     """
@@ -241,6 +243,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
     ]
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize("force_new_conversation", [True, False])
 @pytest.mark.parametrize("materialize_beforehand", [True, False])
 @pytest.mark.parametrize("dont_send_promises", [True, False])

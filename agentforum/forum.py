@@ -21,7 +21,7 @@ from agentforum.models import Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
 from agentforum.storage.trees_impl import InMemoryTrees
-from agentforum.utils import Sentinel, NO_VALUE, USER_ALIAS
+from agentforum.utils import Sentinel, USER_ALIAS
 
 if typing.TYPE_CHECKING:
     from agentforum.typing import AgentFunction, MessageType
@@ -299,6 +299,7 @@ class Agent:
             if branch_from:
                 conversation = ConversationTracker(self.forum, branch_from=branch_from)
 
+            parent_ctx = InteractionContext.get_current_context()
             if conversation:
                 if conversation.has_prior_history and force_new_conversation:
                     raise ValueError(
@@ -306,7 +307,7 @@ class Agent:
                     )
             else:
                 # TODO TODO TODO TODO TODO
-                conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
+                conversation = ConversationTracker(self.forum, branch_from=parent_ctx.request_messages)
 
             agent_call = AgentCall(
                 forum=self.forum,
@@ -319,7 +320,6 @@ class Agent:
             agent_call._task = asyncio.create_task(
                 self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs)
             )
-            parent_ctx = InteractionContext.get_current_context()  # TODO TODO TODO
             parent_ctx._child_agent_calls.append(agent_call)
 
             return agent_call
