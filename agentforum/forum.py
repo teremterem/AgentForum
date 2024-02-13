@@ -379,6 +379,7 @@ class InteractionContext:
         if self.was_asked:
             self._response_producer.send_zero_or_more_messages(content, **metadata)
         else:
+            # TODO TODO TODO TODO TODO Oleksandr: !!!!! THIS IS WHERE I NEED TO MAINTAIN THE BRANCH CONTINUITY !!!!!
             self.get_asked_context().respond(content, **metadata)
 
     @classmethod
