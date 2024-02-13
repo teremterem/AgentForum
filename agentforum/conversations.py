@@ -23,6 +23,8 @@ class ConversationTracker:
     branch of messages or not will be determined by the messages that are passed into this conversation later.
     """
 
+    # TODO TODO TODO TODO TODO Oleksandr: two modes ? `branch_from` and `reply_to` ? both modes work simultaneously ?
+
     def __init__(
         self, forum: "Forum", branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None
     ) -> None:
