@@ -76,18 +76,18 @@ class Forum(BaseModel):
     def get_conversation(
         self,
         descriptor: Immutable,
-        branch_from_if_new: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None,
+        reply_to_if_new: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None,
     ) -> ConversationTracker:
         """
         Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
-        exist yet, it will be created. If branch_from_if_new is specified, the conversation will be branched off of
-        that message promise (as long as the conversation doesn't exist yet). Descriptor is used to uniquely identify
+        exist yet, it will be created. If reply_to_if_new is specified, the conversation will be in reply to that
+        message promise (as long as the conversation doesn't exist yet). Descriptor is used to uniquely identify
         the conversation. It can be an arbitrary Immutable object - its hash_key will be used to identify the
         conversation.
         """
         conversation = self._conversations.get(descriptor.hash_key)
         if not conversation:
-            conversation = ConversationTracker(forum=self, branch_from=branch_from_if_new)
+            conversation = ConversationTracker(forum=self, reply_to=reply_to_if_new)
             self._conversations[descriptor.hash_key] = conversation
 
         return conversation
