@@ -1,6 +1,6 @@
 # pylint: disable=protected-access
 """
-A module that contains the ConversationTracker class. See the class docstring for more details.
+A module that contains the HistoryTracker and ConversationTracker class. See the class docstrings for more details.
 """
 import typing
 from typing import Optional, AsyncIterator, Union
@@ -16,8 +16,14 @@ if typing.TYPE_CHECKING:
 
 
 class ConversationTracker:
+    def __init__(self, forum: "Forum", reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None) -> None:
+        self.forum = forum
+        self._latest_msg_promise = reply_to
+
+
+class HistoryTracker:
     """
-    An object that tracks the tip of a conversation branch.
+    An object that tracks the tip of a message tree branch.
 
     If `branch_from` is set to NO_VALUE then it means that whether this conversation is branched off of an existing
     branch of messages or not will be determined by the messages that are passed into this conversation later.
@@ -37,16 +43,24 @@ class ConversationTracker:
         content: "MessageType",
         default_sender_alias: str,
         do_not_forward_if_possible: bool = True,
-        # override_branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
+        conversation: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         **override_metadata,
     ) -> AsyncIterator[MessagePromise]:
         """
         Append zero or more messages to the conversation. Returns an async iterator that yields message promises.
         """
-        # pylint: disable=too-many-branches
+        # pylint: disable=too-many-branches,too-many-statements
         # TODO TODO TODO Oleksandr: is locking necessary in this method ?
         if isinstance(self._latest_msg_promise, AsyncMessageSequence):
             self._latest_msg_promise = await self._latest_msg_promise.aget_concluding_msg_promise(raise_if_none=False)
+        if conversation:
+            if isinstance(conversation, AsyncMessageSequence):
+                conversation._latest_msg_promise = await conversation._latest_msg_promise.aget_concluding_msg_promise(
+                    raise_if_none=False
+                )
+            reply_to = conversation._latest_msg_promise
+        else:
+            reply_to = None
 
         if isinstance(content, BaseException):
             if isinstance(content, FormattedForumError):
@@ -60,6 +74,7 @@ class ConversationTracker:
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
+                reply_to=reply_to,
                 is_error=True,
                 error=content,
                 **{
@@ -68,6 +83,8 @@ class ConversationTracker:
                 },
             )
             self._latest_msg_promise = msg_promise
+            if conversation:
+                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif isinstance(content, MessagePromise):
@@ -77,11 +94,14 @@ class ConversationTracker:
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
+                reply_to=reply_to,
                 is_error=content.is_error,
                 error=content._error,
                 **override_metadata,
             )
             self._latest_msg_promise = msg_promise
+            if conversation:
+                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif isinstance(content, dict):
@@ -90,12 +110,15 @@ class ConversationTracker:
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
+                reply_to=reply_to,
                 **{
                     **content,
                     **override_metadata,
                 },
             )
             self._latest_msg_promise = msg_promise
+            if conversation:
+                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif isinstance(content, Message):
@@ -108,6 +131,7 @@ class ConversationTracker:
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     branch_from=self._latest_msg_promise,
+                    reply_to=reply_to,
                     **{
                         **msg_fields,
                         **override_metadata,
@@ -120,11 +144,14 @@ class ConversationTracker:
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     branch_from=self._latest_msg_promise,
+                    reply_to=reply_to,
                     is_error=content.is_error,
                     error=content._error,
                     **override_metadata,
                 )
             self._latest_msg_promise = msg_promise
+            if conversation:
+                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif isinstance(content, (str, StreamedMessage)):
@@ -134,9 +161,12 @@ class ConversationTracker:
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=self._latest_msg_promise,
+                reply_to=reply_to,
                 **override_metadata,
             )
             self._latest_msg_promise = msg_promise
+            if conversation:
+                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif hasattr(content, "__iter__"):
@@ -146,9 +176,9 @@ class ConversationTracker:
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
+                    conversation=conversation,
                     **override_metadata,
                 ):
-                    self._latest_msg_promise = msg_promise
                     yield msg_promise
         elif hasattr(content, "__aiter__"):
             # this is not a single message, this is an asynchronous collection of messages
@@ -157,9 +187,9 @@ class ConversationTracker:
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
+                    conversation=conversation,
                     **override_metadata,
                 ):
-                    self._latest_msg_promise = msg_promise
                     yield msg_promise
         else:
             raise ValueError(f"Unexpected message content type: {type(content)}")
