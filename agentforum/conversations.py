@@ -37,6 +37,7 @@ class ConversationTracker:
         content: "MessageType",
         default_sender_alias: str,
         do_not_forward_if_possible: bool = True,
+        # override_branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         **override_metadata,
     ) -> AsyncIterator[MessagePromise]:
         """

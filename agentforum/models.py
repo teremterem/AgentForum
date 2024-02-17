@@ -214,8 +214,8 @@ class Message(Freeform):
                     "neither `forum_trees` nor `prev_msg_hash_key` nor `reply_to_msg_hash_key` can be present in a "
                     "detached message"
                 )
-            if "content" in values and "content_template" in values:
-                raise ValueError("`content` and `content_template` cannot be both present in a detached message")
+            if values.get("content") is not None and values.get("content_template") is not None:
+                raise ValueError("`content` and `content_template` cannot both be set in a detached message")
         else:
             if not values.get("forum_trees"):
                 raise ValueError("`forum_trees` is required in a non-detached message")

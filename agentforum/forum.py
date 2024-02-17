@@ -372,15 +372,33 @@ class InteractionContext:
         """
         return bool(self._response_producer)
 
-    def respond(self, content: "MessageType", **metadata) -> None:
+    def respond(
+        self,
+        content: "MessageType",
+        # override_branch_from: Optional[Union["MessagePromise", "AsyncMessageSequence"]] = None,
+        **metadata,
+    ) -> None:
         """
         Respond with a message or a sequence of messages.
         """
         if self.was_asked:
-            self._response_producer.send_zero_or_more_messages(content, **metadata)
+            self._response_producer.send_zero_or_more_messages(
+                content,
+                # override_branch_from=override_branch_from,
+                **metadata,
+            )
         else:
-            # TODO TODO TODO TODO TODO Oleksandr: !!!!! THIS IS WHERE I NEED TO MAINTAIN THE BRANCH CONTINUITY !!!!!
-            self.get_asked_context().respond(content, **metadata)
+            self.get_asked_context().respond(
+                content,
+                # if `override_branch_from` is None then we branch the responses from the current agent's request
+                # messages
+                # TODO TODO TODO TODO TODO Oleksandr: this isn't gonna work :(
+                #  there should be some kind of conversation tracker on top of the conversation tracker of the asking
+                #  agent, and this second level conversation tracker should weave the responses of the telling agent
+                #  together into a branch
+                # override_branch_from=override_branch_from or self.request_messages,
+                **metadata,
+            )
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -477,8 +495,7 @@ class AgentCall:
         conversation._latest_msg_promise = agent_call_msg_promise
 
         if is_asking:
-            # TODO TODO TODO TODO TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to
-            #  AgentCallMsg) ?
+            # TODO TODO TODO TODO TODO Oleksandr: employ reply_to somehow
             self._response_messages = AsyncMessageSequence(
                 conversation, default_sender_alias=self.receiving_agent.alias
             )
