@@ -15,7 +15,7 @@ from typing import Optional, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
-from agentforum.conversations import ConversationTracker
+from agentforum.conversations import ConversationTracker, HistoryTracker
 from agentforum.errors import NoAskingAgentError
 from agentforum.models import Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, AgentCallMsgPromise
@@ -157,47 +157,55 @@ class Agent:
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
+        history_tracker: Optional[HistoryTracker] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
-        new_conversation: bool = False,
+        clean_history: bool = False,
         **function_kwargs,
     ) -> "AsyncMessageSequence":
         """
         "Ask" the agent and immediately receive an AsyncMessageSequence object that can be used to obtain the agent's
-        response(s). If new_conversation is False and conversation is not specified and pre-existing messages are
-        passed as requests (for ex. messages that came from other agents), then this agent call will be automatically
-        branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
-        from those messages, in other words).
+        response(s). If clean_history is False and history_tracker/branch_from is not specified and pre-existing
+        messages are passed as requests (for ex. messages that came from other agents), then this agent call will be
+        automatically branched off of the conversation branch those pre-existing messages belong to (the history will
+        be inherited from those messages, in other words).
         """
         return self._call(
             is_asking=True,
             content=content,
             override_sender_alias=override_sender_alias,
             branch_from=branch_from,
+            history_tracker=history_tracker,
+            reply_to=reply_to,
             conversation=conversation,
-            new_conversation=new_conversation,
+            clean_history=clean_history,
             **function_kwargs,
         )
 
     def start_asking(
         self,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
+        history_tracker: Optional[HistoryTracker] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
-        new_conversation: bool = False,
+        clean_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
         """
         Initiate the process of "asking" the agent. Returns an AgentCall object that can be used to send requests to
         the agent by calling `send_request()` zero or more times and receive its responses by calling
-        `response_sequence()` at the end. If new_conversation is False and conversation is not specified and
-        pre-existing messages are passed as requests (for ex. messages that came from other agents), then this agent
-        call will be automatically branched off of the conversation branch those pre-existing messages belong to (the
-        history will be inherited from those messages, in other words).
+        `response_sequence()` at the end. If clean_history is False and history_tracker/branch_from is not specified
+        and pre-existing messages are passed as requests (for ex. messages that came from other agents), then this
+        agent call will be automatically branched off of the conversation branch those pre-existing messages belong to
+        (the history will be inherited from those messages, in other words).
         """
         return self._start_call(
             is_asking=True,
             branch_from=branch_from,
+            history_tracker=history_tracker,
+            reply_to=reply_to,
             conversation=conversation,
-            new_conversation=new_conversation,
+            clean_history=clean_history,
             **function_kwargs,
         )
 
@@ -206,38 +214,44 @@ class Agent:
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
+        history_tracker: Optional[HistoryTracker] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
-        new_conversation: bool = False,
+        clean_history: bool = False,
         **function_kwargs,
     ) -> None:
         """
-        "Tell" the agent. Does not return anything, because it's a one-way communication. If new_conversation
-        is False and conversation is not specified and pre-existing messages are passed as requests (for ex. messages
-        that came from other agents), then this agent call will be automatically branched off of the conversation
-        branch those pre-existing messages belong to (the history will be inherited from those messages, in other
-        words).
+        "Tell" the agent. Does not return anything, because it's a one-way communication. If clean_history
+        is False and history_tracker/branch_from is not specified and pre-existing messages are passed as requests
+        (for ex. messages that came from other agents), then this agent call will be automatically branched off of the
+        conversation branch those pre-existing messages belong to (the history will be inherited from those messages,
+        in other words).
         """
         self._call(
             is_asking=False,
             content=content,
             override_sender_alias=override_sender_alias,
             branch_from=branch_from,
+            history_tracker=history_tracker,
+            reply_to=reply_to,
             conversation=conversation,
-            new_conversation=new_conversation,
+            clean_history=clean_history,
             **function_kwargs,
         )
 
     def start_telling(
         self,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
+        history_tracker: Optional[HistoryTracker] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
-        new_conversation: bool = False,
+        clean_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
         """
         Initiate the process of "telling" the agent. Returns an AgentCall object that can be used to send requests to
         the agent by calling `send_request()` zero or more times and calling `finish()` at the end. If
-        new_conversation is False and conversation is not specified and pre-existing messages are passed as
+        clean_history is False and history_tracker/branch_from is not specified and pre-existing messages are passed as
         requests (for ex. messages that came from other agents), then this agent call will be automatically branched
         off of the conversation branch those pre-existing messages belong to (the history will be inherited from those
         messages, in other words).
@@ -245,8 +259,10 @@ class Agent:
         return self._start_call(
             is_asking=False,
             branch_from=branch_from,
+            history_tracker=history_tracker,
+            reply_to=reply_to,
             conversation=conversation,
-            new_conversation=new_conversation,
+            clean_history=clean_history,
             **function_kwargs,
         )
 
@@ -256,15 +272,19 @@ class Agent:
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
+        history_tracker: Optional[HistoryTracker] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
-        new_conversation: bool = False,
+        clean_history: bool = False,
         **function_kwargs,
     ) -> Optional["AsyncMessageSequence"]:
         agent_call = self._start_call(
             is_asking=is_asking,
             branch_from=branch_from,
+            history_tracker=history_tracker,
+            reply_to=reply_to,
             conversation=conversation,
-            new_conversation=new_conversation,
+            clean_history=clean_history,
             **function_kwargs,
         )
         if content is not None:
@@ -282,17 +302,25 @@ class Agent:
         self,
         is_asking: bool,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
+        history_tracker: Optional[HistoryTracker] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         conversation: Optional[ConversationTracker] = None,
-        new_conversation: bool = False,
+        clean_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
-        if branch_from and conversation:
-            raise ValueError("Cannot specify both `conversation` and `branch_from`")
-        if new_conversation and (conversation or branch_from):
-            raise ValueError("`new_conversation` cannot be True when `conversation` or `branch_from` is specified")
+        if branch_from and history_tracker:
+            raise ValueError("Cannot specify both `branch_from` and `history_tracker`")
+        if reply_to and conversation:
+            raise ValueError("Cannot specify both `reply_to` and `conversation`")
+        if clean_history and (branch_from or history_tracker):
+            raise ValueError("`clean_history` cannot be True when `branch_from` or `history_tracker` is specified")
         if branch_from:
+            # one of the previous conditions implies that if we made it into this block then `history_tracker` is not
+            # set
+            history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
+        if reply_to:
             # one of the previous conditions implies that if we made it into this block then `conversation` is not set
-            conversation = ConversationTracker(self.forum, branch_from=branch_from)
+            conversation = ConversationTracker(self.forum, reply_to=reply_to)
 
         prev_forum_token = None
         try:
@@ -300,18 +328,19 @@ class Agent:
                 prev_forum_token = _CURRENT_FORUM.set(self.forum)
             parent_ctx = InteractionContext.get_current_context()
 
-            if not conversation:
-                conversation = ConversationTracker(
-                    self.forum, branch_from=None if new_conversation else parent_ctx.request_messages
+            if not history_tracker:
+                history_tracker = HistoryTracker(
+                    self.forum, branch_from=None if clean_history else parent_ctx.request_messages
                 )
 
+            # TODO TODO TODO TODO TODO TODO TODO
             agent_call = AgentCall(
                 forum=self.forum,
                 conversation=conversation,
                 receiving_agent=self,
                 is_asking=is_asking,
                 # TODO TODO TODO Oleksandr: is the following parameter even necessary ?
-                do_not_forward_if_possible=not new_conversation,
+                do_not_forward_if_possible=not clean_history,
                 **function_kwargs,
             )
             agent_call._task = asyncio.create_task(
@@ -392,7 +421,7 @@ class InteractionContext:
                 content,
                 # if `override_branch_from` is None then we branch the responses from the current agent's request
                 # messages
-                # TODO TODO TODO TODO TODO Oleksandr: this isn't gonna work :(
+                # TODO TODO TODO TODO TODO TODO TODO Oleksandr: this isn't gonna work :(
                 #  there should be some kind of conversation tracker on top of the conversation tracker of the asking
                 #  agent, and this second level conversation tracker should weave the responses of the telling agent
                 #  together into a branch
