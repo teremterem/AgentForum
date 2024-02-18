@@ -16,34 +16,21 @@ if typing.TYPE_CHECKING:
 
 
 class ConversationTracker:
+    """
+    An object that tracks the tip of a conversation (a chain of messages that are replies to each other).
+    """
+
     def __init__(self, forum: "Forum", reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None) -> None:
         self.forum = forum
         self._latest_msg_promise = reply_to
-
-
-class HistoryTracker:
-    """
-    An object that tracks the tip of a message tree branch.
-
-    If `branch_from` is set to NO_VALUE then it means that whether this conversation is branched off of an existing
-    branch of messages or not will be determined by the messages that are passed into this conversation later.
-    """
-
-    # TODO TODO TODO TODO TODO Oleksandr: two modes ? `branch_from` and `reply_to` ? both modes work simultaneously ?
-
-    def __init__(
-        self, forum: "Forum", branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None
-    ) -> None:
-        self.forum = forum
-        self._latest_msg_promise = branch_from
 
     # noinspection PyProtectedMember
     async def aappend_zero_or_more_messages(
         self,
         content: "MessageType",
         default_sender_alias: str,
+        history_tracker: "HistoryTracker",
         do_not_forward_if_possible: bool = True,
-        conversation: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
         **override_metadata,
     ) -> AsyncIterator[MessagePromise]:
         """
@@ -53,14 +40,10 @@ class HistoryTracker:
         # TODO TODO TODO Oleksandr: is locking necessary in this method ?
         if isinstance(self._latest_msg_promise, AsyncMessageSequence):
             self._latest_msg_promise = await self._latest_msg_promise.aget_concluding_msg_promise(raise_if_none=False)
-        if conversation:
-            if isinstance(conversation, AsyncMessageSequence):
-                conversation._latest_msg_promise = await conversation._latest_msg_promise.aget_concluding_msg_promise(
-                    raise_if_none=False
-                )
-            reply_to = conversation._latest_msg_promise
-        else:
-            reply_to = None
+        if isinstance(history_tracker._latest_msg_promise, AsyncMessageSequence):
+            history_tracker._latest_msg_promise = (
+                await history_tracker._latest_msg_promise.aget_concluding_msg_promise(raise_if_none=False)
+            )
 
         if isinstance(content, BaseException):
             if isinstance(content, FormattedForumError):
@@ -70,11 +53,14 @@ class HistoryTracker:
 
             msg_promise = MessagePromise(
                 forum=self.forum,
-                content=await formatted_error.agenerate_error_message(self._latest_msg_promise),
+                content=await formatted_error.agenerate_error_message(
+                    previous_msg_promise=history_tracker._latest_msg_promise,
+                    reply_to_msg_promise=self._latest_msg_promise,
+                ),
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                reply_to=reply_to,
+                branch_from=history_tracker._latest_msg_promise,
+                reply_to=self._latest_msg_promise,
                 is_error=True,
                 error=content,
                 **{
@@ -82,9 +68,8 @@ class HistoryTracker:
                     **override_metadata,
                 },
             )
+            history_tracker._latest_msg_promise = msg_promise
             self._latest_msg_promise = msg_promise
-            if conversation:
-                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif isinstance(content, MessagePromise):
@@ -93,15 +78,14 @@ class HistoryTracker:
                 content=content,
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                reply_to=reply_to,
+                branch_from=history_tracker._latest_msg_promise,
+                reply_to=self._latest_msg_promise,
                 is_error=content.is_error,
                 error=content._error,
                 **override_metadata,
             )
+            history_tracker._latest_msg_promise = msg_promise
             self._latest_msg_promise = msg_promise
-            if conversation:
-                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif isinstance(content, dict):
@@ -109,16 +93,15 @@ class HistoryTracker:
                 forum=self.forum,
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                reply_to=reply_to,
+                branch_from=history_tracker._latest_msg_promise,
+                reply_to=self._latest_msg_promise,
                 **{
                     **content,
                     **override_metadata,
                 },
             )
+            history_tracker._latest_msg_promise = msg_promise
             self._latest_msg_promise = msg_promise
-            if conversation:
-                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif isinstance(content, Message):
@@ -130,8 +113,8 @@ class HistoryTracker:
                     forum=self.forum,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    branch_from=self._latest_msg_promise,
-                    reply_to=reply_to,
+                    branch_from=history_tracker._latest_msg_promise,
+                    reply_to=self._latest_msg_promise,
                     **{
                         **msg_fields,
                         **override_metadata,
@@ -143,15 +126,14 @@ class HistoryTracker:
                     content=content,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    branch_from=self._latest_msg_promise,
-                    reply_to=reply_to,
+                    branch_from=history_tracker._latest_msg_promise,
+                    reply_to=self._latest_msg_promise,
                     is_error=content.is_error,
                     error=content._error,
                     **override_metadata,
                 )
+            history_tracker._latest_msg_promise = msg_promise
             self._latest_msg_promise = msg_promise
-            if conversation:
-                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif isinstance(content, (str, StreamedMessage)):
@@ -160,13 +142,12 @@ class HistoryTracker:
                 content=content,
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
-                branch_from=self._latest_msg_promise,
-                reply_to=reply_to,
+                branch_from=history_tracker._latest_msg_promise,
+                reply_to=self._latest_msg_promise,
                 **override_metadata,
             )
+            history_tracker._latest_msg_promise = msg_promise
             self._latest_msg_promise = msg_promise
-            if conversation:
-                conversation._latest_msg_promise = msg_promise
             yield msg_promise
 
         elif hasattr(content, "__iter__"):
@@ -176,7 +157,7 @@ class HistoryTracker:
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    conversation=conversation,
+                    history_tracker=history_tracker,
                     **override_metadata,
                 ):
                     yield msg_promise
@@ -187,9 +168,24 @@ class HistoryTracker:
                     content=sub_msg,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
-                    conversation=conversation,
+                    history_tracker=history_tracker,
                     **override_metadata,
                 ):
                     yield msg_promise
         else:
             raise ValueError(f"Unexpected message content type: {type(content)}")
+
+
+class HistoryTracker:
+    """
+    An object that tracks the tip of a message tree branch (aka a history branch).
+
+    If `branch_from` is set to NO_VALUE then it means that whether this conversation is branched off of an existing
+    branch of messages or not will be determined by the messages that are passed into this conversation later.
+    """
+
+    def __init__(
+        self, forum: "Forum", branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None
+    ) -> None:
+        self.forum = forum
+        self._latest_msg_promise = branch_from
