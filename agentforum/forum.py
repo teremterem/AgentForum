@@ -378,21 +378,12 @@ class InteractionContext:
         """
         return bool(self._response_producer)
 
-    def respond(
-        self,
-        content: "MessageType",
-        # override_branch_from: Optional[Union["MessagePromise", "AsyncMessageSequence"]] = None,
-        **metadata,
-    ) -> None:
+    def respond(self, content: "MessageType", **metadata) -> None:
         """
         Respond with a message or a sequence of messages.
         """
         if self.was_asked:
-            self._response_producer.send_zero_or_more_messages(
-                content,
-                # override_branch_from=override_branch_from,
-                **metadata,
-            )
+            self._response_producer.send_zero_or_more_messages(content, **metadata)
         else:
             self.get_asked_context().respond(
                 content,

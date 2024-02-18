@@ -112,17 +112,14 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         if isinstance(incoming_item, BaseException):
             content = incoming_item
             override_metadata = {}
-            # override_branch_from = None
         else:
             content = incoming_item.zero_or_more_messages
             override_metadata = incoming_item.override_metadata.as_dict()
-            # override_branch_from = incoming_item.override_branch_from
 
         async for msg_promise in self._conversation.aappend_zero_or_more_messages(
             content=content,
             default_sender_alias=self._default_sender_alias,
             do_not_forward_if_possible=self._do_not_forward_if_possible,
-            # override_branch_from=override_branch_from,
             **override_metadata,
         ):
             yield msg_promise
@@ -132,12 +129,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         A context manager that allows sending messages to AsyncMessageSequence.
         """
 
-        def send_zero_or_more_messages(
-            self,
-            content: "MessageType",
-            # override_branch_from: Optional[Union["MessagePromise", "AsyncMessageSequence"]] = None,
-            **metadata,
-        ) -> None:
+        def send_zero_or_more_messages(self, content: "MessageType", **metadata) -> None:
             """
             Send a message or messages to the sequence this producer is attached to.
             """
@@ -152,7 +144,6 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
                 _MessageTypeCarrier(
                     zero_or_more_messages=content,
                     override_metadata=Freeform(**metadata),
-                    # override_branch_from=override_branch_from,
                 )
             )
 
@@ -505,4 +496,3 @@ class _MessageTypeCarrier(BaseModel):
 
     zero_or_more_messages: Any  # should be MessageType but Pydantic v2 seems to be confused by it
     override_metadata: Freeform = Freeform()
-    # override_branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None
