@@ -131,21 +131,13 @@ class Message(Freeform):
         """
         return self.final_sender_alias
 
-    async def aget_previous_msg(self, skip_agent_calls: bool = True) -> Optional["Message"]:
+    async def aget_previous_msg(self) -> Optional["Message"]:
         """
         Get the previous message in the forum.
         """
         if self.prev_msg_hash_key is None:
             return None
-        previous_message = await self.forum_trees.aretrieve_message(self.prev_msg_hash_key)
-
-        if skip_agent_calls:
-            while previous_message and isinstance(previous_message, AgentCallMsg):
-                previous_message = await previous_message.aget_previous_msg(
-                    skip_agent_calls=False  # let's avoid further recursion - we have a loop instead
-                )
-
-        return previous_message
+        return await self.forum_trees.aretrieve_message(self.prev_msg_hash_key)
 
     async def aget_reply_to_msg(self) -> Optional["Message"]:
         """

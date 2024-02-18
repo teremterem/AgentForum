@@ -423,7 +423,7 @@ async def arepresent_conversation_with_dicts(
         return msg_dict_
 
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_msg_promise()
-    conversation = await concluding_msg.amaterialize_full_history(skip_agent_calls=False)
+    conversation = await concluding_msg.amaterialize_full_history()
 
     conversation_dicts = []
     for idx, msg in enumerate(conversation):

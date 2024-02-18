@@ -84,34 +84,26 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         """
         return [await msg.amaterialize() async for msg in self]
 
-    async def aget_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> list["MessagePromise"]:
+    async def aget_full_history(self, include_this_message: bool = True) -> list["MessagePromise"]:
         """
         Get the full chat history of the conversation branch up to the last message in the sequence.
         """
         concluding_msg_promise = await self.aget_concluding_msg_promise(raise_if_none=False)
         if concluding_msg_promise:
-            return await concluding_msg_promise.aget_full_history(
-                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
-            )
+            return await concluding_msg_promise.aget_full_history(include_this_message=include_this_message)
         return []
 
     # TODO Oleksandr: also introduce a method that returns full history as an AsyncMessageSequence instead
     #  of a ready-to-use list of MessagePromise objects ?
 
-    async def amaterialize_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> list["Message"]:
+    async def amaterialize_full_history(self, include_this_message: bool = True) -> list["Message"]:
         """
         Get the full chat history of the conversation branch up to the last message in the sequence, but return a list
         of Message objects instead of MessagePromise objects.
         """
         return [
             await msg_promise.amaterialize()
-            for msg_promise in await self.aget_full_history(
-                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
-            )
+            for msg_promise in await self.aget_full_history(include_this_message=include_this_message)
         ]
 
     async def _aconvert_incoming_item(
@@ -317,29 +309,27 @@ class MessagePromise:
         """
         return (await self.amaterialize()).content
 
-    async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+    async def aget_previous_msg_promise(self) -> Optional["MessagePromise"]:
         """
         Get the previous MessagePromise in this conversation branch.
         """
-        prev_msg_promise = await self._aget_previous_msg_promise_try_materialized()
+        if self._materialized_msg:
+            if self._materialized_msg.prev_msg_hash_key:
+                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.prev_msg_hash_key)
+                return MessagePromise(forum=self.forum, materialized_msg=message)
+            return None
+        return await self._aget_previous_msg_promise_impl()
 
-        if skip_agent_calls:
-            while prev_msg_promise and prev_msg_promise.is_agent_call:
-                prev_msg_promise = await prev_msg_promise._aget_previous_msg_promise_try_materialized()
-
-        return prev_msg_promise
-
-    async def aget_reply_to_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+    async def aget_reply_to_msg_promise(self) -> Optional["MessagePromise"]:
         """
         Get the MessagePromise that this MessagePromise is a reply to.
         """
-        reply_to_msg_promise = await self._aget_reply_to_msg_promise_try_materialized()
-
-        if skip_agent_calls:
-            while reply_to_msg_promise and reply_to_msg_promise.is_agent_call:
-                reply_to_msg_promise = await reply_to_msg_promise._aget_reply_to_msg_promise_try_materialized()
-
-        return reply_to_msg_promise
+        if self._materialized_msg:
+            if self._materialized_msg.reply_to_msg_hash_key:
+                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.reply_to_msg_hash_key)
+                return MessagePromise(forum=self.forum, materialized_msg=message)
+            return None
+        return self._reply_to
 
     async def _amaterialize_impl(self) -> Message:
         if self._branch_from and self._branch_from is not NO_VALUE:
@@ -420,22 +410,6 @@ class MessagePromise:
 
         raise ValueError(f"Unexpected message content type: {type(self._content)}")
 
-    async def _aget_previous_msg_promise_try_materialized(self) -> Optional["MessagePromise"]:
-        if self._materialized_msg:
-            if self._materialized_msg.prev_msg_hash_key:
-                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.prev_msg_hash_key)
-                return MessagePromise(forum=self.forum, materialized_msg=message)
-            return None
-        return await self._aget_previous_msg_promise_impl()
-
-    async def _aget_reply_to_msg_promise_try_materialized(self) -> Optional["MessagePromise"]:
-        if self._materialized_msg:
-            if self._materialized_msg.reply_to_msg_hash_key:
-                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.reply_to_msg_hash_key)
-                return MessagePromise(forum=self.forum, materialized_msg=message)
-            return None
-        return self._reply_to
-
     async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
         if self._do_not_forward_if_possible and self._branch_from is NO_VALUE:
             # this message promise doesn't have a previous message promise of its own but there may be an "original"
@@ -443,16 +417,18 @@ class MessagePromise:
             # hence we should try to work with the "original" message's branch instead of starting a new branch (which
             # would have been the case if we just returned self._branch_from as it's value is being None)
             if isinstance(self._content, MessagePromise):
-                return await self._content.aget_previous_msg_promise(skip_agent_calls=False)
+                return await self._content.aget_previous_msg_promise()
 
             if isinstance(self._content, Message):
-                message = await self.forum.forum_trees.aretrieve_message(self._content.prev_msg_hash_key)
+                message = await self._content.aget_previous_msg()
+                if not message:
+                    return None
                 return MessagePromise(forum=self.forum, materialized_msg=message)
 
         return None if self._branch_from is NO_VALUE else self._branch_from
 
     async def aget_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True, prefer_replies: bool = False
+        self, include_this_message: bool = True, prefer_replies: bool = False
     ) -> list["MessagePromise"]:
         """
         Get the full chat history of the conversation branch up to this message. Returns a list of MessagePromise
@@ -462,29 +438,21 @@ class MessagePromise:
         msg_promise = self
         result = [msg_promise] if include_this_message else []
         while msg_promise := (
-            (
-                await msg_promise.aget_reply_to_msg_promise(skip_agent_calls=skip_agent_calls)
-                if prefer_replies
-                else None
-            )
-            or await msg_promise.aget_previous_msg_promise(skip_agent_calls=skip_agent_calls)
+            (await msg_promise.aget_reply_to_msg_promise() if prefer_replies else None)
+            or await msg_promise.aget_previous_msg_promise()
         ):
             result.append(msg_promise)
         result.reverse()
         return result
 
-    async def amaterialize_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
-    ) -> list[Message]:
+    async def amaterialize_full_history(self, include_this_message: bool = True) -> list[Message]:
         """
         Get the full chat history of the conversation branch up to this message, but return a list of Message objects
         instead of MessagePromise objects.
         """
         return [
             await msg_promise.amaterialize()
-            for msg_promise in await self.aget_full_history(
-                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
-            )
+            for msg_promise in await self.aget_full_history(include_this_message=include_this_message)
         ]
 
 
