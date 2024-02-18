@@ -36,7 +36,7 @@ class Forum(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
-    _conversations: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
+    _conversation_trackers: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
     def agent(
         self,
@@ -85,12 +85,12 @@ class Forum(BaseModel):
         the conversation. It can be an arbitrary Immutable object - its hash_key will be used to identify the
         conversation.
         """
-        conversation = self._conversations.get(descriptor.hash_key)
-        if not conversation:
-            conversation = ConversationTracker(forum=self, reply_to=reply_to_if_new)
-            self._conversations[descriptor.hash_key] = conversation
+        conversation_tracker = self._conversation_trackers.get(descriptor.hash_key)
+        if not conversation_tracker:
+            conversation_tracker = ConversationTracker(forum=self, reply_to=reply_to_if_new)
+            self._conversation_trackers[descriptor.hash_key] = conversation_tracker
 
-        return conversation
+        return conversation_tracker
 
     @cached_property
     def _user_agent(self) -> "Agent":
@@ -156,10 +156,8 @@ class Agent:
         self,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        history_tracker: Optional[HistoryTracker] = None,
-        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
         clean_history: bool = False,
         **function_kwargs,
     ) -> "AsyncMessageSequence":
@@ -175,19 +173,15 @@ class Agent:
             content=content,
             override_sender_alias=override_sender_alias,
             branch_from=branch_from,
-            history_tracker=history_tracker,
             reply_to=reply_to,
-            conversation=conversation,
             clean_history=clean_history,
             **function_kwargs,
         )
 
     def start_asking(
         self,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        history_tracker: Optional[HistoryTracker] = None,
-        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
         clean_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
@@ -202,9 +196,7 @@ class Agent:
         return self._start_call(
             is_asking=True,
             branch_from=branch_from,
-            history_tracker=history_tracker,
             reply_to=reply_to,
-            conversation=conversation,
             clean_history=clean_history,
             **function_kwargs,
         )
@@ -213,10 +205,8 @@ class Agent:
         self,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        history_tracker: Optional[HistoryTracker] = None,
-        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
         clean_history: bool = False,
         **function_kwargs,
     ) -> None:
@@ -232,19 +222,15 @@ class Agent:
             content=content,
             override_sender_alias=override_sender_alias,
             branch_from=branch_from,
-            history_tracker=history_tracker,
             reply_to=reply_to,
-            conversation=conversation,
             clean_history=clean_history,
             **function_kwargs,
         )
 
     def start_telling(
         self,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        history_tracker: Optional[HistoryTracker] = None,
-        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
         clean_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
@@ -259,9 +245,7 @@ class Agent:
         return self._start_call(
             is_asking=False,
             branch_from=branch_from,
-            history_tracker=history_tracker,
             reply_to=reply_to,
-            conversation=conversation,
             clean_history=clean_history,
             **function_kwargs,
         )
@@ -271,19 +255,15 @@ class Agent:
         is_asking: bool,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        history_tracker: Optional[HistoryTracker] = None,
-        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
         clean_history: bool = False,
         **function_kwargs,
     ) -> Optional["AsyncMessageSequence"]:
         agent_call = self._start_call(
             is_asking=is_asking,
             branch_from=branch_from,
-            history_tracker=history_tracker,
             reply_to=reply_to,
-            conversation=conversation,
             clean_history=clean_history,
             **function_kwargs,
         )
@@ -301,26 +281,13 @@ class Agent:
     def _start_call(
         self,
         is_asking: bool,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        history_tracker: Optional[HistoryTracker] = None,
-        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
         clean_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
-        if branch_from and history_tracker:
-            raise ValueError("Cannot specify both `branch_from` and `history_tracker`")
-        if reply_to and conversation:
-            raise ValueError("Cannot specify both `reply_to` and `conversation`")
-        if clean_history and (branch_from or history_tracker):
-            raise ValueError("`clean_history` cannot be True when `branch_from` or `history_tracker` is specified")
-        if branch_from:
-            # one of the previous conditions implies that if we made it into this block then `history_tracker` is not
-            # set
-            history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
-        if reply_to:
-            # one of the previous conditions implies that if we made it into this block then `conversation` is not set
-            conversation = ConversationTracker(self.forum, reply_to=reply_to)
+        if clean_history and branch_from:
+            raise ValueError("`clean_history` cannot be True when `branch_from` is specified")
 
         prev_forum_token = None
         try:
@@ -328,18 +295,28 @@ class Agent:
                 prev_forum_token = _CURRENT_FORUM.set(self.forum)
             parent_ctx = InteractionContext.get_current_context()
 
-            if not history_tracker:
+            if not branch_from:
                 history_tracker = HistoryTracker(
                     self.forum, branch_from=None if clean_history else parent_ctx.request_messages
                 )
+            elif isinstance(branch_from, HistoryTracker):
+                history_tracker = branch_from
+            else:
+                history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
+
+            if not reply_to:
+                conversation_tracker = ConversationTracker(self.forum)
+            elif isinstance(reply_to, ConversationTracker):
+                conversation_tracker = reply_to
+            else:
+                conversation_tracker = ConversationTracker(self.forum, reply_to=reply_to)
 
             # TODO TODO TODO TODO TODO TODO TODO
             agent_call = AgentCall(
                 forum=self.forum,
-                conversation=conversation,
+                conversation_tracker=conversation_tracker,
                 receiving_agent=self,
                 is_asking=is_asking,
-                # TODO TODO TODO Oleksandr: is the following parameter even necessary ?
                 do_not_forward_if_possible=not clean_history,
                 **function_kwargs,
             )
@@ -491,7 +468,7 @@ class AgentCall:
     def __init__(
         self,
         forum: Forum,
-        conversation: ConversationTracker,
+        conversation_tracker: ConversationTracker,
         receiving_agent: Agent,
         is_asking: bool,
         do_not_forward_if_possible: bool = True,  # TODO TODO TODO Oleksandr: should this concept go away or not ?
@@ -501,12 +478,8 @@ class AgentCall:
         self.receiving_agent = receiving_agent
         self.is_asking = is_asking
 
-        # TODO TODO TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it
-        #  completely when you get to implementing cached agent calls
-        temporary_sub_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
-
         self._request_messages = AsyncMessageSequence(
-            temporary_sub_conversation,
+            conversation_tracker,
             default_sender_alias=InteractionContext.get_current_sender_alias(),
             do_not_forward_if_possible=do_not_forward_if_possible,
         )
@@ -514,19 +487,16 @@ class AgentCall:
 
         self._task: Optional[asyncio.Task] = None
 
-        agent_call_msg_promise = AgentCallMsgPromise(
+        AgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,
             receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,
-        )
-        # TODO TODO TODO TODO TODO
-        conversation._latest_msg_promise = agent_call_msg_promise
+        )  # TODO TODO TODO Oleksandr: who and when is going to materialize this promise ?
 
         if is_asking:
-            # TODO TODO TODO TODO TODO Oleksandr: employ reply_to somehow
             self._response_messages = AsyncMessageSequence(
-                conversation, default_sender_alias=self.receiving_agent.alias
+                conversation_tracker, default_sender_alias=self.receiving_agent.alias
             )
             self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
         else:
