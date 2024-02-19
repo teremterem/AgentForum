@@ -108,6 +108,9 @@ class Forum(BaseModel):
         return InteractionContext(
             forum=self,
             agent=self._user_agent,
+            # TODO TODO TODO Oleksandr: is it ok to have the same `HistoryTracker` for `USER` for the whole lifetime of
+            #  the application (or, more precisely, the forum) ?
+            history_tracker=HistoryTracker(self),
             request_messages=None,
             response_producer=None,
         )
@@ -311,9 +314,9 @@ class Agent:
             else:
                 conversation_tracker = ConversationTracker(self.forum, reply_to=reply_to)
 
-            # TODO TODO TODO TODO TODO TODO TODO
             agent_call = AgentCall(
                 forum=self.forum,
+                history_tracker=history_tracker,
                 conversation_tracker=conversation_tracker,
                 receiving_agent=self,
                 is_asking=is_asking,
@@ -335,6 +338,7 @@ class Agent:
             async with InteractionContext(
                 forum=self.forum,
                 agent=self,
+                history_tracker=agent_call._history_tracker,
                 request_messages=agent_call._request_messages,
                 response_producer=agent_call._response_producer,
             ) as ctx:
@@ -359,6 +363,7 @@ class InteractionContext:
         self,
         forum: "Forum",
         agent: Agent,
+        history_tracker: HistoryTracker,
         request_messages: Optional[AsyncMessageSequence],
         response_producer: Optional["AsyncMessageSequence._MessageProducer"],
     ) -> None:
@@ -367,6 +372,7 @@ class InteractionContext:
         self.request_messages = request_messages
         self.parent_context: Optional["InteractionContext"] = self._current_context.get()
 
+        self._history_tracker = history_tracker
         self._response_producer = response_producer
         self._child_agent_calls: list[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
@@ -383,18 +389,10 @@ class InteractionContext:
         Respond with a message or a sequence of messages.
         """
         if self.was_asked:
-            self._response_producer.send_zero_or_more_messages(content, **metadata)
+            self._response_producer.send_zero_or_more_messages(content, self._history_tracker, **metadata)
         else:
-            self.get_asked_context().respond(
-                content,
-                # if `override_branch_from` is None then we branch the responses from the current agent's request
-                # messages
-                # TODO TODO TODO TODO TODO TODO TODO Oleksandr: this isn't gonna work :(
-                #  there should be some kind of conversation tracker on top of the conversation tracker of the asking
-                #  agent, and this second level conversation tracker should weave the responses of the telling agent
-                #  together into a branch
-                # override_branch_from=override_branch_from or self.request_messages,
-                **metadata,
+            self.get_asked_context()._response_producer.send_zero_or_more_messages(
+                content, self._history_tracker, **metadata
             )
 
     @classmethod
@@ -459,6 +457,7 @@ class AgentCall:
     def __init__(
         self,
         forum: Forum,
+        history_tracker: HistoryTracker,
         conversation_tracker: ConversationTracker,
         receiving_agent: Agent,
         is_asking: bool,
@@ -469,6 +468,7 @@ class AgentCall:
         self.receiving_agent = receiving_agent
         self.is_asking = is_asking
 
+        self._history_tracker = history_tracker
         self._request_messages = AsyncMessageSequence(
             conversation_tracker,
             default_sender_alias=InteractionContext.get_current_sender_alias(),

@@ -13,7 +13,8 @@ from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform,
 from agentforum.utils import AsyncStreamable, NO_VALUE, IN, SYSTEM_ALIAS
 
 if typing.TYPE_CHECKING:
-    from agentforum.forum import Forum, ConversationTracker
+    from agentforum.conversations import ConversationTracker, HistoryTracker
+    from agentforum.forum import Forum
     from agentforum.typing import MessageType, SingleMessageType
 
 
@@ -110,14 +111,25 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         self, incoming_item: Union["_MessageTypeCarrier", BaseException]
     ) -> AsyncIterator["MessagePromise"]:
         if isinstance(incoming_item, BaseException):
+            # This code branch is for unusual exceptions only (for ex. framework level exceptions).
+            # Agent level exceptions will be processed by the `else` part, because they will be wrapped into
+            # `_MessageTypeCarrier` (they will go through `_MessageProducer.send_zero_or_more_messages` method).
             content = incoming_item
             override_metadata = {}
+
+            # For the unusual exceptions we create a blank history tracker because we don't have access to the proper
+            # one.
+            from agentforum.conversations import HistoryTracker  # pylint: disable=import-outside-toplevel
+
+            history_tracker = HistoryTracker(self._conversation.forum)
         else:
             content = incoming_item.zero_or_more_messages
             override_metadata = incoming_item.override_metadata.as_dict()
+            history_tracker = incoming_item.history_tracker
 
         async for msg_promise in self._conversation.aappend_zero_or_more_messages(
             content=content,
+            history_tracker=history_tracker,
             default_sender_alias=self._default_sender_alias,
             do_not_forward_if_possible=self._do_not_forward_if_possible,
             **override_metadata,
@@ -129,7 +141,9 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         A context manager that allows sending messages to AsyncMessageSequence.
         """
 
-        def send_zero_or_more_messages(self, content: "MessageType", **metadata) -> None:
+        def send_zero_or_more_messages(
+            self, content: "MessageType", history_tracker: "HistoryTracker", **metadata
+        ) -> None:
             """
             Send a message or messages to the sequence this producer is attached to.
             """
@@ -143,6 +157,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             self.send(
                 _MessageTypeCarrier(
                     zero_or_more_messages=content,
+                    history_tracker=history_tracker,
                     override_metadata=Freeform(**metadata),
                 )
             )
@@ -494,5 +509,6 @@ class AgentCallMsgPromise(MessagePromise):
 class _MessageTypeCarrier(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
-    zero_or_more_messages: Any  # should be MessageType but Pydantic v2 seems to be confused by it
+    zero_or_more_messages: Any  # should be `MessageType` but Pydantic v2 seems to be confused by it
+    history_tracker: Any  # TODO TODO TODO Oleksandr: should be `HistoryTracker` but there are circular dependencies
     override_metadata: Freeform = Freeform()
