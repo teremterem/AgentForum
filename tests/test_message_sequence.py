@@ -52,6 +52,7 @@ async def test_nested_message_sequences(forum: Forum) -> None:
     assert actual_messages[0].reply_to_msg_hash_key is None
     for msg1, msg2 in zip(actual_messages, actual_messages[1:]):
         assert msg1.hash_key == msg2.reply_to_msg_hash_key
+    # TODO TODO TODO Oleksandr: test .prev_msg_hash_key too (it has a different order in this case) ?
 
     await level3_sequence.araise_if_error()  # no error should be raised
     await level2_sequence.araise_if_error()  # no error should be raised
