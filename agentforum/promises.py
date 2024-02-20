@@ -85,26 +85,34 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         """
         return [await msg.amaterialize() async for msg in self]
 
-    async def aget_full_history(self, include_this_message: bool = True) -> list["MessagePromise"]:
+    async def aget_full_history(
+        self, include_this_message: bool = True, follow_replies: bool = False
+    ) -> list["MessagePromise"]:
         """
         Get the full chat history of the conversation branch up to the last message in the sequence.
         """
         concluding_msg_promise = await self.aget_concluding_msg_promise(raise_if_none=False)
         if concluding_msg_promise:
-            return await concluding_msg_promise.aget_full_history(include_this_message=include_this_message)
+            return await concluding_msg_promise.aget_full_history(
+                include_this_message=include_this_message, follow_replies=follow_replies
+            )
         return []
 
     # TODO Oleksandr: also introduce a method that returns full history as an AsyncMessageSequence instead
     #  of a ready-to-use list of MessagePromise objects ?
 
-    async def amaterialize_full_history(self, include_this_message: bool = True) -> list["Message"]:
+    async def amaterialize_full_history(
+        self, include_this_message: bool = True, follow_replies: bool = False
+    ) -> list["Message"]:
         """
         Get the full chat history of the conversation branch up to the last message in the sequence, but return a list
         of Message objects instead of MessagePromise objects.
         """
         return [
             await msg_promise.amaterialize()
-            for msg_promise in await self.aget_full_history(include_this_message=include_this_message)
+            for msg_promise in await self.aget_full_history(
+                include_this_message=include_this_message, follow_replies=follow_replies
+            )
         ]
 
     async def _aconvert_incoming_item(

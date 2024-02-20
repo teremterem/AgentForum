@@ -65,7 +65,7 @@ async def amaterialize_message_sequence(message_sequence: "MessageType") -> list
 
 
 async def arender_conversation(
-    conversation: "MessageType",  # TODO TODO TODO
+    conversation: "MessageType",
     alias_resolver: Optional[Union[str, Callable[["Message"], Optional[str]]]] = None,
     use_original_sender: bool = True,
     alias_delimiter: str = ": ",
