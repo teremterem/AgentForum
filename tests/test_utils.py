@@ -6,7 +6,7 @@ import contextlib
 
 import pytest
 
-from agentforum.conversations import ConversationTracker
+from agentforum.conversations import ConversationTracker, HistoryTracker
 from agentforum.forum import Forum, InteractionContext
 from agentforum.promises import AsyncMessageSequence
 from agentforum.utils import arender_conversation
@@ -17,15 +17,16 @@ async def athree_message_sequence(forum: Forum, fake_interaction_context: Intera
     """
     A sequence of three messages.
     """
+    history_tracker = HistoryTracker(forum=forum)
     async with fake_interaction_context:
         sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="TEST_ALIAS")
         # noinspection PyProtectedMember
         producer = AsyncMessageSequence._MessageProducer(sequence)
 
         with producer:
-            producer.send_zero_or_more_messages("message 1")
-            producer.send_zero_or_more_messages("message 2", final_sender_alias="OVERRIDDEN_ALIAS")
-            producer.send_zero_or_more_messages("message 3")
+            producer.send_zero_or_more_messages("message 1", history_tracker)
+            producer.send_zero_or_more_messages("message 2", history_tracker, final_sender_alias="OVERRIDDEN_ALIAS")
+            producer.send_zero_or_more_messages("message 3", history_tracker)
 
         yield sequence
 
