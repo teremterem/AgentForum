@@ -27,14 +27,14 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
 
     def __init__(
         self,
-        conversation: "ConversationTracker",
+        conversation_tracker: "ConversationTracker",
         *args,
         default_sender_alias: str,
         do_not_forward_if_possible: bool = True,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self._conversation = conversation
+        self._conversation_tracker = conversation_tracker
         self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
 
@@ -121,13 +121,13 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             # one.
             from agentforum.conversations import HistoryTracker  # pylint: disable=import-outside-toplevel
 
-            history_tracker = HistoryTracker(self._conversation.forum)
+            history_tracker = HistoryTracker(self._conversation_tracker.forum)
         else:
             content = incoming_item.zero_or_more_messages
             override_metadata = incoming_item.override_metadata.as_dict()
             history_tracker = incoming_item.history_tracker
 
-        async for msg_promise in self._conversation.aappend_zero_or_more_messages(
+        async for msg_promise in self._conversation_tracker.aappend_zero_or_more_messages(
             content=content,
             history_tracker=history_tracker,
             default_sender_alias=self._default_sender_alias,
