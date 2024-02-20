@@ -161,12 +161,12 @@ class Agent:
         override_sender_alias: Optional[str] = None,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
         reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
-        clean_history: bool = False,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> "AsyncMessageSequence":
         """
         "Ask" the agent and immediately receive an AsyncMessageSequence object that can be used to obtain the agent's
-        response(s). If clean_history is False and history_tracker/branch_from is not specified and pre-existing
+        response(s). If blank_history is False and history_tracker/branch_from is not specified and pre-existing
         messages are passed as requests (for ex. messages that came from other agents), then this agent call will be
         automatically branched off of the conversation branch those pre-existing messages belong to (the history will
         be inherited from those messages, in other words).
@@ -177,7 +177,7 @@ class Agent:
             override_sender_alias=override_sender_alias,
             branch_from=branch_from,
             reply_to=reply_to,
-            clean_history=clean_history,
+            blank_history=blank_history,
             **function_kwargs,
         )
 
@@ -185,13 +185,13 @@ class Agent:
         self,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
         reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
-        clean_history: bool = False,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
         """
         Initiate the process of "asking" the agent. Returns an AgentCall object that can be used to send requests to
         the agent by calling `send_request()` zero or more times and receive its responses by calling
-        `response_sequence()` at the end. If clean_history is False and history_tracker/branch_from is not specified
+        `response_sequence()` at the end. If blank_history is False and history_tracker/branch_from is not specified
         and pre-existing messages are passed as requests (for ex. messages that came from other agents), then this
         agent call will be automatically branched off of the conversation branch those pre-existing messages belong to
         (the history will be inherited from those messages, in other words).
@@ -200,7 +200,7 @@ class Agent:
             is_asking=True,
             branch_from=branch_from,
             reply_to=reply_to,
-            clean_history=clean_history,
+            blank_history=blank_history,
             **function_kwargs,
         )
 
@@ -210,11 +210,11 @@ class Agent:
         override_sender_alias: Optional[str] = None,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
         reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
-        clean_history: bool = False,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> None:
         """
-        "Tell" the agent. Does not return anything, because it's a one-way communication. If clean_history
+        "Tell" the agent. Does not return anything, because it's a one-way communication. If blank_history
         is False and history_tracker/branch_from is not specified and pre-existing messages are passed as requests
         (for ex. messages that came from other agents), then this agent call will be automatically branched off of the
         conversation branch those pre-existing messages belong to (the history will be inherited from those messages,
@@ -226,7 +226,7 @@ class Agent:
             override_sender_alias=override_sender_alias,
             branch_from=branch_from,
             reply_to=reply_to,
-            clean_history=clean_history,
+            blank_history=blank_history,
             **function_kwargs,
         )
 
@@ -234,13 +234,13 @@ class Agent:
         self,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
         reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
-        clean_history: bool = False,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
         """
         Initiate the process of "telling" the agent. Returns an AgentCall object that can be used to send requests to
         the agent by calling `send_request()` zero or more times and calling `finish()` at the end. If
-        clean_history is False and history_tracker/branch_from is not specified and pre-existing messages are passed as
+        blank_history is False and history_tracker/branch_from is not specified and pre-existing messages are passed as
         requests (for ex. messages that came from other agents), then this agent call will be automatically branched
         off of the conversation branch those pre-existing messages belong to (the history will be inherited from those
         messages, in other words).
@@ -249,7 +249,7 @@ class Agent:
             is_asking=False,
             branch_from=branch_from,
             reply_to=reply_to,
-            clean_history=clean_history,
+            blank_history=blank_history,
             **function_kwargs,
         )
 
@@ -260,14 +260,14 @@ class Agent:
         override_sender_alias: Optional[str] = None,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
         reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
-        clean_history: bool = False,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> Optional["AsyncMessageSequence"]:
         agent_call = self._start_call(
             is_asking=is_asking,
             branch_from=branch_from,
             reply_to=reply_to,
-            clean_history=clean_history,
+            blank_history=blank_history,
             **function_kwargs,
         )
         if content is not None:
@@ -286,11 +286,11 @@ class Agent:
         is_asking: bool,
         branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
         reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
-        clean_history: bool = False,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
-        if clean_history and branch_from:
-            raise ValueError("`clean_history` cannot be True when `branch_from` is specified")
+        if blank_history and branch_from:
+            raise ValueError("`blank_history` cannot be True when `branch_from` is specified")
 
         prev_forum_token = None
         try:
@@ -300,7 +300,7 @@ class Agent:
 
             if not branch_from:
                 history_tracker = HistoryTracker(
-                    self.forum, branch_from=None if clean_history else parent_ctx.request_messages
+                    self.forum, branch_from=None if blank_history else parent_ctx.request_messages
                 )
             elif isinstance(branch_from, HistoryTracker):
                 history_tracker = branch_from
@@ -320,7 +320,7 @@ class Agent:
                 conversation_tracker=conversation_tracker,
                 receiving_agent=self,
                 is_asking=is_asking,
-                do_not_forward_if_possible=not clean_history,
+                do_not_forward_if_possible=not blank_history,
                 **function_kwargs,
             )
             agent_call._task = asyncio.create_task(

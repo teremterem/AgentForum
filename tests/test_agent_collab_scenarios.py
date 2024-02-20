@@ -244,12 +244,12 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
 
 @pytest.mark.skip
-@pytest.mark.parametrize("new_conversation", [True, False])
+@pytest.mark.parametrize("blank_history", [True, False])
 @pytest.mark.parametrize("materialize_beforehand", [True, False])
 @pytest.mark.parametrize("dont_send_promises", [True, False])
 @pytest.mark.asyncio
 async def test_agent_new_conversation(
-    forum: Forum, new_conversation: bool, materialize_beforehand: bool, dont_send_promises: bool
+    forum: Forum, blank_history: bool, materialize_beforehand: bool, dont_send_promises: bool
 ) -> None:
     """
     Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
@@ -284,9 +284,9 @@ async def test_agent_new_conversation(
     if dont_send_promises:
         responses2 = await responses2.amaterialize_as_list()
 
-    responses1 = _agent1.ask(responses2, new_conversation=new_conversation)
+    responses1 = _agent1.ask(responses2, blank_history=blank_history)
 
-    if new_conversation:
+    if blank_history:
         assert await arepresent_conversation_with_dicts(responses1) == [
             {
                 "im_model_": "forward",
