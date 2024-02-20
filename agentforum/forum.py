@@ -498,7 +498,7 @@ class AgentCall:
         """
         Send a request to the agent.
         """
-        self._request_producer.send_zero_or_more_messages(content, **metadata)
+        self._request_producer.send_zero_or_more_messages(content, self._history_tracker, **metadata)
         return self
 
     def response_sequence(self) -> "AsyncMessageSequence":

@@ -220,7 +220,6 @@ async def test_message_aget_previous_msg(forum: Forum) -> None:
     assert message.content == "message 2"  # a sanity check
     previous_message = await message.aget_previous_msg()
 
-    # all the agent call messages were skipped by default
     assert previous_message.content == "message 1"
     assert type(previous_message) is Message  # pylint: disable=unidiomatic-typecheck
 
