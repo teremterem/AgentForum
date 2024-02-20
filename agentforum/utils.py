@@ -37,18 +37,20 @@ async def aflatten_message_sequence(message_sequence: "MessageType") -> list["Me
     Flatten a message sequence (which may consist of arbitrary synchronous and asynchronous MessageType objects) into
     a list of MessagePromise objects.
     """
-    # TODO TODO TODO
     # pylint: disable=import-outside-toplevel
-    from agentforum.forum import InteractionContext, ConversationTracker
+    from agentforum.conversations import ConversationTracker, HistoryTracker
+    from agentforum.forum import InteractionContext
     from agentforum.promises import AsyncMessageSequence
 
     ctx = InteractionContext.get_current_context()
-    sequence = AsyncMessageSequence(
-        ConversationTracker(ctx.forum, branch_from=NO_VALUE), default_sender_alias=ctx.this_agent.alias
-    )
+    # TODO TODO TODO Oleksandr: do these trackers make sense ?
+    conversation_tracker = ConversationTracker(ctx.forum)
+    history_tracker = HistoryTracker(ctx.forum, branch_from=NO_VALUE)
+
+    sequence = AsyncMessageSequence(conversation_tracker, default_sender_alias=ctx.this_agent.alias)
     # noinspection PyProtectedMember
     with AsyncMessageSequence._MessageProducer(sequence) as producer:  # pylint: disable=protected-access
-        producer.send_zero_or_more_messages(message_sequence)
+        producer.send_zero_or_more_messages(message_sequence, history_tracker)
 
     # TODO Oleksandr: why don't I have a shortcut method for this ?
     return [promise async for promise in sequence]
@@ -191,14 +193,14 @@ class AsyncStreamable(Generic[IN, OUT]):
             self._async_streamable = async_streamable
             self._suppress_exceptions = suppress_exceptions
 
-        def send(self, item: Union[IN, BaseException]) -> "_Producer":
+        def send(self, item: Union[IN, BaseException]) -> "AsyncStreamable._Producer":
             """Send an item to AsyncStreamable if it is still open (SendClosedError is raised otherwise)."""
             if self._async_streamable._send_closed:
                 raise SendClosedError("Cannot send items to a closed AsyncStreamable.")
             self._async_streamable._queue_in.put_nowait(item)
             return self
 
-        def close(self) -> "_Producer":
+        def close(self) -> "AsyncStreamable._Producer":
             """Close AsyncStreamable for sending. Has no effect if the container is already closed."""
             if not self._async_streamable._send_closed:
                 self._async_streamable._send_closed = True

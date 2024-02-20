@@ -6,7 +6,8 @@ import contextlib
 
 import pytest
 
-from agentforum.forum import Forum, ConversationTracker, InteractionContext
+from agentforum.conversations import ConversationTracker
+from agentforum.forum import Forum, InteractionContext
 from agentforum.promises import AsyncMessageSequence
 from agentforum.utils import arender_conversation
 

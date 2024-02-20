@@ -5,7 +5,8 @@ Tests for agentforum.promises.AsyncMessageSequence
 # pylint: disable=protected-access
 import pytest
 
-from agentforum.forum import Forum, ConversationTracker
+from agentforum.conversations import ConversationTracker
+from agentforum.forum import Forum
 from agentforum.models import Message
 from agentforum.promises import AsyncMessageSequence
 

@@ -13,7 +13,8 @@ load_dotenv()
 from openai import AsyncOpenAI
 from openai.types.beta import Thread, Assistant
 
-from agentforum.forum import Forum, InteractionContext, ConversationTracker
+from agentforum.conversations import ConversationTracker
+from agentforum.forum import Forum, InteractionContext
 
 forum = Forum()
 
