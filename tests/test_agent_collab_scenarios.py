@@ -35,16 +35,57 @@ async def test_assistant_googler_browser_scenario(forum: Forum) -> None:
     async def assistant(ctx: InteractionContext) -> None:
         googler.tell(ctx.request_messages)
 
-    assistant_responses = assistant.ask("What's the distance between the Earth and the Moon?")
+    call = assistant.start_asking()
+    call.send_request("What's the distance between the Earth and the Moon?!")
+    call.send_request("Tell me now!")
+    assistant_responses = call.response_sequence()
 
-    assert await arepresent_history_with_dicts(assistant_responses, follow_replies=True) == [
+    assert await arepresent_history_with_dicts(assistant_responses) == [
         {
             "im_model_": "message",
             "final_sender_alias": "USER",
-            "content": "What's the distance between the Earth and the Moon?",
+            "content": "What's the distance between the Earth and the Moon?!",
         },
         {
-            "reply_to": "What's the distance between the Earth and the Moon?",
+            "reply_to": "What's the distance between the Earth and the Moon?!",
+            "im_model_": "message",
+            "final_sender_alias": "USER",
+            "content": "Tell me now!",
+        },
+        # TODO TODO TODO TODO TODO Oleksandr: how to get rid of these forwards
+        {
+            "im_model_": "forward",
+            "final_sender_alias": "ASSISTANT",
+            "before_forward": {
+                "im_model_": "message",
+                "final_sender_alias": "USER",
+                "content": "What's the distance between the Earth and the " "Moon?!",
+            },
+        },
+        {
+            "reply_to": "What's the distance between the Earth and the Moon?!",
+            "im_model_": "forward",
+            "final_sender_alias": "ASSISTANT",
+            "before_forward": {
+                "reply_to": "What's the distance between the Earth and " "the Moon?!",
+                "im_model_": "message",
+                "final_sender_alias": "USER",
+                "content": "Tell me now!",
+            },
+        },
+        # TODO TODO TODO TODO TODO Oleksandr: End of TODO
+        {
+            "im_model_": "message",
+            "final_sender_alias": "GOOGLER",
+            "content": "Here are some search results I found.",
+        },
+        {
+            "im_model_": "message",
+            "final_sender_alias": "BROWSER",
+            "content": "Follow this url.",
+        },
+        {
+            "reply_to": "Tell me now!",
             "im_model_": "message",
             "final_sender_alias": "ASSISTANT",
             "content": "Quite a long distance.",
@@ -61,7 +102,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _agent1(ctx: InteractionContext) -> None:
+    async def agent1(ctx: InteractionContext) -> None:
         assert await arepresent_history_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
@@ -70,23 +111,11 @@ async def test_two_nested_agents(forum: Forum) -> None:
             },
         ]
 
-        ctx.respond(_agent2.ask(ctx.request_messages))
+        ctx.respond(agent2.ask(ctx.request_messages))
         ctx.respond("agent1 also says hello")
 
     @forum.agent
-    async def _agent2(ctx: InteractionContext) -> None:
-        # print()
-        # print()
-        # for msg in await ctx.request_messages.amaterialize_as_list():
-        #     print(msg.hash_key)
-        #     pprint(msg.as_dict())
-        #     while msg := msg.get_original_msg(return_self_if_none=False):
-        #         print(msg.hash_key)
-        #         pprint(msg.as_dict())
-        #         print()
-        #         print()
-        # assert False
-
+    async def agent2(ctx: InteractionContext) -> None:
         assert await arepresent_history_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
@@ -101,14 +130,14 @@ async def test_two_nested_agents(forum: Forum) -> None:
                     "content": "user says hello",
                 },
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
             },
         ]
 
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
-    responses1 = _agent1.ask("user says hello")
+    responses1 = agent1.ask("user says hello")
 
     assert await arepresent_history_with_dicts(responses1) == [
         {
@@ -119,35 +148,35 @@ async def test_two_nested_agents(forum: Forum) -> None:
         {
             "reply_to": "user says hello",
             "im_model_": "forward",
-            "final_sender_alias": "_AGENT1",
+            "final_sender_alias": "AGENT1",
             "before_forward": {
                 "reply_to": "user says hello",
                 "im_model_": "message",
-                "final_sender_alias": "_AGENT2",
+                "final_sender_alias": "AGENT2",
                 "content": "agent2 says hello",
             },
         },
         {
             "reply_to": "agent2 says hello",
             "im_model_": "forward",
-            "final_sender_alias": "_AGENT1",
+            "final_sender_alias": "AGENT1",
             "before_forward": {
                 "reply_to": "agent2 says hello",
                 "im_model_": "message",
-                "final_sender_alias": "_AGENT2",
+                "final_sender_alias": "AGENT2",
                 "content": "agent2 says hello again",
             },
         },
         {
             "reply_to": "agent2 says hello again",
             "im_model_": "message",
-            "final_sender_alias": "_AGENT1",
+            "final_sender_alias": "AGENT1",
             "content": "agent1 also says hello",
         },
     ]
 
 
-@pytest.mark.skip
+@pytest.mark.skip  # TODO TODO TODO TODO TODO
 @pytest.mark.parametrize("blank_history", [True, False])
 @pytest.mark.parametrize("materialize_beforehand", [True, False])
 @pytest.mark.parametrize("dont_send_promises", [True, False])
@@ -165,7 +194,7 @@ async def test_agent_new_conversation(
     """
 
     @forum.agent
-    async def _agent1(ctx: InteractionContext) -> None:
+    async def agent1(ctx: InteractionContext) -> None:
         if materialize_beforehand:
             await ctx.request_messages.amaterialize_as_list()
 
@@ -177,18 +206,18 @@ async def test_agent_new_conversation(
         ctx.respond(request_messages)
 
     @forum.agent
-    async def _agent2(ctx: InteractionContext) -> None:
+    async def agent2(ctx: InteractionContext) -> None:
         if materialize_beforehand:
             await ctx.request_messages.amaterialize_as_list()
 
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
-    responses2 = _agent2.ask("user says hello")
+    responses2 = agent2.ask("user says hello")
     if dont_send_promises:
         responses2 = await responses2.amaterialize_as_list()
 
-    responses1 = _agent1.ask(responses2, blank_history=blank_history)
+    responses1 = agent1.ask(responses2, blank_history=blank_history)
 
     if blank_history:
         assert await arepresent_history_with_dicts(responses1) == [
@@ -197,7 +226,7 @@ async def test_agent_new_conversation(
                 "final_sender_alias": "USER",
                 "before_forward": {
                     "im_model_": "message",
-                    "final_sender_alias": "_AGENT2",
+                    "final_sender_alias": "AGENT2",
                     "content": "agent2 says hello",
                 },
             },
@@ -206,38 +235,38 @@ async def test_agent_new_conversation(
                 "final_sender_alias": "USER",
                 "before_forward": {
                     "im_model_": "message",
-                    "final_sender_alias": "_AGENT2",
+                    "final_sender_alias": "AGENT2",
                     "content": "agent2 says hello again",
                 },
             },
             {
                 "im_model_": "call",
                 "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_AGENT1",
+                "receiver_alias": "AGENT1",
                 "messages_in_request": 2,
             },
             {
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
                 "before_forward": {
                     "im_model_": "forward",
                     "final_sender_alias": "USER",
                     "before_forward": {
                         "im_model_": "message",
-                        "final_sender_alias": "_AGENT2",
+                        "final_sender_alias": "AGENT2",
                         "content": "agent2 says hello",
                     },
                 },
             },
             {
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
                 "before_forward": {
                     "im_model_": "forward",
                     "final_sender_alias": "USER",
                     "before_forward": {
                         "im_model_": "message",
-                        "final_sender_alias": "_AGENT2",
+                        "final_sender_alias": "AGENT2",
                         "content": "agent2 says hello again",
                     },
                 },
@@ -253,40 +282,40 @@ async def test_agent_new_conversation(
             {
                 "im_model_": "call",
                 "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_AGENT2",
+                "receiver_alias": "AGENT2",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "final_sender_alias": "_AGENT2",
+                "final_sender_alias": "AGENT2",
                 "content": "agent2 says hello",
             },
             {
                 "im_model_": "message",
-                "final_sender_alias": "_AGENT2",
+                "final_sender_alias": "AGENT2",
                 "content": "agent2 says hello again",
             },
             {
                 "im_model_": "call",
                 "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_AGENT1",
+                "receiver_alias": "AGENT1",
                 "messages_in_request": 2,
             },
             {
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
                 "before_forward": {
                     "im_model_": "message",
-                    "final_sender_alias": "_AGENT2",
+                    "final_sender_alias": "AGENT2",
                     "content": "agent2 says hello",
                 },
             },
             {
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
                 "before_forward": {
                     "im_model_": "message",
-                    "final_sender_alias": "_AGENT2",
+                    "final_sender_alias": "AGENT2",
                     "content": "agent2 says hello again",
                 },
             },
