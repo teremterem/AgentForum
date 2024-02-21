@@ -192,13 +192,25 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent2(ctx: InteractionContext) -> None:
+        # print()
+        # print()
+        # for msg in await ctx.request_messages.amaterialize_as_list():
+        #     print(msg.hash_key)
+        #     pprint(msg.as_dict())
+        #     while msg := msg.get_original_msg(return_self_if_none=False):
+        #         print(msg.hash_key)
+        #         pprint(msg.as_dict())
+        #         print()
+        #         print()
+        # assert False
+
         assert await arepresent_history_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
                 "content": "user says hello",
             },
-            # TODO TODO TODO TODO TODO Oleksandr: why the following forwarded message was added ?
+            # TODO TODO TODO TODO TODO Oleksandr: how could I prevent the forwarding of the same message ?
             {
                 "before_forward": {
                     "im_model_": "message",
