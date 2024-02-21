@@ -198,7 +198,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
                 "final_sender_alias": "USER",
                 "content": "user says hello",
             },
-            # TODO TODO TODO TODO TODO Olekandr: why the following forwarded message was added ?
+            # TODO TODO TODO TODO TODO Oleksandr: why the following forwarded message was added ?
             {
                 "before_forward": {
                     "im_model_": "message",
