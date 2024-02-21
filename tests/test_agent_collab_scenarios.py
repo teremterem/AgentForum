@@ -35,10 +35,12 @@ async def test_assistant_googler_browser_scenario(forum: Forum) -> None:
     async def assistant(ctx: InteractionContext) -> None:
         googler.tell(ctx.request_messages)
 
-    call = assistant.start_asking()
-    call.send_request("What's the distance between the Earth and the Moon?!")
-    call.send_request("Tell me now!")
-    assistant_responses = call.response_sequence()
+    assistant_responses = assistant.ask(
+        [
+            "What's the distance between the Earth and the Moon?!",
+            "Tell me now!",
+        ]
+    )
 
     # print()
     # print()
