@@ -9,162 +9,45 @@ from agentforum.models import Message, AgentCallMsg
 from agentforum.promises import MessagePromise, AsyncMessageSequence
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
-async def test_api_call_error_recovery(forum: Forum) -> None:
+async def test_assistant_googler_browser_scenario(forum: Forum) -> None:
     """
-    ("message", "USER", "set a reminder for me for tomorrow at 10am"),
-        # _assistant forwards the message to _reminder_api (separate conversation thread)
-    ("message", "_reminder_api", "api error: invalid date format"),
-        # _critic is a proxy agent that intercepts error messages and tells _reminder_api what to correct
-    ("message", "_critic", "try swapping the month and day"),
-    ("message", "_reminder_api", "success: reminder set"),
-        # _assistant forwards this last message to the user (in the original conversation thread) as its own
+    Verify the message history in the following scenario:
+    - The `user` asks the `assistant` a question.
+    - The `assistant` asks the `googler` to find the answer.
+    - The `googler` gives the `browser` search results that it found.
+    - The `browser` asks the `browser` (asks itself) to navigate to a url from search results.
+    - The `browser` (on behalf of the `assistant`) responds to the `user` with the answer that it found.
     """
 
     @forum.agent
-    async def _assistant(ctx: InteractionContext) -> None:
-        assert await arepresent_history_with_dicts(ctx.request_messages) == [
-            {
-                "im_model_": "message",
-                "final_sender_alias": "USER",
-                "content": "set a reminder for me for tomorrow at 10am",
-            },
-        ]
-
-        api_responses = _reminder_api.ask(ctx.request_messages)
-        assert await arepresent_history_with_dicts(api_responses) == [
-            {
-                "im_model_": "message",
-                "final_sender_alias": "USER",
-                "content": "set a reminder for me for tomorrow at 10am",
-            },
-            {
-                "im_model_": "call",
-                "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_REMINDER_API",
-                "messages_in_request": 1,
-            },
-            {
-                "im_model_": "message",
-                "final_sender_alias": "_REMINDER_API",
-                "content": "api error: invalid date format",
-            },
-        ]
-
-        if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
-            # TODO Oleksandr: raise an actual error from _reminder_api agent
-            corrections = _critic.ask(api_responses)
-
-            assert await arepresent_history_with_dicts(corrections) == [
-                {
-                    "im_model_": "message",
-                    "final_sender_alias": "USER",
-                    "content": "set a reminder for me for tomorrow at 10am",
-                },
-                {
-                    "im_model_": "call",
-                    "final_sender_alias": "SYSTEM",
-                    "receiver_alias": "_REMINDER_API",
-                    "messages_in_request": 1,
-                },
-                {
-                    "im_model_": "message",
-                    "final_sender_alias": "_REMINDER_API",
-                    "content": "api error: invalid date format",
-                },
-                {
-                    "im_model_": "call",
-                    "final_sender_alias": "SYSTEM",
-                    "receiver_alias": "_CRITIC",
-                    "messages_in_request": 1,
-                },
-                {
-                    "im_model_": "message",
-                    "final_sender_alias": "_CRITIC",
-                    "content": "try swapping the month and day",
-                },
-            ]
-
-            api_responses = _reminder_api.ask(corrections)
-
-        assert await arepresent_history_with_dicts(api_responses) == [
-            {
-                "im_model_": "message",
-                "final_sender_alias": "USER",
-                "content": "set a reminder for me for tomorrow at 10am",
-            },
-            {
-                "im_model_": "call",
-                "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_REMINDER_API",
-                "messages_in_request": 1,
-            },
-            {
-                "im_model_": "message",
-                "final_sender_alias": "_REMINDER_API",
-                "content": "api error: invalid date format",
-            },
-            {
-                "im_model_": "call",
-                "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_CRITIC",
-                "messages_in_request": 1,
-            },
-            {
-                "im_model_": "message",
-                "final_sender_alias": "_CRITIC",
-                "content": "try swapping the month and day",
-            },
-            {
-                "im_model_": "call",
-                "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_REMINDER_API",
-                "messages_in_request": 1,
-            },
-            {
-                "im_model_": "message",
-                "final_sender_alias": "_REMINDER_API",
-                "content": "success: reminder set",
-            },
-        ]
-
-        ctx.respond(api_responses)
-
-    @forum.agent
-    async def _reminder_api(ctx: InteractionContext) -> None:
-        if (await ctx.request_messages.amaterialize_concluding_message()).original_sender_alias == "_CRITIC":
-            ctx.respond("success: reminder set")
+    async def browser(ctx: InteractionContext, emulate_answer_found: bool = False) -> None:
+        if emulate_answer_found:
+            ctx.respond("Quite a long distance.")
         else:
-            ctx.respond("api error: invalid date format")
+            ctx.this_agent.tell("Follow this url.", emulate_answer_found=True)
 
     @forum.agent
-    async def _critic(ctx: InteractionContext) -> None:
-        # TODO Oleksandr: turn this agent into a proxy agent
-        ctx.respond("try swapping the month and day")
+    async def googler(_: InteractionContext) -> None:
+        browser.tell("Here are some search results I found.")
 
-    assistant_responses = _assistant.ask("set a reminder for me for tomorrow at 10am")
+    @forum.agent
+    async def assistant(ctx: InteractionContext) -> None:
+        googler.tell(ctx.request_messages)
 
-    assert await arepresent_history_with_dicts(assistant_responses) == [
+    assistant_responses = assistant.ask("What's the distance between the Earth and the Moon?")
+
+    assert await arepresent_history_with_dicts(assistant_responses, follow_replies=True) == [
         {
             "im_model_": "message",
             "final_sender_alias": "USER",
-            "content": "set a reminder for me for tomorrow at 10am",
+            "content": "What's the distance between the Earth and the Moon?",
         },
         {
-            "im_model_": "call",
-            "final_sender_alias": "SYSTEM",
-            "receiver_alias": "_ASSISTANT",
-            "messages_in_request": 1,
-        },
-        {
-            "im_model_": "forward",
-            "final_sender_alias": "_ASSISTANT",
-            "before_forward": {
-                "im_model_": "message",
-                "final_sender_alias": "_REMINDER_API",
-                "content": "success: reminder set",
-            },
+            "reply_to": "What's the distance between the Earth and the Moon?",
+            "im_model_": "message",
+            "final_sender_alias": "ASSISTANT",
+            "content": "Quite a long distance.",
         },
     ]
 
@@ -410,7 +293,9 @@ async def test_agent_new_conversation(
         ]
 
 
-async def arepresent_history_with_dicts(response: Union[MessagePromise, AsyncMessageSequence]) -> list[dict[str, Any]]:
+async def arepresent_history_with_dicts(
+    response: Union[MessagePromise, AsyncMessageSequence], follow_replies: bool = False
+) -> list[dict[str, Any]]:
     """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
     async def _get_msg_dict(msg_: Message) -> dict[str, Any]:
@@ -445,7 +330,7 @@ async def arepresent_history_with_dicts(response: Union[MessagePromise, AsyncMes
         return msg_dict_
 
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_msg_promise()
-    conversation = await concluding_msg.amaterialize_full_history()
+    conversation = await concluding_msg.amaterialize_full_history(follow_replies=follow_replies)
 
     conversation_dicts = []
     for idx, msg in enumerate(conversation):
