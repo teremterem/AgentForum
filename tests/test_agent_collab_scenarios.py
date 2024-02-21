@@ -40,6 +40,18 @@ async def test_assistant_googler_browser_scenario(forum: Forum) -> None:
     call.send_request("Tell me now!")
     assistant_responses = call.response_sequence()
 
+    # print()
+    # print()
+    # for msg in await assistant_responses.amaterialize_full_history():
+    #     print(msg.hash_key)
+    #     pprint(msg.as_dict())
+    #     while msg := msg.get_original_msg(return_self_if_none=False):
+    #         print(msg.hash_key)
+    #         pprint(msg.as_dict())
+    #     print()
+    #     print()
+    # assert False
+
     assert await arepresent_history_with_dicts(assistant_responses) == [
         {
             "im_model_": "message",
