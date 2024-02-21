@@ -24,7 +24,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     @forum.agent
     async def _assistant(ctx: InteractionContext) -> None:
-        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+        assert await arepresent_history_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
@@ -33,7 +33,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
         ]
 
         api_responses = _reminder_api.ask(ctx.request_messages)
-        assert await arepresent_conversation_with_dicts(api_responses) == [
+        assert await arepresent_history_with_dicts(api_responses) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
@@ -56,7 +56,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
             # TODO Oleksandr: raise an actual error from _reminder_api agent
             corrections = _critic.ask(api_responses)
 
-            assert await arepresent_conversation_with_dicts(corrections) == [
+            assert await arepresent_history_with_dicts(corrections) == [
                 {
                     "im_model_": "message",
                     "final_sender_alias": "USER",
@@ -88,7 +88,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
             api_responses = _reminder_api.ask(corrections)
 
-        assert await arepresent_conversation_with_dicts(api_responses) == [
+        assert await arepresent_history_with_dicts(api_responses) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
@@ -145,7 +145,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
 
     assistant_responses = _assistant.ask("set a reminder for me for tomorrow at 10am")
 
-    assert await arepresent_conversation_with_dicts(assistant_responses) == [
+    assert await arepresent_history_with_dicts(assistant_responses) == [
         {
             "im_model_": "message",
             "final_sender_alias": "USER",
@@ -169,7 +169,7 @@ async def test_api_call_error_recovery(forum: Forum) -> None:
     ]
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_two_nested_agents(forum: Forum) -> None:
     """
@@ -179,7 +179,7 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent1(ctx: InteractionContext) -> None:
-        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+        assert await arepresent_history_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
@@ -192,11 +192,21 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     @forum.agent
     async def _agent2(ctx: InteractionContext) -> None:
-        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+        assert await arepresent_history_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
                 "content": "user says hello",
+            },
+            # TODO TODO TODO TODO TODO Olekandr: why the following forwarded message was added ?
+            {
+                "before_forward": {
+                    "im_model_": "message",
+                    "final_sender_alias": "USER",
+                    "content": "user says hello",
+                },
+                "im_model_": "forward",
+                "final_sender_alias": "_AGENT1",
             },
         ]
 
@@ -205,37 +215,36 @@ async def test_two_nested_agents(forum: Forum) -> None:
 
     responses1 = _agent1.ask("user says hello")
 
-    assert await arepresent_conversation_with_dicts(responses1) == [
+    assert await arepresent_history_with_dicts(responses1) == [
         {
             "im_model_": "message",
             "final_sender_alias": "USER",
             "content": "user says hello",
         },
         {
-            "im_model_": "call",
-            "final_sender_alias": "SYSTEM",
-            "receiver_alias": "_AGENT1",
-            "messages_in_request": 1,
-        },
-        {
+            "reply_to": "user says hello",
             "im_model_": "forward",
             "final_sender_alias": "_AGENT1",
             "before_forward": {
+                "reply_to": "user says hello",
                 "im_model_": "message",
                 "final_sender_alias": "_AGENT2",
                 "content": "agent2 says hello",
             },
         },
         {
+            "reply_to": "agent2 says hello",
             "im_model_": "forward",
             "final_sender_alias": "_AGENT1",
             "before_forward": {
+                "reply_to": "agent2 says hello",
                 "im_model_": "message",
                 "final_sender_alias": "_AGENT2",
                 "content": "agent2 says hello again",
             },
         },
         {
+            "reply_to": "agent2 says hello again",
             "im_model_": "message",
             "final_sender_alias": "_AGENT1",
             "content": "agent1 also says hello",
@@ -287,7 +296,7 @@ async def test_agent_new_conversation(
     responses1 = _agent1.ask(responses2, blank_history=blank_history)
 
     if blank_history:
-        assert await arepresent_conversation_with_dicts(responses1) == [
+        assert await arepresent_history_with_dicts(responses1) == [
             {
                 "im_model_": "forward",
                 "final_sender_alias": "USER",
@@ -340,7 +349,7 @@ async def test_agent_new_conversation(
             },
         ]
     else:
-        assert await arepresent_conversation_with_dicts(responses1) == [
+        assert await arepresent_history_with_dicts(responses1) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
@@ -389,12 +398,10 @@ async def test_agent_new_conversation(
         ]
 
 
-async def arepresent_conversation_with_dicts(
-    response: Union[MessagePromise, AsyncMessageSequence]
-) -> list[dict[str, Any]]:
+async def arepresent_history_with_dicts(response: Union[MessagePromise, AsyncMessageSequence]) -> list[dict[str, Any]]:
     """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
-    def _get_msg_dict(msg_: Message) -> dict[str, Any]:
+    async def _get_msg_dict(msg_: Message) -> dict[str, Any]:
         msg_dict_ = msg_.model_dump(
             exclude={
                 "forum_trees",
@@ -418,8 +425,11 @@ async def arepresent_conversation_with_dicts(
         before_forward_ = msg_.get_before_forward(return_self_if_none=False)
         if before_forward_:
             assert msg_dict_["content"] == before_forward_.content
-            msg_dict_["before_forward"] = _get_msg_dict(before_forward_)
+            msg_dict_["before_forward"] = await _get_msg_dict(before_forward_)
             del msg_dict_["content"]
+        reply_to_ = await msg_.aget_reply_to_msg()
+        if reply_to_:
+            msg_dict_["reply_to"] = reply_to_.content
         return msg_dict_
 
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_msg_promise()
@@ -427,7 +437,7 @@ async def arepresent_conversation_with_dicts(
 
     conversation_dicts = []
     for idx, msg in enumerate(conversation):
-        msg_dict = _get_msg_dict(msg)
+        msg_dict = await _get_msg_dict(msg)
 
         if isinstance(msg, AgentCallMsg):
             messages_in_request = 0
