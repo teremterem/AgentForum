@@ -34,6 +34,7 @@ async def test_assistant_googler_browser_scenario(forum: Forum) -> None:
 
     @forum.agent
     async def assistant(ctx: InteractionContext) -> None:
+        # `branch_from=NO_VALUE` prevents forwarding of the same request messages into the same history branch
         # TODO TODO TODO Oleksandr: this trick with `branch_from=NO_VALUE` is not intuitive, what to do about it ?
         googler.tell(ctx.request_messages, branch_from=NO_VALUE)
 
@@ -116,7 +117,6 @@ async def test_two_nested_agents(forum: Forum) -> None:
                 "final_sender_alias": "USER",
                 "content": "user says hello",
             },
-            # TODO TODO TODO TODO TODO Oleksandr: how could I prevent the forwarding of the same message ?
             {
                 "before_forward": {
                     "im_model_": "message",
