@@ -7,6 +7,7 @@ import pytest
 from agentforum.forum import Forum, InteractionContext
 from agentforum.models import Message, AgentCallMsg
 from agentforum.promises import MessagePromise, AsyncMessageSequence
+from agentforum.utils import NO_VALUE
 
 
 @pytest.mark.asyncio
@@ -33,7 +34,8 @@ async def test_assistant_googler_browser_scenario(forum: Forum) -> None:
 
     @forum.agent
     async def assistant(ctx: InteractionContext) -> None:
-        googler.tell(ctx.request_messages)
+        # TODO TODO TODO Oleksandr: this trick with `branch_from=NO_VALUE` is not intuitive, what to do about it ?
+        googler.tell(ctx.request_messages, branch_from=NO_VALUE)
 
     assistant_responses = assistant.ask(
         [
@@ -66,28 +68,6 @@ async def test_assistant_googler_browser_scenario(forum: Forum) -> None:
             "final_sender_alias": "USER",
             "content": "Tell me now!",
         },
-        # TODO TODO TODO TODO TODO Oleksandr: how to get rid of these forwards
-        {
-            "im_model_": "forward",
-            "final_sender_alias": "ASSISTANT",
-            "before_forward": {
-                "im_model_": "message",
-                "final_sender_alias": "USER",
-                "content": "What's the distance between the Earth and the " "Moon?!",
-            },
-        },
-        {
-            "reply_to": "What's the distance between the Earth and the Moon?!",
-            "im_model_": "forward",
-            "final_sender_alias": "ASSISTANT",
-            "before_forward": {
-                "reply_to": "What's the distance between the Earth and " "the Moon?!",
-                "im_model_": "message",
-                "final_sender_alias": "USER",
-                "content": "Tell me now!",
-            },
-        },
-        # TODO TODO TODO TODO TODO Oleksandr: End of TODO
         {
             "im_model_": "message",
             "final_sender_alias": "GOOGLER",
