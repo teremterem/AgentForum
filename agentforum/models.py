@@ -131,21 +131,13 @@ class Message(Freeform):
         """
         return self.final_sender_alias
 
-    async def aget_previous_msg(self, skip_agent_calls: bool = True) -> Optional["Message"]:
+    async def aget_previous_msg(self) -> Optional["Message"]:
         """
         Get the previous message in the forum.
         """
         if self.prev_msg_hash_key is None:
             return None
-        previous_message = await self.forum_trees.aretrieve_message(self.prev_msg_hash_key)
-
-        if skip_agent_calls:
-            while previous_message and isinstance(previous_message, AgentCallMsg):
-                previous_message = await previous_message.aget_previous_msg(
-                    skip_agent_calls=False  # let's avoid further recursion - we have a loop instead
-                )
-
-        return previous_message
+        return await self.forum_trees.aretrieve_message(self.prev_msg_hash_key)
 
     async def aget_reply_to_msg(self) -> Optional["Message"]:
         """
@@ -214,8 +206,8 @@ class Message(Freeform):
                     "neither `forum_trees` nor `prev_msg_hash_key` nor `reply_to_msg_hash_key` can be present in a "
                     "detached message"
                 )
-            if "content" in values and "content_template" in values:
-                raise ValueError("`content` and `content_template` cannot be both present in a detached message")
+            if values.get("content") is not None and values.get("content_template") is not None:
+                raise ValueError("`content` and `content_template` cannot both be set in a detached message")
         else:
             if not values.get("forum_trees"):
                 raise ValueError("`forum_trees` is required in a non-detached message")

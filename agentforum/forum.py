@@ -15,13 +15,13 @@ from typing import Optional, Union, Callable
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
 
-from agentforum.conversations import ConversationTracker
+from agentforum.conversations import ConversationTracker, HistoryTracker
 from agentforum.errors import NoAskingAgentError
 from agentforum.models import Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
 from agentforum.storage.trees_impl import InMemoryTrees
-from agentforum.utils import Sentinel, NO_VALUE, USER_ALIAS
+from agentforum.utils import Sentinel, USER_ALIAS
 
 if typing.TYPE_CHECKING:
     from agentforum.typing import AgentFunction, MessageType
@@ -36,7 +36,7 @@ class Forum(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
-    _conversations: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
+    _conversation_trackers: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
 
     def agent(
         self,
@@ -76,21 +76,21 @@ class Forum(BaseModel):
     def get_conversation(
         self,
         descriptor: Immutable,
-        branch_from_if_new: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None,
+        reply_to_if_new: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None,
     ) -> ConversationTracker:
         """
         Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
-        exist yet, it will be created. If branch_from_if_new is specified, the conversation will be branched off of
-        that message promise (as long as the conversation doesn't exist yet). Descriptor is used to uniquely identify
+        exist yet, it will be created. If reply_to_if_new is specified, the conversation will be in reply to that
+        message promise (as long as the conversation doesn't exist yet). Descriptor is used to uniquely identify
         the conversation. It can be an arbitrary Immutable object - its hash_key will be used to identify the
         conversation.
         """
-        conversation = self._conversations.get(descriptor.hash_key)
-        if not conversation:
-            conversation = ConversationTracker(forum=self, branch_from=branch_from_if_new)
-            self._conversations[descriptor.hash_key] = conversation
+        conversation_tracker = self._conversation_trackers.get(descriptor.hash_key)
+        if not conversation_tracker:
+            conversation_tracker = ConversationTracker(forum=self, reply_to=reply_to_if_new)
+            self._conversation_trackers[descriptor.hash_key] = conversation_tracker
 
-        return conversation
+        return conversation_tracker
 
     @cached_property
     def _user_agent(self) -> "Agent":
@@ -108,6 +108,9 @@ class Forum(BaseModel):
         return InteractionContext(
             forum=self,
             agent=self._user_agent,
+            # TODO TODO TODO Oleksandr: is it ok to have the same `HistoryTracker` for `USER` for the whole lifetime of
+            #  the application (or, more precisely, the forum) ?
+            history_tracker=HistoryTracker(self),
             request_messages=None,
             response_producer=None,
         )
@@ -156,48 +159,48 @@ class Agent:
         self,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> "AsyncMessageSequence":
         """
         "Ask" the agent and immediately receive an AsyncMessageSequence object that can be used to obtain the agent's
-        response(s). If force_new_conversation is False and conversation is not specified and pre-existing messages are
-        passed as requests (for ex. messages that came from other agents), then this agent call will be automatically
-        branched off of the conversation branch those pre-existing messages belong to (the history will be inherited
-        from those messages, in other words).
+        response(s). If blank_history is False and history_tracker/branch_from is not specified and pre-existing
+        messages are passed as requests (for ex. messages that came from other agents), then this agent call will be
+        automatically branched off of the conversation branch those pre-existing messages belong to (the history will
+        be inherited from those messages, in other words).
         """
         return self._call(
             is_asking=True,
             content=content,
             override_sender_alias=override_sender_alias,
             branch_from=branch_from,
-            conversation=conversation,
-            force_new_conversation=force_new_conversation,
+            reply_to=reply_to,
+            blank_history=blank_history,
             **function_kwargs,
         )
 
     def start_asking(
         self,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
         """
         Initiate the process of "asking" the agent. Returns an AgentCall object that can be used to send requests to
         the agent by calling `send_request()` zero or more times and receive its responses by calling
-        `response_sequence()` at the end. If force_new_conversation is False and conversation is not specified and
-        pre-existing messages are passed as requests (for ex. messages that came from other agents), then this agent
-        call will be automatically branched off of the conversation branch those pre-existing messages belong to (the
-        history will be inherited from those messages, in other words).
+        `response_sequence()` at the end. If blank_history is False and history_tracker/branch_from is not specified
+        and pre-existing messages are passed as requests (for ex. messages that came from other agents), then this
+        agent call will be automatically branched off of the conversation branch those pre-existing messages belong to
+        (the history will be inherited from those messages, in other words).
         """
         return self._start_call(
             is_asking=True,
             branch_from=branch_from,
-            conversation=conversation,
-            force_new_conversation=force_new_conversation,
+            reply_to=reply_to,
+            blank_history=blank_history,
             **function_kwargs,
         )
 
@@ -205,39 +208,39 @@ class Agent:
         self,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> None:
         """
-        "Tell" the agent. Does not return anything, because it's a one-way communication. If force_new_conversation
-        is False and conversation is not specified and pre-existing messages are passed as requests (for ex. messages
-        that came from other agents), then this agent call will be automatically branched off of the conversation
-        branch those pre-existing messages belong to (the history will be inherited from those messages, in other
-        words).
+        "Tell" the agent. Does not return anything, because it's a one-way communication. If blank_history
+        is False and history_tracker/branch_from is not specified and pre-existing messages are passed as requests
+        (for ex. messages that came from other agents), then this agent call will be automatically branched off of the
+        conversation branch those pre-existing messages belong to (the history will be inherited from those messages,
+        in other words).
         """
         self._call(
             is_asking=False,
             content=content,
             override_sender_alias=override_sender_alias,
             branch_from=branch_from,
-            conversation=conversation,
-            force_new_conversation=force_new_conversation,
+            reply_to=reply_to,
+            blank_history=blank_history,
             **function_kwargs,
         )
 
     def start_telling(
         self,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
         """
         Initiate the process of "telling" the agent. Returns an AgentCall object that can be used to send requests to
         the agent by calling `send_request()` zero or more times and calling `finish()` at the end. If
-        force_new_conversation is False and conversation is not specified and pre-existing messages are passed as
+        blank_history is False and history_tracker/branch_from is not specified and pre-existing messages are passed as
         requests (for ex. messages that came from other agents), then this agent call will be automatically branched
         off of the conversation branch those pre-existing messages belong to (the history will be inherited from those
         messages, in other words).
@@ -245,8 +248,8 @@ class Agent:
         return self._start_call(
             is_asking=False,
             branch_from=branch_from,
-            conversation=conversation,
-            force_new_conversation=force_new_conversation,
+            reply_to=reply_to,
+            blank_history=blank_history,
             **function_kwargs,
         )
 
@@ -255,16 +258,16 @@ class Agent:
         is_asking: bool,
         content: Optional["MessageType"] = None,
         override_sender_alias: Optional[str] = None,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> Optional["AsyncMessageSequence"]:
         agent_call = self._start_call(
             is_asking=is_asking,
             branch_from=branch_from,
-            conversation=conversation,
-            force_new_conversation=force_new_conversation,
+            reply_to=reply_to,
+            blank_history=blank_history,
             **function_kwargs,
         )
         if content is not None:
@@ -281,45 +284,48 @@ class Agent:
     def _start_call(
         self,
         is_asking: bool,
-        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence]] = None,
-        conversation: Optional[ConversationTracker] = None,
-        force_new_conversation: bool = False,  # TODO TODO TODO Oleksandr: rename to just `new_conversation` ?
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        reply_to: Optional[Union[MessagePromise, AsyncMessageSequence, ConversationTracker]] = None,
+        blank_history: bool = False,
         **function_kwargs,
     ) -> "AgentCall":
-        if branch_from and conversation:
-            raise ValueError(
-                "Cannot specify both `conversation` and `branch_from` in `Agent.call()` or `Agent.quick_call()`"
-            )
+        if blank_history and branch_from:
+            raise ValueError("`blank_history` cannot be True when `branch_from` is specified")
 
         prev_forum_token = None
         try:
             if self.forum is not _CURRENT_FORUM.get():
                 prev_forum_token = _CURRENT_FORUM.set(self.forum)
+            parent_ctx = InteractionContext.get_current_context()
 
-            if branch_from:
-                conversation = ConversationTracker(self.forum, branch_from=branch_from)
-
-            if conversation:
-                if conversation.has_prior_history and force_new_conversation:
-                    raise ValueError(
-                        "Cannot force a new conversation when there is prior history in `ConversationTracker`"
-                    )
+            if not branch_from:
+                history_tracker = HistoryTracker(
+                    self.forum, branch_from=None if blank_history else parent_ctx.request_messages
+                )
+            elif isinstance(branch_from, HistoryTracker):
+                history_tracker = branch_from
             else:
-                # TODO TODO TODO TODO TODO
-                conversation = ConversationTracker(self.forum, branch_from=NO_VALUE)
+                history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
+
+            if not reply_to:
+                conversation_tracker = ConversationTracker(self.forum)
+            elif isinstance(reply_to, ConversationTracker):
+                conversation_tracker = reply_to
+            else:
+                conversation_tracker = ConversationTracker(self.forum, reply_to=reply_to)
 
             agent_call = AgentCall(
                 forum=self.forum,
-                conversation=conversation,
+                history_tracker=history_tracker,
+                conversation_tracker=conversation_tracker,
                 receiving_agent=self,
                 is_asking=is_asking,
-                do_not_forward_if_possible=not force_new_conversation,
+                do_not_forward_if_possible=not blank_history,
                 **function_kwargs,
             )
             agent_call._task = asyncio.create_task(
                 self._acall_non_cached_agent_func(agent_call=agent_call, **function_kwargs)
             )
-            parent_ctx = InteractionContext.get_current_context()  # TODO TODO TODO
             parent_ctx._child_agent_calls.append(agent_call)
 
             return agent_call
@@ -332,6 +338,7 @@ class Agent:
             async with InteractionContext(
                 forum=self.forum,
                 agent=self,
+                history_tracker=agent_call._history_tracker,
                 request_messages=agent_call._request_messages,
                 response_producer=agent_call._response_producer,
             ) as ctx:
@@ -356,6 +363,7 @@ class InteractionContext:
         self,
         forum: "Forum",
         agent: Agent,
+        history_tracker: HistoryTracker,
         request_messages: Optional[AsyncMessageSequence],
         response_producer: Optional["AsyncMessageSequence._MessageProducer"],
     ) -> None:
@@ -364,6 +372,7 @@ class InteractionContext:
         self.request_messages = request_messages
         self.parent_context: Optional["InteractionContext"] = self._current_context.get()
 
+        self._history_tracker = history_tracker
         self._response_producer = response_producer
         self._child_agent_calls: list[AgentCall] = []
         self._previous_ctx_token: Optional[contextvars.Token] = None
@@ -380,9 +389,11 @@ class InteractionContext:
         Respond with a message or a sequence of messages.
         """
         if self.was_asked:
-            self._response_producer.send_zero_or_more_messages(content, **metadata)
+            self._response_producer.send_zero_or_more_messages(content, self._history_tracker, **metadata)
         else:
-            self.get_asked_context().respond(content, **metadata)
+            self.get_asked_context()._response_producer.send_zero_or_more_messages(
+                content, self._history_tracker, **metadata
+            )
 
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
@@ -446,23 +457,20 @@ class AgentCall:
     def __init__(
         self,
         forum: Forum,
-        conversation: ConversationTracker,
+        history_tracker: HistoryTracker,
+        conversation_tracker: ConversationTracker,
         receiving_agent: Agent,
         is_asking: bool,
-        do_not_forward_if_possible: bool = True,  # TODO TODO TODO Oleksandr: this concept should go away
+        do_not_forward_if_possible: bool = True,
         **function_kwargs,
     ) -> None:
         self.forum = forum
         self.receiving_agent = receiving_agent
         self.is_asking = is_asking
 
-        # TODO TODO TODO Oleksandr: either explain this temporary_sub_conversation in a comment or refactor it
-        #  completely when you get to implementing cached agent calls
-        # TODO TODO TODO
-        temporary_sub_conversation = ConversationTracker(forum=forum, branch_from=conversation._latest_msg_promise)
-
+        self._history_tracker = history_tracker
         self._request_messages = AsyncMessageSequence(
-            temporary_sub_conversation,
+            conversation_tracker,
             default_sender_alias=InteractionContext.get_current_sender_alias(),
             do_not_forward_if_possible=do_not_forward_if_possible,
         )
@@ -470,20 +478,16 @@ class AgentCall:
 
         self._task: Optional[asyncio.Task] = None
 
-        agent_call_msg_promise = AgentCallMsgPromise(
+        AgentCallMsgPromise(
             forum=self.forum,
             request_messages=self._request_messages,
             receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,
-        )
-        # TODO TODO TODO
-        conversation._latest_msg_promise = agent_call_msg_promise
+        )  # TODO TODO TODO Oleksandr: who and when is going to materialize this promise ?
 
         if is_asking:
-            # TODO TODO TODO TODO TODO Oleksandr: switch to branch_from=NO_VALUE and employ reply_to (reply to
-            #  AgentCallMsg) ?
             self._response_messages = AsyncMessageSequence(
-                conversation, default_sender_alias=self.receiving_agent.alias
+                conversation_tracker, default_sender_alias=self.receiving_agent.alias
             )
             self._response_producer = AsyncMessageSequence._MessageProducer(self._response_messages)
         else:
@@ -494,7 +498,7 @@ class AgentCall:
         """
         Send a request to the agent.
         """
-        self._request_producer.send_zero_or_more_messages(content, **metadata)
+        self._request_producer.send_zero_or_more_messages(content, self._history_tracker, **metadata)
         return self
 
     def response_sequence(self) -> "AsyncMessageSequence":

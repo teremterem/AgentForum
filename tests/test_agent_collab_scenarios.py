@@ -7,167 +7,88 @@ import pytest
 from agentforum.forum import Forum, InteractionContext
 from agentforum.models import Message, AgentCallMsg
 from agentforum.promises import MessagePromise, AsyncMessageSequence
+from agentforum.utils import NO_VALUE
 
 
 @pytest.mark.asyncio
-async def test_api_call_error_recovery(forum: Forum) -> None:
+async def test_assistant_googler_browser_scenario(forum: Forum) -> None:
     """
-    ("message", "USER", "set a reminder for me for tomorrow at 10am"),
-        # _assistant forwards the message to _reminder_api (separate conversation thread)
-    ("message", "_reminder_api", "api error: invalid date format"),
-        # _critic is a proxy agent that intercepts error messages and tells _reminder_api what to correct
-    ("message", "_critic", "try swapping the month and day"),
-    ("message", "_reminder_api", "success: reminder set"),
-        # _assistant forwards this last message to the user (in the original conversation thread) as its own
+    Verify the message history in the following scenario:
+    - The `user` asks the `assistant` a question.
+    - The `assistant` asks the `googler` to find the answer.
+    - The `googler` gives the `browser` search results that it found.
+    - The `browser` asks the `browser` (asks itself) to navigate to a url from search results.
+    - The `browser` (on behalf of the `assistant`) responds to the `user` with the answer that it found.
     """
 
     @forum.agent
-    async def _assistant(ctx: InteractionContext) -> None:
-        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
-            {
-                "im_model_": "message",
-                "final_sender_alias": "USER",
-                "content": "set a reminder for me for tomorrow at 10am",
-            },
-        ]
-
-        api_responses = _reminder_api.ask(ctx.request_messages)
-        assert await arepresent_conversation_with_dicts(api_responses) == [
-            {
-                "im_model_": "message",
-                "final_sender_alias": "USER",
-                "content": "set a reminder for me for tomorrow at 10am",
-            },
-            {
-                "im_model_": "call",
-                "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_REMINDER_API",
-                "messages_in_request": 1,
-            },
-            {
-                "im_model_": "message",
-                "final_sender_alias": "_REMINDER_API",
-                "content": "api error: invalid date format",
-            },
-        ]
-
-        if (await api_responses.amaterialize_concluding_message()).content.startswith("api error:"):
-            # TODO Oleksandr: raise an actual error from _reminder_api agent
-            corrections = _critic.ask(api_responses)
-
-            assert await arepresent_conversation_with_dicts(corrections) == [
-                {
-                    "im_model_": "message",
-                    "final_sender_alias": "USER",
-                    "content": "set a reminder for me for tomorrow at 10am",
-                },
-                {
-                    "im_model_": "call",
-                    "final_sender_alias": "SYSTEM",
-                    "receiver_alias": "_REMINDER_API",
-                    "messages_in_request": 1,
-                },
-                {
-                    "im_model_": "message",
-                    "final_sender_alias": "_REMINDER_API",
-                    "content": "api error: invalid date format",
-                },
-                {
-                    "im_model_": "call",
-                    "final_sender_alias": "SYSTEM",
-                    "receiver_alias": "_CRITIC",
-                    "messages_in_request": 1,
-                },
-                {
-                    "im_model_": "message",
-                    "final_sender_alias": "_CRITIC",
-                    "content": "try swapping the month and day",
-                },
-            ]
-
-            api_responses = _reminder_api.ask(corrections)
-
-        assert await arepresent_conversation_with_dicts(api_responses) == [
-            {
-                "im_model_": "message",
-                "final_sender_alias": "USER",
-                "content": "set a reminder for me for tomorrow at 10am",
-            },
-            {
-                "im_model_": "call",
-                "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_REMINDER_API",
-                "messages_in_request": 1,
-            },
-            {
-                "im_model_": "message",
-                "final_sender_alias": "_REMINDER_API",
-                "content": "api error: invalid date format",
-            },
-            {
-                "im_model_": "call",
-                "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_CRITIC",
-                "messages_in_request": 1,
-            },
-            {
-                "im_model_": "message",
-                "final_sender_alias": "_CRITIC",
-                "content": "try swapping the month and day",
-            },
-            {
-                "im_model_": "call",
-                "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_REMINDER_API",
-                "messages_in_request": 1,
-            },
-            {
-                "im_model_": "message",
-                "final_sender_alias": "_REMINDER_API",
-                "content": "success: reminder set",
-            },
-        ]
-
-        ctx.respond(api_responses)
-
-    @forum.agent
-    async def _reminder_api(ctx: InteractionContext) -> None:
-        if (await ctx.request_messages.amaterialize_concluding_message()).original_sender_alias == "_CRITIC":
-            ctx.respond("success: reminder set")
+    async def browser(ctx: InteractionContext, emulate_answer_found: bool = False) -> None:
+        if emulate_answer_found:
+            ctx.respond("Quite a long distance.")
         else:
-            ctx.respond("api error: invalid date format")
+            ctx.this_agent.tell("Follow this url.", emulate_answer_found=True)
 
     @forum.agent
-    async def _critic(ctx: InteractionContext) -> None:
-        # TODO Oleksandr: turn this agent into a proxy agent
-        ctx.respond("try swapping the month and day")
+    async def googler(_: InteractionContext) -> None:
+        browser.tell("Here are some search results I found.")
 
-    assistant_responses = _assistant.ask("set a reminder for me for tomorrow at 10am")
+    @forum.agent
+    async def assistant(ctx: InteractionContext) -> None:
+        # `branch_from=NO_VALUE` prevents forwarding of the same request messages into the same history branch
+        # TODO TODO TODO Oleksandr: this trick with `branch_from=NO_VALUE` is not intuitive, what to do about it ?
+        googler.tell(ctx.request_messages, branch_from=NO_VALUE)
 
-    assert await arepresent_conversation_with_dicts(assistant_responses) == [
+    assistant_responses = assistant.ask(
+        [
+            "What's the distance between the Earth and the Moon?!",
+            "Tell me now!",
+        ]
+    )
+
+    # print()
+    # print()
+    # for msg in await assistant_responses.amaterialize_full_history():
+    #     print(msg.hash_key)
+    #     pprint(msg.as_dict())
+    #     while msg := msg.get_original_msg(return_self_if_none=False):
+    #         print(msg.hash_key)
+    #         pprint(msg.as_dict())
+    #     print()
+    #     print()
+    # assert False
+
+    assert await arepresent_history_with_dicts(assistant_responses) == [
         {
             "im_model_": "message",
             "final_sender_alias": "USER",
-            "content": "set a reminder for me for tomorrow at 10am",
+            "content": "What's the distance between the Earth and the Moon?!",
         },
         {
-            "im_model_": "call",
-            "final_sender_alias": "SYSTEM",
-            "receiver_alias": "_ASSISTANT",
-            "messages_in_request": 1,
+            "reply_to": "What's the distance between the Earth and the Moon?!",
+            "im_model_": "message",
+            "final_sender_alias": "USER",
+            "content": "Tell me now!",
         },
         {
-            "im_model_": "forward",
-            "final_sender_alias": "_ASSISTANT",
-            "before_forward": {
-                "im_model_": "message",
-                "final_sender_alias": "_REMINDER_API",
-                "content": "success: reminder set",
-            },
+            "im_model_": "message",
+            "final_sender_alias": "GOOGLER",
+            "content": "Here are some search results I found.",
+        },
+        {
+            "im_model_": "message",
+            "final_sender_alias": "BROWSER",
+            "content": "Follow this url.",
+        },
+        {
+            "reply_to": "Tell me now!",
+            "im_model_": "message",
+            "final_sender_alias": "ASSISTANT",
+            "content": "Quite a long distance.",
         },
     ]
 
 
+# @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_two_nested_agents(forum: Forum) -> None:
     """
@@ -176,8 +97,8 @@ async def test_two_nested_agents(forum: Forum) -> None:
     """
 
     @forum.agent
-    async def _agent1(ctx: InteractionContext) -> None:
-        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+    async def agent1(ctx: InteractionContext) -> None:
+        assert await arepresent_history_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
@@ -185,72 +106,81 @@ async def test_two_nested_agents(forum: Forum) -> None:
             },
         ]
 
-        ctx.respond(_agent2.ask(ctx.request_messages))
+        ctx.respond(agent2.ask(ctx.request_messages))
         ctx.respond("agent1 also says hello")
 
     @forum.agent
-    async def _agent2(ctx: InteractionContext) -> None:
-        assert await arepresent_conversation_with_dicts(ctx.request_messages) == [
+    async def agent2(ctx: InteractionContext) -> None:
+        assert await arepresent_history_with_dicts(ctx.request_messages) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
                 "content": "user says hello",
+            },
+            {
+                "before_forward": {
+                    "im_model_": "message",
+                    "final_sender_alias": "USER",
+                    "content": "user says hello",
+                },
+                "im_model_": "forward",
+                "final_sender_alias": "AGENT1",
             },
         ]
 
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
-    responses1 = _agent1.ask("user says hello")
+    responses1 = agent1.ask("user says hello")
 
-    assert await arepresent_conversation_with_dicts(responses1) == [
+    assert await arepresent_history_with_dicts(responses1) == [
         {
             "im_model_": "message",
             "final_sender_alias": "USER",
             "content": "user says hello",
         },
         {
-            "im_model_": "call",
-            "final_sender_alias": "SYSTEM",
-            "receiver_alias": "_AGENT1",
-            "messages_in_request": 1,
-        },
-        {
+            "reply_to": "user says hello",
             "im_model_": "forward",
-            "final_sender_alias": "_AGENT1",
+            "final_sender_alias": "AGENT1",
             "before_forward": {
+                "reply_to": "user says hello",
                 "im_model_": "message",
-                "final_sender_alias": "_AGENT2",
+                "final_sender_alias": "AGENT2",
                 "content": "agent2 says hello",
             },
         },
         {
+            "reply_to": "agent2 says hello",
             "im_model_": "forward",
-            "final_sender_alias": "_AGENT1",
+            "final_sender_alias": "AGENT1",
             "before_forward": {
+                "reply_to": "agent2 says hello",
                 "im_model_": "message",
-                "final_sender_alias": "_AGENT2",
+                "final_sender_alias": "AGENT2",
                 "content": "agent2 says hello again",
             },
         },
         {
+            "reply_to": "agent2 says hello again",
             "im_model_": "message",
-            "final_sender_alias": "_AGENT1",
+            "final_sender_alias": "AGENT1",
             "content": "agent1 also says hello",
         },
     ]
 
 
-@pytest.mark.parametrize("force_new_conversation", [True, False])
+@pytest.mark.skip  # TODO TODO TODO TODO TODO
+@pytest.mark.parametrize("blank_history", [True, False])
 @pytest.mark.parametrize("materialize_beforehand", [True, False])
 @pytest.mark.parametrize("dont_send_promises", [True, False])
 @pytest.mark.asyncio
-async def test_agent_force_new_conversation(
-    forum: Forum, force_new_conversation: bool, materialize_beforehand: bool, dont_send_promises: bool
+async def test_agent_new_conversation(
+    forum: Forum, blank_history: bool, materialize_beforehand: bool, dont_send_promises: bool
 ) -> None:
     """
     Verify that when one agent, in order to serve the user, calls another agent "behind the scenes", the conversation
-    history is recorded according to the `force_new_conversation` flag (if `force_new_conversation` is True then the
+    history is recorded according to the `new_conversation` flag (if `new_conversation` is True then the
     conversation history for the _agent1 starts from the response of _agent2 and not from the user's greeting).
 
     If agent interaction mechanism is implemented correctly then materialize_beforehand and dont_send_promises should
@@ -258,7 +188,7 @@ async def test_agent_force_new_conversation(
     """
 
     @forum.agent
-    async def _agent1(ctx: InteractionContext) -> None:
+    async def agent1(ctx: InteractionContext) -> None:
         if materialize_beforehand:
             await ctx.request_messages.amaterialize_as_list()
 
@@ -270,27 +200,27 @@ async def test_agent_force_new_conversation(
         ctx.respond(request_messages)
 
     @forum.agent
-    async def _agent2(ctx: InteractionContext) -> None:
+    async def agent2(ctx: InteractionContext) -> None:
         if materialize_beforehand:
             await ctx.request_messages.amaterialize_as_list()
 
         ctx.respond("agent2 says hello")
         ctx.respond("agent2 says hello again")
 
-    responses2 = _agent2.ask("user says hello")
+    responses2 = agent2.ask("user says hello")
     if dont_send_promises:
         responses2 = await responses2.amaterialize_as_list()
 
-    responses1 = _agent1.ask(responses2, force_new_conversation=force_new_conversation)
+    responses1 = agent1.ask(responses2, blank_history=blank_history)
 
-    if force_new_conversation:
-        assert await arepresent_conversation_with_dicts(responses1) == [
+    if blank_history:
+        assert await arepresent_history_with_dicts(responses1) == [
             {
                 "im_model_": "forward",
                 "final_sender_alias": "USER",
                 "before_forward": {
                     "im_model_": "message",
-                    "final_sender_alias": "_AGENT2",
+                    "final_sender_alias": "AGENT2",
                     "content": "agent2 says hello",
                 },
             },
@@ -299,45 +229,45 @@ async def test_agent_force_new_conversation(
                 "final_sender_alias": "USER",
                 "before_forward": {
                     "im_model_": "message",
-                    "final_sender_alias": "_AGENT2",
+                    "final_sender_alias": "AGENT2",
                     "content": "agent2 says hello again",
                 },
             },
             {
                 "im_model_": "call",
                 "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_AGENT1",
+                "receiver_alias": "AGENT1",
                 "messages_in_request": 2,
             },
             {
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
                 "before_forward": {
                     "im_model_": "forward",
                     "final_sender_alias": "USER",
                     "before_forward": {
                         "im_model_": "message",
-                        "final_sender_alias": "_AGENT2",
+                        "final_sender_alias": "AGENT2",
                         "content": "agent2 says hello",
                     },
                 },
             },
             {
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
                 "before_forward": {
                     "im_model_": "forward",
                     "final_sender_alias": "USER",
                     "before_forward": {
                         "im_model_": "message",
-                        "final_sender_alias": "_AGENT2",
+                        "final_sender_alias": "AGENT2",
                         "content": "agent2 says hello again",
                     },
                 },
             },
         ]
     else:
-        assert await arepresent_conversation_with_dicts(responses1) == [
+        assert await arepresent_history_with_dicts(responses1) == [
             {
                 "im_model_": "message",
                 "final_sender_alias": "USER",
@@ -346,52 +276,52 @@ async def test_agent_force_new_conversation(
             {
                 "im_model_": "call",
                 "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_AGENT2",
+                "receiver_alias": "AGENT2",
                 "messages_in_request": 1,
             },
             {
                 "im_model_": "message",
-                "final_sender_alias": "_AGENT2",
+                "final_sender_alias": "AGENT2",
                 "content": "agent2 says hello",
             },
             {
                 "im_model_": "message",
-                "final_sender_alias": "_AGENT2",
+                "final_sender_alias": "AGENT2",
                 "content": "agent2 says hello again",
             },
             {
                 "im_model_": "call",
                 "final_sender_alias": "SYSTEM",
-                "receiver_alias": "_AGENT1",
+                "receiver_alias": "AGENT1",
                 "messages_in_request": 2,
             },
             {
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
                 "before_forward": {
                     "im_model_": "message",
-                    "final_sender_alias": "_AGENT2",
+                    "final_sender_alias": "AGENT2",
                     "content": "agent2 says hello",
                 },
             },
             {
                 "im_model_": "forward",
-                "final_sender_alias": "_AGENT1",
+                "final_sender_alias": "AGENT1",
                 "before_forward": {
                     "im_model_": "message",
-                    "final_sender_alias": "_AGENT2",
+                    "final_sender_alias": "AGENT2",
                     "content": "agent2 says hello again",
                 },
             },
         ]
 
 
-async def arepresent_conversation_with_dicts(
-    response: Union[MessagePromise, AsyncMessageSequence]
+async def arepresent_history_with_dicts(
+    response: Union[MessagePromise, AsyncMessageSequence], follow_replies: bool = False
 ) -> list[dict[str, Any]]:
     """Represent the conversation as a list of dicts, omitting the hash keys and some other redundant fields."""
 
-    def _get_msg_dict(msg_: Message) -> dict[str, Any]:
+    async def _get_msg_dict(msg_: Message) -> dict[str, Any]:
         msg_dict_ = msg_.model_dump(
             exclude={
                 "forum_trees",
@@ -415,16 +345,19 @@ async def arepresent_conversation_with_dicts(
         before_forward_ = msg_.get_before_forward(return_self_if_none=False)
         if before_forward_:
             assert msg_dict_["content"] == before_forward_.content
-            msg_dict_["before_forward"] = _get_msg_dict(before_forward_)
+            msg_dict_["before_forward"] = await _get_msg_dict(before_forward_)
             del msg_dict_["content"]
+        reply_to_ = await msg_.aget_reply_to_msg()
+        if reply_to_:
+            msg_dict_["reply_to"] = reply_to_.content
         return msg_dict_
 
     concluding_msg = response if isinstance(response, MessagePromise) else await response.aget_concluding_msg_promise()
-    conversation = await concluding_msg.amaterialize_full_history(skip_agent_calls=False)
+    conversation = await concluding_msg.amaterialize_full_history(follow_replies=follow_replies)
 
     conversation_dicts = []
     for idx, msg in enumerate(conversation):
-        msg_dict = _get_msg_dict(msg)
+        msg_dict = await _get_msg_dict(msg)
 
         if isinstance(msg, AgentCallMsg):
             messages_in_request = 0

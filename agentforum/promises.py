@@ -13,7 +13,8 @@ from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform,
 from agentforum.utils import AsyncStreamable, NO_VALUE, IN, SYSTEM_ALIAS
 
 if typing.TYPE_CHECKING:
-    from agentforum.forum import Forum, ConversationTracker
+    from agentforum.conversations import ConversationTracker, HistoryTracker
+    from agentforum.forum import Forum
     from agentforum.typing import MessageType, SingleMessageType
 
 
@@ -26,14 +27,14 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
 
     def __init__(
         self,
-        conversation: "ConversationTracker",
+        conversation_tracker: "ConversationTracker",
         *args,
         default_sender_alias: str,
         do_not_forward_if_possible: bool = True,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self._conversation = conversation
+        self._conversation_tracker = conversation_tracker
         self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible
 
@@ -85,7 +86,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         return [await msg.amaterialize() async for msg in self]
 
     async def aget_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
+        self, include_this_message: bool = True, follow_replies: bool = False
     ) -> list["MessagePromise"]:
         """
         Get the full chat history of the conversation branch up to the last message in the sequence.
@@ -93,7 +94,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         concluding_msg_promise = await self.aget_concluding_msg_promise(raise_if_none=False)
         if concluding_msg_promise:
             return await concluding_msg_promise.aget_full_history(
-                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
+                include_this_message=include_this_message, follow_replies=follow_replies
             )
         return []
 
@@ -101,7 +102,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
     #  of a ready-to-use list of MessagePromise objects ?
 
     async def amaterialize_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
+        self, include_this_message: bool = True, follow_replies: bool = False
     ) -> list["Message"]:
         """
         Get the full chat history of the conversation branch up to the last message in the sequence, but return a list
@@ -110,7 +111,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         return [
             await msg_promise.amaterialize()
             for msg_promise in await self.aget_full_history(
-                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
+                include_this_message=include_this_message, follow_replies=follow_replies
             )
         ]
 
@@ -118,14 +119,25 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         self, incoming_item: Union["_MessageTypeCarrier", BaseException]
     ) -> AsyncIterator["MessagePromise"]:
         if isinstance(incoming_item, BaseException):
+            # This code branch is for unusual exceptions only (for ex. framework level exceptions).
+            # Agent level exceptions will be processed by the `else` part, because they will be wrapped into
+            # `_MessageTypeCarrier` (they will go through `_MessageProducer.send_zero_or_more_messages` method).
             content = incoming_item
             override_metadata = {}
+
+            # For the unusual exceptions we create a blank history tracker because we don't have access to the proper
+            # one.
+            from agentforum.conversations import HistoryTracker  # pylint: disable=import-outside-toplevel
+
+            history_tracker = HistoryTracker(self._conversation_tracker.forum)
         else:
             content = incoming_item.zero_or_more_messages
             override_metadata = incoming_item.override_metadata.as_dict()
+            history_tracker = incoming_item.history_tracker
 
-        async for msg_promise in self._conversation.aappend_zero_or_more_messages(
+        async for msg_promise in self._conversation_tracker.aappend_zero_or_more_messages(
             content=content,
+            history_tracker=history_tracker,
             default_sender_alias=self._default_sender_alias,
             do_not_forward_if_possible=self._do_not_forward_if_possible,
             **override_metadata,
@@ -137,7 +149,9 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
         A context manager that allows sending messages to AsyncMessageSequence.
         """
 
-        def send_zero_or_more_messages(self, content: "MessageType", **metadata) -> None:
+        def send_zero_or_more_messages(
+            self, content: "MessageType", history_tracker: "HistoryTracker", **metadata
+        ) -> None:
             """
             Send a message or messages to the sequence this producer is attached to.
             """
@@ -148,7 +162,13 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
                 # TODO Oleksandr: some sort of "deep freeze" is needed here - items can be mutable dicts or lists
                 content = tuple(content)
             # TODO Oleksandr: validate `content` type manually, because in Pydantic it's just Any
-            self.send(_MessageTypeCarrier(zero_or_more_messages=content, override_metadata=Freeform(**metadata)))
+            self.send(
+                _MessageTypeCarrier(
+                    zero_or_more_messages=content,
+                    history_tracker=history_tracker,
+                    override_metadata=Freeform(**metadata),
+                )
+            )
 
 
 class StreamedMessage(AsyncStreamable[IN, ContentChunk]):
@@ -303,29 +323,27 @@ class MessagePromise:
         """
         return (await self.amaterialize()).content
 
-    async def aget_previous_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+    async def aget_previous_msg_promise(self) -> Optional["MessagePromise"]:
         """
         Get the previous MessagePromise in this conversation branch.
         """
-        prev_msg_promise = await self._aget_previous_msg_promise_try_materialized()
+        if self._materialized_msg:
+            if self._materialized_msg.prev_msg_hash_key:
+                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.prev_msg_hash_key)
+                return MessagePromise(forum=self.forum, materialized_msg=message)
+            return None
+        return await self._aget_previous_msg_promise_impl()
 
-        if skip_agent_calls:
-            while prev_msg_promise and prev_msg_promise.is_agent_call:
-                prev_msg_promise = await prev_msg_promise._aget_previous_msg_promise_try_materialized()
-
-        return prev_msg_promise
-
-    async def aget_reply_to_msg_promise(self, skip_agent_calls: bool = True) -> Optional["MessagePromise"]:
+    async def aget_reply_to_msg_promise(self) -> Optional["MessagePromise"]:
         """
         Get the MessagePromise that this MessagePromise is a reply to.
         """
-        reply_to_msg_promise = await self._aget_reply_to_msg_promise_try_materialized()
-
-        if skip_agent_calls:
-            while reply_to_msg_promise and reply_to_msg_promise.is_agent_call:
-                reply_to_msg_promise = await reply_to_msg_promise._aget_reply_to_msg_promise_try_materialized()
-
-        return reply_to_msg_promise
+        if self._materialized_msg:
+            if self._materialized_msg.reply_to_msg_hash_key:
+                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.reply_to_msg_hash_key)
+                return MessagePromise(forum=self.forum, materialized_msg=message)
+            return None
+        return self._reply_to
 
     async def _amaterialize_impl(self) -> Message:
         if self._branch_from and self._branch_from is not NO_VALUE:
@@ -406,22 +424,6 @@ class MessagePromise:
 
         raise ValueError(f"Unexpected message content type: {type(self._content)}")
 
-    async def _aget_previous_msg_promise_try_materialized(self) -> Optional["MessagePromise"]:
-        if self._materialized_msg:
-            if self._materialized_msg.prev_msg_hash_key:
-                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.prev_msg_hash_key)
-                return MessagePromise(forum=self.forum, materialized_msg=message)
-            return None
-        return await self._aget_previous_msg_promise_impl()
-
-    async def _aget_reply_to_msg_promise_try_materialized(self) -> Optional["MessagePromise"]:
-        if self._materialized_msg:
-            if self._materialized_msg.reply_to_msg_hash_key:
-                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.reply_to_msg_hash_key)
-                return MessagePromise(forum=self.forum, materialized_msg=message)
-            return None
-        return self._reply_to
-
     async def _aget_previous_msg_promise_impl(self) -> Optional["MessagePromise"]:
         if self._do_not_forward_if_possible and self._branch_from is NO_VALUE:
             # this message promise doesn't have a previous message promise of its own but there may be an "original"
@@ -429,16 +431,18 @@ class MessagePromise:
             # hence we should try to work with the "original" message's branch instead of starting a new branch (which
             # would have been the case if we just returned self._branch_from as it's value is being None)
             if isinstance(self._content, MessagePromise):
-                return await self._content.aget_previous_msg_promise(skip_agent_calls=False)
+                return await self._content.aget_previous_msg_promise()
 
             if isinstance(self._content, Message):
-                message = await self.forum.forum_trees.aretrieve_message(self._content.prev_msg_hash_key)
+                message = await self._content.aget_previous_msg()
+                if not message:
+                    return None
                 return MessagePromise(forum=self.forum, materialized_msg=message)
 
         return None if self._branch_from is NO_VALUE else self._branch_from
 
     async def aget_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True, prefer_replies: bool = False
+        self, include_this_message: bool = True, follow_replies: bool = False
     ) -> list["MessagePromise"]:
         """
         Get the full chat history of the conversation branch up to this message. Returns a list of MessagePromise
@@ -448,19 +452,17 @@ class MessagePromise:
         msg_promise = self
         result = [msg_promise] if include_this_message else []
         while msg_promise := (
-            (
-                await msg_promise.aget_reply_to_msg_promise(skip_agent_calls=skip_agent_calls)
-                if prefer_replies
-                else None
-            )
-            or await msg_promise.aget_previous_msg_promise(skip_agent_calls=skip_agent_calls)
+            # TODO TODO TODO Oleksandr: split into two separate methods ?
+            await msg_promise.aget_reply_to_msg_promise()
+            if follow_replies
+            else await msg_promise.aget_previous_msg_promise()
         ):
             result.append(msg_promise)
         result.reverse()
         return result
 
     async def amaterialize_full_history(
-        self, skip_agent_calls: bool = True, include_this_message: bool = True
+        self, include_this_message: bool = True, follow_replies: bool = False
     ) -> list[Message]:
         """
         Get the full chat history of the conversation branch up to this message, but return a list of Message objects
@@ -469,7 +471,7 @@ class MessagePromise:
         return [
             await msg_promise.amaterialize()
             for msg_promise in await self.aget_full_history(
-                skip_agent_calls=skip_agent_calls, include_this_message=include_this_message
+                include_this_message=include_this_message, follow_replies=follow_replies
             )
         ]
 
@@ -521,5 +523,6 @@ class AgentCallMsgPromise(MessagePromise):
 class _MessageTypeCarrier(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
-    zero_or_more_messages: Any  # should be MessageType but Pydantic v2 seems to be confused by it
+    zero_or_more_messages: Any  # should be `MessageType` but Pydantic v2 seems to be confused by it
+    history_tracker: Any  # TODO TODO TODO Oleksandr: should be `HistoryTracker` but there are circular dependencies
     override_metadata: Freeform = Freeform()
