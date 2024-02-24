@@ -378,21 +378,33 @@ class InteractionContext:
         self._previous_ctx_token: Optional[contextvars.Token] = None
 
     @property
-    def was_asked(self) -> bool:
+    def is_asker_context(self) -> bool:
         """
         Check if this agent was "asked", and not just "told" (the calling agent is waiting for a response).
         """
         return bool(self._response_producer)
 
-    def respond(self, content: "MessageType", **metadata) -> None:
+    def respond(
+        self,
+        content: "MessageType",
+        branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, HistoryTracker]] = None,
+        **metadata,
+    ) -> None:
         """
         Respond with a message or a sequence of messages.
         """
-        if self.was_asked:
-            self._response_producer.send_zero_or_more_messages(content, self._history_tracker, **metadata)
+        if not branch_from:
+            history_tracker = self._history_tracker
+        elif isinstance(branch_from, HistoryTracker):
+            history_tracker = branch_from
         else:
-            self.get_asked_context()._response_producer.send_zero_or_more_messages(
-                content, self._history_tracker, **metadata
+            history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
+
+        if self.is_asker_context:
+            self._response_producer.send_zero_or_more_messages(content, history_tracker, **metadata)
+        else:
+            self.get_asker_context()._response_producer.send_zero_or_more_messages(
+                content, history_tracker, **metadata
             )
 
     @classmethod
@@ -400,14 +412,14 @@ class InteractionContext:
         """Get the current InteractionContext object."""
         return cls._current_context.get() or _CURRENT_FORUM.get()._user_interaction_context
 
-    def get_asked_context(self) -> "InteractionContext":
+    def get_asker_context(self) -> "InteractionContext":
         """
         Get the InteractionContext object produced by an "asking" (rather than "telling") agent. If there is no asking
         agent, raises NoAskingAgentError.
         """
         ctx = self
         while ctx:
-            if ctx.was_asked:
+            if ctx.is_asker_context:
                 return ctx
             ctx = ctx.parent_context
         raise NoAskingAgentError("There is no agent up the chain of parent contexts that is currently asking")
