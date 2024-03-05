@@ -489,7 +489,7 @@ class AgentCall:
         self._task: Optional[asyncio.Task] = None
 
         AgentCallMsgPromise(
-            forum=self.forum,
+            forum_trees=self.forum.forum_trees,
             request_messages=self._request_messages,
             receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,

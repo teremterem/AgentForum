@@ -52,7 +52,7 @@ class ConversationTracker:
                 formatted_error = FormattedForumError(original_error=content)
 
             msg_promise = MessagePromise(
-                forum=self.forum,
+                forum_trees=self.forum.forum_trees,
                 content=await formatted_error.agenerate_error_message(
                     previous_msg_promise=history_tracker._latest_msg_promise,
                     reply_to_msg_promise=self._latest_msg_promise,
@@ -74,7 +74,7 @@ class ConversationTracker:
 
         elif isinstance(content, MessagePromise):
             msg_promise = MessagePromise(
-                forum=self.forum,
+                forum_trees=self.forum.forum_trees,
                 content=content,
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
@@ -90,7 +90,7 @@ class ConversationTracker:
 
         elif isinstance(content, dict):
             msg_promise = MessagePromise(
-                forum=self.forum,
+                forum_trees=self.forum.forum_trees,
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
                 branch_from=history_tracker._latest_msg_promise,
@@ -110,7 +110,7 @@ class ConversationTracker:
                 msg_fields.pop("reply_to_msg_hash_key", None)
 
                 msg_promise = MessagePromise(
-                    forum=self.forum,
+                    forum_trees=self.forum.forum_trees,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
                     branch_from=history_tracker._latest_msg_promise,
@@ -122,7 +122,7 @@ class ConversationTracker:
                 )
             else:
                 msg_promise = MessagePromise(
-                    forum=self.forum,
+                    forum_trees=self.forum.forum_trees,
                     content=content,
                     default_sender_alias=default_sender_alias,
                     do_not_forward_if_possible=do_not_forward_if_possible,
@@ -138,7 +138,7 @@ class ConversationTracker:
 
         elif isinstance(content, (str, StreamedMessage)):
             msg_promise = MessagePromise(
-                forum=self.forum,
+                forum_trees=self.forum.forum_trees,
                 content=content,
                 default_sender_alias=default_sender_alias,
                 do_not_forward_if_possible=do_not_forward_if_possible,
