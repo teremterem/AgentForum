@@ -87,7 +87,7 @@ class Forum(BaseModel):
         """
         conversation_tracker = self._conversation_trackers.get(descriptor.hash_key)
         if not conversation_tracker:
-            conversation_tracker = ConversationTracker(forum=self, reply_to=reply_to_if_new)
+            conversation_tracker = ConversationTracker(self.forum_trees, reply_to=reply_to_if_new)
             self._conversation_trackers[descriptor.hash_key] = conversation_tracker
 
         return conversation_tracker
@@ -306,11 +306,11 @@ class Agent:
                 history_tracker = HistoryTracker(branch_from=branch_from)
 
             if not reply_to:
-                conversation_tracker = ConversationTracker(self.forum)
+                conversation_tracker = ConversationTracker(self.forum.forum_trees)
             elif isinstance(reply_to, ConversationTracker):
                 conversation_tracker = reply_to
             else:
-                conversation_tracker = ConversationTracker(self.forum, reply_to=reply_to)
+                conversation_tracker = ConversationTracker(self.forum.forum_trees, reply_to=reply_to)
 
             agent_call = AgentCall(
                 forum=self.forum,

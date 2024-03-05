@@ -19,7 +19,9 @@ async def athree_message_sequence(forum: Forum, fake_interaction_context: Intera
     """
     history_tracker = HistoryTracker()
     async with fake_interaction_context:
-        sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="TEST_ALIAS")
+        sequence = AsyncMessageSequence(
+            ConversationTracker(forum_trees=forum.forum_trees), default_sender_alias="TEST_ALIAS"
+        )
         # noinspection PyProtectedMember
         producer = AsyncMessageSequence._MessageProducer(sequence)
 
