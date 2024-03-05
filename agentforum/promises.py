@@ -129,7 +129,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             # one.
             from agentforum.conversations import HistoryTracker  # pylint: disable=import-outside-toplevel
 
-            history_tracker = HistoryTracker(self._conversation_tracker.forum)
+            history_tracker = HistoryTracker()
         else:
             content = incoming_item.zero_or_more_messages
             override_metadata = incoming_item.override_metadata.as_dict()

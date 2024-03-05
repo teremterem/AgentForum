@@ -16,7 +16,7 @@ async def test_nested_message_sequences(forum: Forum) -> None:
     """
     Verify that message ordering in nested message sequences is preserved.
     """
-    history_tracker = HistoryTracker(forum=forum)
+    history_tracker = HistoryTracker()
     level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
     level2_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
@@ -65,7 +65,7 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
     Verify that an error in a message sequence comes out on the other end, but that the messages before the error
     are still processed.
     """
-    history_tracker = HistoryTracker(forum=forum)
+    history_tracker = HistoryTracker()
     level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
 
@@ -102,7 +102,7 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
     Verify that an error in a NESTED message sequence comes out on the other end of the OUTER sequence, but that the
     messages before the error are still processed.
     """
-    history_tracker = HistoryTracker(forum=forum)
+    history_tracker = HistoryTracker()
     level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
     level2_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
@@ -149,7 +149,7 @@ async def test_error_in_materialized_nested_sequence(forum: Forum) -> None:
     A separate unit test for this is necessary because in case of MATERIALIZED NESTED sequence, the error is
     propagated from Message to MessagePromise, and not from MessagePromise to MessagePromise, as in the previous test.
     """
-    history_tracker = HistoryTracker(forum=forum)
+    history_tracker = HistoryTracker()
     level1_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
     level2_sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
@@ -183,7 +183,7 @@ async def test_dicts_in_message_sequences(forum: Forum) -> None:
     sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="test")
     producer = AsyncMessageSequence._MessageProducer(sequence)
 
-    history_tracker = HistoryTracker(forum=forum)
+    history_tracker = HistoryTracker()
     with producer:
         producer.send_zero_or_more_messages({"content": "message 1"}, history_tracker)
         producer.send_zero_or_more_messages(

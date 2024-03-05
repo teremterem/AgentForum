@@ -17,7 +17,7 @@ async def athree_message_sequence(forum: Forum, fake_interaction_context: Intera
     """
     A sequence of three messages.
     """
-    history_tracker = HistoryTracker(forum=forum)
+    history_tracker = HistoryTracker()
     async with fake_interaction_context:
         sequence = AsyncMessageSequence(ConversationTracker(forum=forum), default_sender_alias="TEST_ALIAS")
         # noinspection PyProtectedMember

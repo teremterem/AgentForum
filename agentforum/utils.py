@@ -45,7 +45,7 @@ async def aflatten_message_sequence(message_sequence: "MessageType") -> list["Me
     ctx = InteractionContext.get_current_context()
     # TODO TODO TODO Oleksandr: do these trackers make sense ?
     conversation_tracker = ConversationTracker(ctx.forum)
-    history_tracker = HistoryTracker(ctx.forum, branch_from=NO_VALUE)
+    history_tracker = HistoryTracker(branch_from=NO_VALUE)
 
     sequence = AsyncMessageSequence(conversation_tracker, default_sender_alias=ctx.this_agent.alias)
     # noinspection PyProtectedMember

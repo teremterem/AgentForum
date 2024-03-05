@@ -184,8 +184,5 @@ class HistoryTracker:
     branch of messages or not will be determined by the messages that are passed into this conversation later.
     """
 
-    def __init__(
-        self, forum: "Forum", branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None
-    ) -> None:
-        self.forum = forum
+    def __init__(self, branch_from: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None) -> None:
         self._latest_msg_promise = branch_from

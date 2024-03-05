@@ -110,7 +110,7 @@ class Forum(BaseModel):
             agent=self._user_agent,
             # TODO TODO TODO Oleksandr: is it ok to have the same `HistoryTracker` for `USER` for the whole lifetime of
             #  the application (or, more precisely, the forum) ?
-            history_tracker=HistoryTracker(self),
+            history_tracker=HistoryTracker(),
             request_messages=None,
             response_producer=None,
         )
@@ -299,13 +299,11 @@ class Agent:
             parent_ctx = InteractionContext.get_current_context()
 
             if not branch_from:
-                history_tracker = HistoryTracker(
-                    self.forum, branch_from=None if blank_history else parent_ctx.request_messages
-                )
+                history_tracker = HistoryTracker(branch_from=None if blank_history else parent_ctx.request_messages)
             elif isinstance(branch_from, HistoryTracker):
                 history_tracker = branch_from
             else:
-                history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
+                history_tracker = HistoryTracker(branch_from=branch_from)
 
             if not reply_to:
                 conversation_tracker = ConversationTracker(self.forum)
@@ -398,7 +396,7 @@ class InteractionContext:
         elif isinstance(branch_from, HistoryTracker):
             history_tracker = branch_from
         else:
-            history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
+            history_tracker = HistoryTracker(branch_from=branch_from)
 
         if self.is_asker_context:
             self._response_producer.send_zero_or_more_messages(content, history_tracker, **metadata)
