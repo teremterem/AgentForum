@@ -294,6 +294,7 @@ class Agent:
 
         prev_forum_token = None
         try:
+            # TODO TODO TODO TODO TODO Oleksandr: get ForumTrees from InteractionContext
             if self.forum is not _CURRENT_FORUM.get():
                 prev_forum_token = _CURRENT_FORUM.set(self.forum)
             parent_ctx = InteractionContext.get_current_context()
@@ -313,7 +314,7 @@ class Agent:
                 conversation_tracker = ConversationTracker(self.forum.forum_trees, reply_to=reply_to)
 
             agent_call = AgentCall(
-                forum=self.forum,
+                forum_trees=self.forum.forum_trees,
                 history_tracker=history_tracker,
                 conversation_tracker=conversation_tracker,
                 receiving_agent=self,
@@ -466,7 +467,7 @@ class AgentCall:
 
     def __init__(
         self,
-        forum: Forum,
+        forum_trees: ForumTrees,
         history_tracker: HistoryTracker,
         conversation_tracker: ConversationTracker,
         receiving_agent: Agent,
@@ -474,7 +475,7 @@ class AgentCall:
         do_not_forward_if_possible: bool = True,
         **function_kwargs,
     ) -> None:
-        self.forum = forum
+        self.forum_trees = forum_trees
         self.receiving_agent = receiving_agent
         self.is_asking = is_asking
 
@@ -489,7 +490,7 @@ class AgentCall:
         self._task: Optional[asyncio.Task] = None
 
         AgentCallMsgPromise(
-            forum_trees=self.forum.forum_trees,
+            forum_trees=self.forum_trees,
             request_messages=self._request_messages,
             receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,
