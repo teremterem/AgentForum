@@ -65,7 +65,7 @@ async def test_interaction_contexts_with_create_task(forum: Forum) -> None:
 def _create_interaction_context(agent_alias: str) -> InteractionContext:
     """Create an interaction context with the given agent alias."""
     return InteractionContext(
-        forum=MagicMock(),
+        forum_trees=MagicMock(),
         agent=MagicMock(alias=agent_alias),
         history_tracker=MagicMock(),
         request_messages=MagicMock(),

@@ -36,7 +36,7 @@ def fake_interaction_context(forum: Forum, fake_agent: Agent) -> InteractionCont
     """
     # noinspection PyTypeChecker
     return InteractionContext(
-        forum=forum,
+        forum_trees=forum.forum_trees,
         agent=fake_agent,
         history_tracker=MagicMock(),
         request_messages=MagicMock(),

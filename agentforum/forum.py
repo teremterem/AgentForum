@@ -106,7 +106,7 @@ class Forum(BaseModel):
         perspective.
         """
         return InteractionContext(
-            forum=self,
+            forum_trees=self.forum_trees,
             agent=self._user_agent,
             # TODO TODO TODO Oleksandr: is it ok to have the same `HistoryTracker` for `USER` for the whole lifetime of
             #  the application (or, more precisely, the forum) ?
@@ -335,7 +335,7 @@ class Agent:
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
         with agent_call._response_producer or contextlib.nullcontext():
             async with InteractionContext(
-                forum=self.forum,
+                forum_trees=self.forum.forum_trees,
                 agent=self,
                 history_tracker=agent_call._history_tracker,
                 request_messages=agent_call._request_messages,
@@ -360,13 +360,13 @@ class InteractionContext:
 
     def __init__(
         self,
-        forum: "Forum",
+        forum_trees: ForumTrees,
         agent: Agent,
         history_tracker: HistoryTracker,
         request_messages: Optional[AsyncMessageSequence],
         response_producer: Optional["AsyncMessageSequence._MessageProducer"],
     ) -> None:
-        self.forum = forum
+        self.forum_trees = forum_trees
         self.this_agent = agent
         self.request_messages = request_messages
         self.parent_context: Optional["InteractionContext"] = self._current_context.get()
