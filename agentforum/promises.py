@@ -247,6 +247,15 @@ class MessagePromise:
 
         self.forum_trees = forum_trees
 
+        if isinstance(branch_from, MessagePromise) and branch_from.forum_trees is not forum_trees:
+            raise ValueError(
+                "The `forum_trees` of the `branch_from` message promise must be the same as the current one."
+            )
+        if isinstance(reply_to, MessagePromise) and reply_to.forum_trees is not forum_trees:
+            raise ValueError(
+                "The `forum_trees` of the `reply_to` message promise must be the same as the current one."
+            )
+
         self._content = content
         self._default_sender_alias = default_sender_alias
         self._do_not_forward_if_possible = do_not_forward_if_possible

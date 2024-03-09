@@ -57,25 +57,26 @@ async def main() -> None:
     user_requests = None
     assistant_responses = None
     try:
-        while True:
-            user_requests = user_proxy_agent.ask(
-                assistant_responses,
-                reply_to=user_requests,
-            )
-            # the following line is needed for two reasons:
-            # - to raise KeyboardInterrupt if the user typed exit
-            # - to wait until the previous back-and-forth is processed
-            # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
-            # TODO Oleksandr: what to do about the fact that people will not remember to call it ?
-            await user_requests.araise_if_error()
+        async with forum.create_user_interaction_context():
+            while True:
+                user_requests = user_proxy_agent.ask(
+                    assistant_responses,
+                    reply_to=user_requests,
+                )
+                # the following line is needed for two reasons:
+                # - to raise KeyboardInterrupt if the user typed exit
+                # - to wait until the previous back-and-forth is processed
+                # (otherwise back-and-forth-s will be perpetually scheduled but never executed)
+                # TODO Oleksandr: what to do about the fact that people will not remember to call it ?
+                await user_requests.araise_if_error()
 
-            assistant_responses = openai_agent.ask(
-                user_requests,
-                model="gpt-4-1106-preview",
-                # model="gpt-3.5-turbo-1106",
-                stream=True,
-                reply_to=assistant_responses,
-            )
+                assistant_responses = openai_agent.ask(
+                    user_requests,
+                    model="gpt-4-1106-preview",
+                    # model="gpt-3.5-turbo-1106",
+                    stream=True,
+                    reply_to=assistant_responses,
+                )
     except KeyboardInterrupt:
         print()
 
