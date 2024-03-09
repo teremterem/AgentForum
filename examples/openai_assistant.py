@@ -77,7 +77,7 @@ async def main() -> None:
     """The chat loop."""
     global conversation, thread, assistant  # pylint: disable=global-statement
 
-    conversation = ConversationTracker(forum)
+    conversation = ConversationTracker(forum.forum_trees)
     thread = await async_openai_client.beta.threads.create()
     assistant = await async_openai_client.beta.assistants.retrieve("asst_Gy7dZUh9IYNLfz8xOtUaJSbC")
 

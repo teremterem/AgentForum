@@ -10,11 +10,11 @@ from pydantic import BaseModel, ConfigDict
 
 from agentforum.errors import EmptySequenceError
 from agentforum.models import Message, AgentCallMsg, ForwardedMessage, Freeform, ContentChunk
+from agentforum.storage.trees import ForumTrees
 from agentforum.utils import AsyncStreamable, NO_VALUE, IN, SYSTEM_ALIAS
 
 if typing.TYPE_CHECKING:
     from agentforum.conversations import ConversationTracker, HistoryTracker
-    from agentforum.forum import Forum
     from agentforum.typing import MessageType, SingleMessageType
 
 
@@ -129,7 +129,7 @@ class AsyncMessageSequence(AsyncStreamable["_MessageTypeCarrier", "MessagePromis
             # one.
             from agentforum.conversations import HistoryTracker  # pylint: disable=import-outside-toplevel
 
-            history_tracker = HistoryTracker(self._conversation_tracker.forum)
+            history_tracker = HistoryTracker()
         else:
             content = incoming_item.zero_or_more_messages
             override_metadata = incoming_item.override_metadata.as_dict()
@@ -215,7 +215,7 @@ class MessagePromise:
 
     def __init__(
         self,
-        forum: "Forum",
+        forum_trees: ForumTrees,
         content: Optional["SingleMessageType"] = None,
         default_sender_alias: Optional[str] = None,
         do_not_forward_if_possible: bool = True,
@@ -245,7 +245,16 @@ class MessagePromise:
                 "If `materialized_msg` is not provided, `content` and `default_sender_alias` must be provided."
             )
 
-        self.forum = forum
+        self.forum_trees = forum_trees
+
+        if isinstance(branch_from, MessagePromise) and branch_from.forum_trees is not forum_trees:
+            raise ValueError(
+                "The `forum_trees` of the `branch_from` message promise must be the same as the current one."
+            )
+        if isinstance(reply_to, MessagePromise) and reply_to.forum_trees is not forum_trees:
+            raise ValueError(
+                "The `forum_trees` of the `reply_to` message promise must be the same as the current one."
+            )
 
         self._content = content
         self._default_sender_alias = default_sender_alias
@@ -306,7 +315,7 @@ class MessagePromise:
             async with self._lock:
                 if not self._materialized_msg:
                     self._materialized_msg = await self._amaterialize_impl()
-                    await self.forum.forum_trees.astore_immutable(self._materialized_msg)
+                    await self.forum_trees.astore_immutable(self._materialized_msg)
 
                     # from now on the source of truth is self._materialized_msg
                     self._content = None
@@ -329,8 +338,8 @@ class MessagePromise:
         """
         if self._materialized_msg:
             if self._materialized_msg.prev_msg_hash_key:
-                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.prev_msg_hash_key)
-                return MessagePromise(forum=self.forum, materialized_msg=message)
+                message = await self.forum_trees.aretrieve_message(self._materialized_msg.prev_msg_hash_key)
+                return MessagePromise(forum_trees=self.forum_trees, materialized_msg=message)
             return None
         return await self._aget_previous_msg_promise_impl()
 
@@ -340,8 +349,8 @@ class MessagePromise:
         """
         if self._materialized_msg:
             if self._materialized_msg.reply_to_msg_hash_key:
-                message = await self.forum.forum_trees.aretrieve_message(self._materialized_msg.reply_to_msg_hash_key)
-                return MessagePromise(forum=self.forum, materialized_msg=message)
+                message = await self.forum_trees.aretrieve_message(self._materialized_msg.reply_to_msg_hash_key)
+                return MessagePromise(forum_trees=self.forum_trees, materialized_msg=message)
             return None
         return self._reply_to
 
@@ -375,7 +384,7 @@ class MessagePromise:
                 metadata = override_metadata
 
             msg = Message(
-                forum_trees=self.forum.forum_trees,
+                forum_trees=self.forum_trees,
                 final_sender_alias=final_sender_alias or self._default_sender_alias,
                 content=msg_content,
                 prev_msg_hash_key=prev_msg_hash_key,
@@ -404,7 +413,7 @@ class MessagePromise:
                 # the only way to attach metadata to a message), or the original message is branched from a different
                 # message than this message promise (which also means that message forwarding is the only way)
                 forwarded_msg = ForwardedMessage(
-                    forum_trees=self.forum.forum_trees,
+                    forum_trees=self.forum_trees,
                     final_sender_alias=override_sender_alias or self._default_sender_alias,
                     msg_before_forward_hash_key=msg_before_forward.hash_key,
                     prev_msg_hash_key=prev_msg_hash_key,
@@ -437,7 +446,7 @@ class MessagePromise:
                 message = await self._content.aget_previous_msg()
                 if not message:
                     return None
-                return MessagePromise(forum=self.forum, materialized_msg=message)
+                return MessagePromise(forum_trees=self.forum_trees, materialized_msg=message)
 
         return None if self._branch_from is NO_VALUE else self._branch_from
 
@@ -484,10 +493,17 @@ class AgentCallMsgPromise(MessagePromise):
     """
 
     def __init__(
-        self, forum: "Forum", request_messages: AsyncMessageSequence, receiving_agent_alias: str, **function_kwargs
+        self,
+        forum_trees: ForumTrees,
+        request_messages: AsyncMessageSequence,
+        receiving_agent_alias: str,
+        **function_kwargs,
     ) -> None:
         super().__init__(
-            forum=forum, content=receiving_agent_alias, default_sender_alias=SYSTEM_ALIAS, **function_kwargs
+            forum_trees=forum_trees,
+            content=receiving_agent_alias,
+            default_sender_alias=SYSTEM_ALIAS,
+            **function_kwargs,
         )
         self._request_messages = request_messages
 
@@ -505,7 +521,7 @@ class AgentCallMsgPromise(MessagePromise):
             msg_seq_end_hash_key = None
 
         return AgentCallMsg(
-            forum_trees=self.forum.forum_trees,
+            forum_trees=self.forum_trees,
             receiver_alias=self._content,  # receiving_agent_alias
             final_sender_alias=SYSTEM_ALIAS,  # agent calls should be cacheable and reuseable by other agents
             function_kwargs=self._override_metadata,  # function_kwargs from the constructor

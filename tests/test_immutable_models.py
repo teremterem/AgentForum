@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from agentforum.forum import Forum
+from agentforum.forum import InteractionContext
 from agentforum.models import Immutable, Freeform, Message, ForwardedMessage
 
 
@@ -34,9 +34,11 @@ def test_immutable_frozen() -> None:
     assert sample.some_opt_field == 2
 
 
-def test_message_frozen(forum: Forum) -> None:
+def test_message_frozen(fake_interaction_context: InteractionContext) -> None:
     """Test that the `Message` class is frozen."""
-    message = Message(forum_trees=forum.forum_trees, content="test", final_sender_alias="user", is_detached=False)
+    message = Message(
+        forum_trees=fake_interaction_context.forum_trees, content="test", final_sender_alias="user", is_detached=False
+    )
 
     with pytest.raises(ValidationError):
         message.content = "test2"
@@ -69,10 +71,10 @@ def test_immutable_hash_key() -> None:
     assert sample.hash_key == expected_hash_key
 
 
-def test_message_hash_key(forum: Forum) -> None:
+def test_message_hash_key(fake_interaction_context: InteractionContext) -> None:
     """Test the `Message.hash_key` property."""
     message = Message(
-        forum_trees=forum.forum_trees,
+        forum_trees=fake_interaction_context.forum_trees,
         content="test",
         final_sender_alias="user",
         custom_field={"role": "user"},
@@ -86,7 +88,9 @@ def test_message_hash_key(forum: Forum) -> None:
     ).hexdigest()
     assert message.hash_key == expected_hash_key
 
-    message = Message(forum_trees=forum.forum_trees, content="test", final_sender_alias="user", is_detached=False)
+    message = Message(
+        forum_trees=fake_interaction_context.forum_trees, content="test", final_sender_alias="user", is_detached=False
+    )
     # print(json.dumps(message.model_dump(exclude={"forum_trees"}), ensure_ascii=False, sort_keys=True))
     expected_hash_key = hashlib.sha256(
         '{"content": "test", "content_template": null, "final_sender_alias": "user", "im_model_": "message", '
@@ -95,20 +99,20 @@ def test_message_hash_key(forum: Forum) -> None:
     assert message.hash_key == expected_hash_key
 
 
-def test_forwarded_message_hash_key(forum: Forum) -> None:
+def test_forwarded_message_hash_key(fake_interaction_context: InteractionContext) -> None:
     """
     Assert that ForwardedMessage._original_msg is not serialized when calculating the hash_key of a ForwardedMessage
     (only ForwardedMessage.original_msg_hash_key is).
     """
     original_msg = Message(
-        forum_trees=forum.forum_trees,
+        forum_trees=fake_interaction_context.forum_trees,
         content="message that is being forwarded",
         final_sender_alias="user",
         is_detached=False,
     )
 
     message = ForwardedMessage(
-        forum_trees=forum.forum_trees,
+        forum_trees=fake_interaction_context.forum_trees,
         final_sender_alias="user",
         msg_before_forward_hash_key=original_msg.hash_key,
     )
@@ -136,12 +140,12 @@ def test_nested_object_not_copied() -> None:
     assert sample.sub_immutable is sub_immutable
 
 
-def test_nested_message_freeform_not_copied(forum: Forum) -> None:
+def test_nested_message_freeform_not_copied(fake_interaction_context: InteractionContext) -> None:
     """Test that Freeform nested in Message is not copied."""
     # TODO Oleksandr: not sure if we still need this test - there are cases when nested objects have to be copied
     custom_field = Freeform(role="assistant", blah={"blah": "blah"})
     message = Message(
-        forum_trees=forum.forum_trees,
+        forum_trees=fake_interaction_context.forum_trees,
         content="test",
         final_sender_alias="user",
         custom_field=custom_field,
@@ -180,12 +184,12 @@ def test_freeform_hash_key_vs_key_ordering() -> None:
     assert freeform1.hash_key == freeform2.hash_key
 
 
-def test_message_metadata_as_dict(forum: Forum) -> None:
+def test_message_metadata_as_dict(fake_interaction_context: InteractionContext) -> None:
     """
     Test that the `Message.metadata_as_dict()` method returns only the custom fields as a dict.
     """
     message = Message(
-        forum_trees=forum.forum_trees,
+        forum_trees=fake_interaction_context.forum_trees,
         content="test",
         final_sender_alias="user",
         custom_field={"role": "user"},
@@ -197,25 +201,25 @@ def test_message_metadata_as_dict(forum: Forum) -> None:
 
 
 @pytest.mark.asyncio
-async def test_message_aget_previous_msg(forum: Forum) -> None:
+async def test_message_aget_previous_msg(fake_interaction_context: InteractionContext) -> None:
     """
     Test that the `Message.aget_previous_msg` method returns the previous message if it exists.
     """
     message = Message(
-        forum_trees=forum.forum_trees,
+        forum_trees=fake_interaction_context.forum_trees,
         content="message 1",
         final_sender_alias="user",
         is_detached=False,
     )
-    await forum.forum_trees.astore_immutable(message)
+    await fake_interaction_context.forum_trees.astore_immutable(message)
     message = Message(
-        forum_trees=forum.forum_trees,
+        forum_trees=fake_interaction_context.forum_trees,
         content="message 2",
         final_sender_alias="user",
         prev_msg_hash_key=message.hash_key,
         is_detached=False,
     )
-    await forum.forum_trees.astore_immutable(message)
+    await fake_interaction_context.forum_trees.astore_immutable(message)
 
     assert message.content == "message 2"  # a sanity check
     previous_message = await message.aget_previous_msg()

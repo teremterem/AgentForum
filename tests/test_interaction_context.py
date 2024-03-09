@@ -13,7 +13,6 @@ from agentforum.forum import InteractionContext, Forum, _CURRENT_FORUM
 async def test_nested_interaction_contexts(forum: Forum) -> None:
     """Assert that nesting of interaction contexts works as expected."""
     _CURRENT_FORUM.set(forum)
-    assert InteractionContext.get_current_context() is forum._user_interaction_context
 
     async with _create_interaction_context("agent1") as ctx1:
         assert InteractionContext.get_current_context() is ctx1
@@ -29,7 +28,7 @@ async def test_nested_interaction_contexts(forum: Forum) -> None:
 
         assert InteractionContext.get_current_context() is ctx1
 
-    assert InteractionContext.get_current_context() is forum._user_interaction_context
+    assert InteractionContext.get_current_context() is not ctx1
 
 
 @pytest.mark.asyncio
@@ -54,18 +53,18 @@ async def test_interaction_contexts_with_create_task(forum: Forum) -> None:
             await asyncio.sleep(0.01)
         assert InteractionContext.get_current_context() is ctx0
 
-    assert InteractionContext.get_current_context() is forum._user_interaction_context
+    assert InteractionContext.get_current_context() is not ctx0
     async with ctx0:
         assert InteractionContext.get_current_context() is ctx0
         await asyncio.gather(asyncio.create_task(task1()), asyncio.create_task(task2()))
         assert InteractionContext.get_current_context() is ctx0
-    assert InteractionContext.get_current_context() is forum._user_interaction_context
+    assert InteractionContext.get_current_context() is not ctx0
 
 
 def _create_interaction_context(agent_alias: str) -> InteractionContext:
     """Create an interaction context with the given agent alias."""
     return InteractionContext(
-        forum=MagicMock(),
+        forum_trees_or_factory_method=MagicMock(),
         agent=MagicMock(alias=agent_alias),
         history_tracker=MagicMock(),
         request_messages=MagicMock(),

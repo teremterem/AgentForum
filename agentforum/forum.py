@@ -13,15 +13,12 @@ from contextvars import ContextVar
 from functools import cached_property
 from typing import Optional, Union, Callable
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr, Field
-
 from agentforum.conversations import ConversationTracker, HistoryTracker
 from agentforum.errors import NoAskingAgentError
-from agentforum.models import Immutable
 from agentforum.promises import MessagePromise, AsyncMessageSequence, AgentCallMsgPromise
 from agentforum.storage.trees import ForumTrees
 from agentforum.storage.trees_impl import InMemoryTrees
-from agentforum.utils import Sentinel, USER_ALIAS
+from agentforum.utils import USER_ALIAS
 
 if typing.TYPE_CHECKING:
     from agentforum.typing import AgentFunction, MessageType
@@ -29,14 +26,13 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Forum(BaseModel):
+class Forum:
     """
     A forum for agents to communicate. Messages in the forum assemble in a tree-like structure.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    forum_trees: ForumTrees = Field(default_factory=InMemoryTrees)
-    _conversation_trackers: dict[str, ConversationTracker] = PrivateAttr(default_factory=dict)
+    def __init__(self, forum_trees_factory_method: Callable[[], ForumTrees] = InMemoryTrees) -> None:
+        self.forum_trees_factory_method = forum_trees_factory_method
 
     def agent(
         self,
@@ -73,44 +69,22 @@ class Forum(BaseModel):
             normalize_spaces_in_docstring=normalize_spaces_in_docstring,
         )
 
-    def get_conversation(
-        self,
-        descriptor: Immutable,
-        reply_to_if_new: Optional[Union[MessagePromise, AsyncMessageSequence, Sentinel]] = None,
-    ) -> ConversationTracker:
-        """
-        Get a ConversationTracker object that tracks the tip of a conversation branch. If the conversation doesn't
-        exist yet, it will be created. If reply_to_if_new is specified, the conversation will be in reply to that
-        message promise (as long as the conversation doesn't exist yet). Descriptor is used to uniquely identify
-        the conversation. It can be an arbitrary Immutable object - its hash_key will be used to identify the
-        conversation.
-        """
-        conversation_tracker = self._conversation_trackers.get(descriptor.hash_key)
-        if not conversation_tracker:
-            conversation_tracker = ConversationTracker(forum=self, reply_to=reply_to_if_new)
-            self._conversation_trackers[descriptor.hash_key] = conversation_tracker
-
-        return conversation_tracker
-
     @cached_property
-    def _user_agent(self) -> "Agent":
+    def user_agent(self) -> "Agent":
         """
         A special agent that represents the user. It is used to call other agents from the user's perspective.
         """
         return Agent(self, None, alias=USER_ALIAS)
 
-    @cached_property
-    def _user_interaction_context(self) -> "InteractionContext":
+    def create_user_interaction_context(self) -> "InteractionContext":
         """
         A special interaction context that represents the user. It is used to call other agents from the user's
         perspective.
         """
         return InteractionContext(
-            forum=self,
-            agent=self._user_agent,
-            # TODO TODO TODO Oleksandr: is it ok to have the same `HistoryTracker` for `USER` for the whole lifetime of
-            #  the application (or, more precisely, the forum) ?
-            history_tracker=HistoryTracker(self),
+            forum_trees_or_factory_method=self.forum_trees_factory_method,
+            agent=self.user_agent,
+            history_tracker=HistoryTracker(),
             request_messages=None,
             response_producer=None,
         )
@@ -299,23 +273,21 @@ class Agent:
             parent_ctx = InteractionContext.get_current_context()
 
             if not branch_from:
-                history_tracker = HistoryTracker(
-                    self.forum, branch_from=None if blank_history else parent_ctx.request_messages
-                )
+                history_tracker = HistoryTracker(branch_from=None if blank_history else parent_ctx.request_messages)
             elif isinstance(branch_from, HistoryTracker):
                 history_tracker = branch_from
             else:
-                history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
+                history_tracker = HistoryTracker(branch_from=branch_from)
 
             if not reply_to:
-                conversation_tracker = ConversationTracker(self.forum)
+                conversation_tracker = ConversationTracker(parent_ctx.forum_trees)
             elif isinstance(reply_to, ConversationTracker):
                 conversation_tracker = reply_to
             else:
-                conversation_tracker = ConversationTracker(self.forum, reply_to=reply_to)
+                conversation_tracker = ConversationTracker(parent_ctx.forum_trees, reply_to=reply_to)
 
             agent_call = AgentCall(
-                forum=self.forum,
+                forum_trees=parent_ctx.forum_trees,
                 history_tracker=history_tracker,
                 conversation_tracker=conversation_tracker,
                 receiving_agent=self,
@@ -336,7 +308,7 @@ class Agent:
     async def _acall_non_cached_agent_func(self, agent_call: "AgentCall", **function_kwargs) -> None:
         with agent_call._response_producer or contextlib.nullcontext():
             async with InteractionContext(
-                forum=self.forum,
+                forum_trees_or_factory_method=agent_call.forum_trees,
                 agent=self,
                 history_tracker=agent_call._history_tracker,
                 request_messages=agent_call._request_messages,
@@ -361,13 +333,19 @@ class InteractionContext:
 
     def __init__(
         self,
-        forum: "Forum",
+        forum_trees_or_factory_method: Union[ForumTrees, Callable[[], ForumTrees]],
         agent: Agent,
         history_tracker: HistoryTracker,
         request_messages: Optional[AsyncMessageSequence],
         response_producer: Optional["AsyncMessageSequence._MessageProducer"],
     ) -> None:
-        self.forum = forum
+        if isinstance(forum_trees_or_factory_method, ForumTrees):
+            # it's a ForumTrees object
+            self.forum_trees = forum_trees_or_factory_method
+        else:
+            # it's a factory method - let's call it to get the actual ForumTrees object
+            self.forum_trees = forum_trees_or_factory_method()
+
         self.this_agent = agent
         self.request_messages = request_messages
         self.parent_context: Optional["InteractionContext"] = self._current_context.get()
@@ -398,7 +376,7 @@ class InteractionContext:
         elif isinstance(branch_from, HistoryTracker):
             history_tracker = branch_from
         else:
-            history_tracker = HistoryTracker(self.forum, branch_from=branch_from)
+            history_tracker = HistoryTracker(branch_from=branch_from)
 
         if self.is_asker_context:
             self._response_producer.send_zero_or_more_messages(content, history_tracker, **metadata)
@@ -410,7 +388,9 @@ class InteractionContext:
     @classmethod
     def get_current_context(cls) -> Optional["InteractionContext"]:
         """Get the current InteractionContext object."""
-        return cls._current_context.get() or _CURRENT_FORUM.get()._user_interaction_context
+        # TODO TODO TODO Oleksandr: is it ok to create user interaction context every time - this side effect is not
+        #  evident from the name of this method
+        return cls._current_context.get() or _CURRENT_FORUM.get().create_user_interaction_context()
 
     def get_asker_context(self) -> "InteractionContext":
         """
@@ -468,7 +448,7 @@ class AgentCall:
 
     def __init__(
         self,
-        forum: Forum,
+        forum_trees: ForumTrees,
         history_tracker: HistoryTracker,
         conversation_tracker: ConversationTracker,
         receiving_agent: Agent,
@@ -476,7 +456,7 @@ class AgentCall:
         do_not_forward_if_possible: bool = True,
         **function_kwargs,
     ) -> None:
-        self.forum = forum
+        self.forum_trees = forum_trees
         self.receiving_agent = receiving_agent
         self.is_asking = is_asking
 
@@ -491,7 +471,7 @@ class AgentCall:
         self._task: Optional[asyncio.Task] = None
 
         AgentCallMsgPromise(
-            forum=self.forum,
+            forum_trees=self.forum_trees,
             request_messages=self._request_messages,
             receiving_agent_alias=self.receiving_agent.alias,
             **function_kwargs,
