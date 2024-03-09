@@ -34,9 +34,8 @@ def fake_interaction_context(forum: Forum, fake_agent: Agent) -> InteractionCont
     active InteractionContext (because they need access to a Forum object and its ForumTrees to work). In the client
     code such functions are supposed to be called from within agents.
     """
-    # noinspection PyTypeChecker
     return InteractionContext(
-        forum_trees=forum.forum_trees,
+        forum_trees_or_factory_method=forum.forum_trees_factory_method,
         agent=fake_agent,
         history_tracker=MagicMock(),
         request_messages=MagicMock(),

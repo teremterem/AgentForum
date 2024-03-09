@@ -6,22 +6,28 @@ Tests for agentforum.promises.AsyncMessageSequence
 import pytest
 
 from agentforum.conversations import ConversationTracker, HistoryTracker
-from agentforum.forum import Forum
+from agentforum.forum import InteractionContext
 from agentforum.models import Message
 from agentforum.promises import AsyncMessageSequence
 
 
 @pytest.mark.asyncio
-async def test_nested_message_sequences(forum: Forum) -> None:
+async def test_nested_message_sequences(fake_interaction_context: InteractionContext) -> None:
     """
     Verify that message ordering in nested message sequences is preserved.
     """
     history_tracker = HistoryTracker()
-    level1_sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    level1_sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
-    level2_sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    level2_sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     level2_producer = AsyncMessageSequence._MessageProducer(level2_sequence)
-    level3_sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    level3_sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     level3_producer = AsyncMessageSequence._MessageProducer(level3_sequence)
 
     with level3_producer:
@@ -60,13 +66,15 @@ async def test_nested_message_sequences(forum: Forum) -> None:
 
 
 @pytest.mark.asyncio
-async def test_error_in_message_sequence(forum: Forum) -> None:
+async def test_error_in_message_sequence(fake_interaction_context: InteractionContext) -> None:
     """
     Verify that an error in a message sequence comes out on the other end, but that the messages before the error
     are still processed.
     """
     history_tracker = HistoryTracker()
-    level1_sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    level1_sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
 
     with level1_producer:
@@ -91,21 +99,25 @@ async def test_error_in_message_sequence(forum: Forum) -> None:
     assert [msg.content for msg in actual_messages] == ["message 1", "message 2", "ValueError: message 3", "message 4"]
 
     # assert that the error message was persisted
-    persisted_error_msg = await forum.forum_trees.aretrieve_message(actual_messages[2].hash_key)
+    persisted_error_msg = await fake_interaction_context.forum_trees.aretrieve_message(actual_messages[2].hash_key)
     assert persisted_error_msg.content == "ValueError: message 3"
     assert persisted_error_msg.is_error
 
 
 @pytest.mark.asyncio
-async def test_error_in_nested_message_sequence(forum: Forum) -> None:
+async def test_error_in_nested_message_sequence(fake_interaction_context: InteractionContext) -> None:
     """
     Verify that an error in a NESTED message sequence comes out on the other end of the OUTER sequence, but that the
     messages before the error are still processed.
     """
     history_tracker = HistoryTracker()
-    level1_sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    level1_sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
-    level2_sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    level2_sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     level2_producer = AsyncMessageSequence._MessageProducer(level2_sequence)
 
     with level1_producer:
@@ -143,16 +155,20 @@ async def test_error_in_nested_message_sequence(forum: Forum) -> None:
 
 
 @pytest.mark.asyncio
-async def test_error_in_materialized_nested_sequence(forum: Forum) -> None:
+async def test_error_in_materialized_nested_sequence(fake_interaction_context: InteractionContext) -> None:
     """
     Verify that an error in a MATERIALIZED NESTED message sequence comes out on the other end of the OUTER sequence.
     A separate unit test for this is necessary because in case of MATERIALIZED NESTED sequence, the error is
     propagated from Message to MessagePromise, and not from MessagePromise to MessagePromise, as in the previous test.
     """
     history_tracker = HistoryTracker()
-    level1_sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    level1_sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     level1_producer = AsyncMessageSequence._MessageProducer(level1_sequence)
-    level2_sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    level2_sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     level2_producer = AsyncMessageSequence._MessageProducer(level2_sequence)
 
     with level2_producer:
@@ -176,11 +192,13 @@ async def test_error_in_materialized_nested_sequence(forum: Forum) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dicts_in_message_sequences(forum: Forum) -> None:
+async def test_dicts_in_message_sequences(fake_interaction_context: InteractionContext) -> None:
     """
     Verify that dicts are eventually converted to Message objects when they are sent to a message sequence.
     """
-    sequence = AsyncMessageSequence(ConversationTracker(forum.forum_trees), default_sender_alias="test")
+    sequence = AsyncMessageSequence(
+        ConversationTracker(fake_interaction_context.forum_trees), default_sender_alias="test"
+    )
     producer = AsyncMessageSequence._MessageProducer(sequence)
 
     history_tracker = HistoryTracker()
