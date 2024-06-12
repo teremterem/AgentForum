@@ -43,4 +43,4 @@ under the hood.
 - **Cancellation of agent execution.** In the future, it will be possible to cancel the execution of agents before
   they finish.
 
-***⚠️ NOTE: These plans are tentative and may change in the future. ⚠️***
+**⚠️ NOTE: These plans are tentative and may change in the future. ⚠️**
