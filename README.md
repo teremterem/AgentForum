@@ -1,4 +1,4 @@
-⚠️ ATTENTION! THIS REPO IS OBSOLETE, PLEASE GO TO [MiniAgents](https://github.com/teremterem/MiniAgents) INSTEAD ⚠️
+**⚠️ ATTENTION! THIS REPO IS OBSOLETE, PLEASE GO TO [MiniAgents](https://github.com/teremterem/MiniAgents) INSTEAD ⚠️**
 
 ---
 
