@@ -1,3 +1,5 @@
+⚠️ ATTENTION! THIS REPO IS OBSOLETE, PLEASE GO TO [MiniAgents](https://github.com/teremterem/MiniAgents) INSTEAD
+
 # 🏛 AgentForum
 
 An asynchronous framework for building LLM-based multi-agent systems in Python, with a focus on:
